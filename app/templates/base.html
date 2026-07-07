@@ -5,9 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ title }}{% endblock %}</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400&family=Cormorant+Garamond:wght@400&family=JetBrains+Mono:wght@400&display=swap">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <nav class="top-nav">
+    <span class="nav-link nav-left">Меню</span>
+    <a href="/" class="wordmark-display">BUGATTI</a>
+    <span class="nav-right nav-link">Store</span>
+  </nav>
+
   <div class="container">
     <header class="header">
       <div>
@@ -31,6 +41,12 @@
 
   {% block content %}{% endblock %}
   </div>
+
+  <footer class="footer">
+    <p class="footer-copy">© Client Segmentation. Powered by AI.</p>
+    <a href="/" class="wordmark-display">BUGATTI</a>
+  </footer>
+
   <div id="moysklad-status" class="moysklad-floating"></div>
 </body>
 </html>

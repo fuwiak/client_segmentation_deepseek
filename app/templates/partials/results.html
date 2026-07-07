@@ -14,7 +14,7 @@
       <thead>
         <tr>
           <th>#</th>
-          {% for col in ['Наименование', 'Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'Обоснование'] %}
+          {% for col in ['Наименование', 'Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'Увер.', 'Обоснование'] %}
           <th class="{% if col in segment_columns %}segment-col{% endif %}">{{ col }}</th>
           {% endfor %}
         </tr>
@@ -29,6 +29,11 @@
             {{ row.get(col) or '—' }}
           </td>
           {% endfor %}
+          <td class="confidence">
+            {% if row.get('_confidence') is not none %}
+              {{ '%.0f'|format(row.get('_confidence') * 100) }}%
+            {% else %}—{% endif %}
+          </td>
           <td class="reasoning">{{ row.get('_reasoning') or '—' }}</td>
         </tr>
         {% endfor %}

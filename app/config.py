@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     app_title: str = "Сегментация клиентов"
     max_upload_mb: int = 20
     ai_batch_size: int = 10
+    ai_concurrency: int = 4
+    ai_max_retries: int = 2
+    ai_temperature: float = 0.2
+    ai_timeout_seconds: int = 120
 
 
 @lru_cache
