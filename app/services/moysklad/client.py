@@ -12,6 +12,10 @@ from app.config import Settings
 class MoySkladClientBase(ABC):
     """Абстракция для интеграции с API Мой Склад."""
 
+    @property
+    def enabled(self) -> bool:
+        return False
+
     @abstractmethod
     async def get_counterparties(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         ...
