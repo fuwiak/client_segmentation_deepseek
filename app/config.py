@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     repository_backend: str = "memory"
     database_url: str = ""
 
+    # --- Кэш загруженных Excel (Redis на Railway, иначе in-memory) ---
+    redis_url: str = ""
+    cache_ttl_seconds: int = 86400
+
     # --- Модули CRM (placeholder до реализации) ---
     leads_enabled: bool = False
     campaigns_enabled: bool = False

@@ -25,8 +25,10 @@
           <td>{{ loop.index }}</td>
           <td>{{ row.get('Наименование') or '—' }}</td>
           {% for col in ['Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
-          <td class="segment-col {% if row.get('_ai_processed') %}ai-filled{% endif %}">
-            {{ row.get(col) or '—' }}
+          {% set is_ai = col in (row.get('_ai_fields') or []) %}
+          <td class="segment-col {% if is_ai %}ai-added{% endif %}">
+            <span class="cell-value">{{ row.get(col) or '—' }}</span>
+            {% if is_ai %}<span class="ai-badge">добавлено AI</span>{% endif %}
           </td>
           {% endfor %}
           <td class="confidence">

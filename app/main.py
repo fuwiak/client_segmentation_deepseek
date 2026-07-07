@@ -11,11 +11,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
+from app.services.cache import get_cache
 from app.services.excel_parser import SEGMENT_COLUMNS, enrich_with_orders, parse_workbook
 from app.services.moysklad import get_moysklad_client
 from app.services.segmentation import SegmentationService
 
 settings = get_settings()
+cache = get_cache(settings)
 app = FastAPI(title=settings.app_title)
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -70,12 +72,20 @@ async def upload_preview(
     orders_file: UploadFile | None = File(None),
 ) -> HTMLResponse:
     content = await contragents_file.read()
-    parsed = parse_workbook(content)
-
+    orders_content = b""
     if orders_file and orders_file.filename:
         orders_content = await orders_file.read()
-        orders_parsed = parse_workbook(orders_content)
-        parsed = enrich_with_orders(parsed, orders_parsed)
+
+    cache_content = content + b"|orders|" + orders_content
+    parsed = await cache.get_parsed(cache_content)
+    from_cache = parsed is not None
+
+    if parsed is None:
+        parsed = parse_workbook(content)
+        if orders_content:
+            orders_parsed = parse_workbook(orders_content)
+            parsed = enrich_with_orders(parsed, orders_parsed)
+        await cache.set_parsed(cache_content, parsed)
 
     _store["parsed"] = parsed
     preview_rows = parsed.rows[:20]
@@ -87,6 +97,8 @@ async def upload_preview(
             "parsed": parsed,
             "preview_rows": preview_rows,
             "segment_columns": SEGMENT_COLUMNS,
+            "from_cache": from_cache,
+            "cache_backend": cache.backend_kind,
         },
     )
 

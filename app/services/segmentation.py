@@ -210,19 +210,24 @@ class SegmentationService:
         for row in original_rows:
             ai = by_uuid.get(self._row_key(row), {})
             merged = dict(row)
+            ai_fields: list[str] = []
             for col in SEGMENT_COLUMNS:
                 value = ai.get(col)
                 if value not in (None, "", "null"):
+                    if not row.get(col):
+                        ai_fields.append(col)
                     merged[col] = value
 
             if not merged.get("Пол"):
                 guessed = guess_gender(merged.get("Заказчик или получатель"))
                 if guessed:
                     merged["Пол"] = guessed
+                    ai_fields.append("Пол")
 
             merged["_reasoning"] = ai.get("reasoning", "")
             merged["_confidence"] = ai.get("confidence")
             merged["_ai_processed"] = True
+            merged["_ai_fields"] = ai_fields
             results.append(merged)
         return results
 
@@ -249,13 +254,18 @@ class SegmentationService:
 
     def _heuristic_row(self, row: dict[str, Any]) -> dict[str, Any]:
         merged = dict(row)
+        ai_fields: list[str] = []
 
         if not merged.get("Группы"):
-            merged["Группы"] = self._heuristic_group(row)
+            group = self._heuristic_group(row)
+            if group:
+                merged["Группы"] = group
+                ai_fields.append("Группы")
 
         recipient = self._extract_recipient(row)
         if recipient and not merged.get("Заказчик или получатель"):
             merged["Заказчик или получатель"] = recipient
+            ai_fields.append("Заказчик или получатель")
 
         if not merged.get("Пол"):
             guessed = guess_gender(
@@ -263,15 +273,18 @@ class SegmentationService:
             )
             if guessed:
                 merged["Пол"] = guessed
+                ai_fields.append("Пол")
 
         if not merged.get("ТГ ник"):
             tg = self._extract_tg(row)
             if tg:
                 merged["ТГ ник"] = tg
+                ai_fields.append("ТГ ник")
 
         merged["_reasoning"] = "Эвристика без AI (ключ API не задан)"
         merged["_confidence"] = None
         merged["_ai_processed"] = False
+        merged["_ai_fields"] = ai_fields
         return merged
 
     @staticmethod
