@@ -574,6 +574,28 @@ th.segment-col { color: var(--body-strong); }
 
 .ai-filled { color: var(--on-dark); }
 
+/* AI-filled cells: green outline + tag, per user request */
+td.ai-added {
+  color: var(--on-dark);
+  box-shadow: inset 0 0 0 1px var(--success);
+}
+
+.cell-value { display: block; }
+
+.ai-badge {
+  display: inline-block;
+  margin-top: var(--xxs);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--success);
+  border: 1px solid var(--success);
+  border-radius: var(--r-macos);
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
 .reasoning {
   white-space: normal;
   max-width: 320px;

@@ -35,12 +35,14 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
 
     try:
         results = await service.segment_all(rows, progress_cb=_bump)
-        _store["results"] = results
-        _store["meta"] = {
+        meta = {
             "processed": len(results),
             "source_type": parsed.source_type,
             "total": parsed.total_rows,
         }
+        _store["results"] = results
+        _store["meta"] = meta
+        await cache.save_results({"results": results, "meta": meta})
         _progress["done"] = _progress["total"]
         _progress["status"] = "done"
     except Exception as exc:  # noqa: BLE001 — surface any failure to the modal
@@ -152,6 +154,10 @@ async def segment_progress(request: Request) -> HTMLResponse:
 @app.get("/download/xlsx")
 async def download_xlsx() -> StreamingResponse:
     results = _store.get("results", [])
+    if not results:
+        cached = await cache.get_results()
+        if cached and cached.get("results"):
+            results = cached["results"]
     if not results:
         df = pd.DataFrame()
     else:

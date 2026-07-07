@@ -17,6 +17,8 @@ from typing import Any
 from app.config import Settings
 
 CACHE_PREFIX = "xlsx:"
+RESULTS_PREFIX = "results:"
+LATEST_RESULTS_KEY = "latest"
 
 
 def file_hash(content: bytes) -> str:
@@ -118,6 +120,21 @@ class CacheService:
             await self._backend.set(key, parsed, self._ttl)
         except Exception:  # noqa: BLE001 — запись в кэш не критична
             pass
+
+    async def save_results(
+        self, payload: Any, key: str = LATEST_RESULTS_KEY
+    ) -> None:
+        """Сохранить сгенерированные записи сегментации, чтобы использовать позже."""
+        try:
+            await self._backend.set(RESULTS_PREFIX + key, payload, self._ttl)
+        except Exception:  # noqa: BLE001 — запись в кэш не критична
+            pass
+
+    async def get_results(self, key: str = LATEST_RESULTS_KEY) -> Any | None:
+        try:
+            return await self._backend.get(RESULTS_PREFIX + key)
+        except Exception:  # noqa: BLE001 — деградируем без кэша
+            return None
 
 
 _cache_service: CacheService | None = None
