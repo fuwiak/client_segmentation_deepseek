@@ -50,6 +50,7 @@
   /* Radius */
   --r-none: 0px;
   --r-pill: 9999px;
+  --r-macos: 6px;
 }
 
 * { box-sizing: border-box; }
@@ -323,7 +324,7 @@ input[type="file"]::file-selector-button {
   color: var(--on-dark);
   background: transparent;
   border: 1px solid var(--on-dark);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-macos);
   padding: var(--xs) var(--md);
   margin-right: var(--md);
   cursor: pointer;
@@ -357,7 +358,7 @@ input[type="file"]::file-selector-button {
   height: 44px;
   padding: 14px 32px;
   border: 1px solid var(--on-dark);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-macos);
   background: transparent;
   color: var(--on-dark);
   font-family: var(--font-mono);
