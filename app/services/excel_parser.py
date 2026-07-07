@@ -48,9 +48,12 @@ def _detect_header_row(df_raw: pd.DataFrame, markers: set[str]) -> int | None:
 
 
 def _read_sheet(content: bytes) -> tuple[pd.DataFrame, dict[str, Any]]:
+    # Read the workbook ONCE (openpyxl parsing is the slow part) and reuse the
+    # raw frame for header detection + final slicing, instead of re-reading the
+    # file two or three times.
     xl = pd.ExcelFile(io.BytesIO(content))
     sheet = xl.sheet_names[0]
-    raw = pd.read_excel(io.BytesIO(content), sheet_name=sheet, header=None)
+    raw = xl.parse(sheet_name=sheet, header=None)
 
     header_row = _detect_header_row(raw, CONTRAGENT_MARKERS)
     source_type = "contragents"
@@ -60,14 +63,19 @@ def _read_sheet(content: bytes) -> tuple[pd.DataFrame, dict[str, Any]]:
         source_type = "orders"
 
     if header_row is None:
-        df = pd.read_excel(io.BytesIO(content), sheet_name=sheet)
+        header_row = 0
         source_type = "unknown"
-    else:
-        df = pd.read_excel(io.BytesIO(content), sheet_name=sheet, header=header_row)
-        df = df.dropna(how="all")
 
-    df.columns = [str(c).strip() for c in df.columns]
-    df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
+    header_cells = raw.iloc[header_row].tolist()
+    keep_idx = [
+        i
+        for i, cell in enumerate(header_cells)
+        if pd.notna(cell) and str(cell).strip()
+    ]
+
+    df = raw.iloc[header_row + 1 :, keep_idx].reset_index(drop=True)
+    df.columns = [str(header_cells[i]).strip() for i in keep_idx]
+    df = df.dropna(how="all")
 
     return df, {"sheet": sheet, "header_row": header_row, "source_type": source_type}
 

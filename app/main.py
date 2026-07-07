@@ -83,9 +83,11 @@ async def upload_preview(
     from_cache = parsed is not None
 
     if parsed is None:
-        parsed = parse_workbook(content)
+        # Parsing (pandas/openpyxl) is blocking and CPU-bound: run it off the
+        # event loop so uploads don't stall the whole app.
+        parsed = await asyncio.to_thread(parse_workbook, content)
         if orders_content:
-            orders_parsed = parse_workbook(orders_content)
+            orders_parsed = await asyncio.to_thread(parse_workbook, orders_content)
             parsed = enrich_with_orders(parsed, orders_parsed)
         await cache.set_parsed(cache_content, parsed)
 
