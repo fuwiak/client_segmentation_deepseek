@@ -13,39 +13,53 @@
 </head>
 <body>
   <nav class="top-nav">
-    <span class="nav-link nav-left">Меню</span>
+    <button type="button" class="nav-btn nav-left" onclick="toggleSidebar('left')" aria-label="Меню">
+      Меню
+    </button>
     <a href="/" class="wordmark-display">BUGATTI</a>
-    <span class="nav-right nav-link">Store</span>
+    <button type="button" class="nav-btn nav-right" onclick="toggleSidebar('right')" aria-label="Панель">
+      Панель
+    </button>
   </nav>
 
-  <div class="container">
-    <header class="header">
-      <div>
-        <h1>{{ title }}</h1>
-        <p class="subtitle">AI-сегментация клиентов по данным Excel</p>
-      </div>
-      <div class="badges">
-        <span class="badge">Модель: {{ model }}</span>
-        <span class="badge {% if has_api_key %}ok{% else %}warn{% endif %}">
-          {% if has_api_key %}API подключён{% else %}API не задан{% endif %}
-        </span>
-        <span class="badge {% if moysklad_enabled %}ok{% else %}muted{% endif %}"
-              hx-get="/moysklad/status"
-              hx-trigger="load"
-              hx-target="#moysklad-status"
-              hx-swap="innerHTML">
-          Мой Склад
-        </span>
-      </div>
-    </header>
+  <div class="sidebar-backdrop" onclick="closeSidebars()"></div>
 
-  {% block content %}{% endblock %}
+  <div class="app-shell">
+    {% include 'partials/sidebar_left.html' %}
+
+    <main class="main-content">
+      <div class="container">
+        <header class="header">
+          <div>
+            <h1>{{ title }}</h1>
+            <p class="subtitle">AI-сегментация клиентов по данным Excel</p>
+          </div>
+          <div class="badges badges-compact">
+            <span class="badge">Модель: {{ model }}</span>
+            <span class="badge {% if has_api_key %}ok{% else %}warn{% endif %}">
+              {% if has_api_key %}API{% else %}Нет API{% endif %}
+            </span>
+            <span class="badge {% if moysklad_enabled %}ok{% else %}muted{% endif %}"
+                  hx-get="/moysklad/status"
+                  hx-trigger="load"
+                  hx-target="#moysklad-status"
+                  hx-swap="innerHTML">
+              МС
+            </span>
+          </div>
+        </header>
+
+        {% block content %}{% endblock %}
+      </div>
+
+      <footer class="footer">
+        <p class="footer-copy">© Client Segmentation. Powered by AI.</p>
+        <a href="/" class="wordmark-display">BUGATTI</a>
+      </footer>
+    </main>
+
+    {% include 'partials/sidebar_right.html' %}
   </div>
-
-  <footer class="footer">
-    <p class="footer-copy">© Client Segmentation. Powered by AI.</p>
-    <a href="/" class="wordmark-display">BUGATTI</a>
-  </footer>
 
   <div id="moysklad-status" class="moysklad-floating"></div>
 
@@ -61,12 +75,23 @@
   </div>
 
   <script>
+    function toggleSidebar(side) {
+      var cls = side === 'left' ? 'sidebar-left-open' : 'sidebar-right-open';
+      document.body.classList.toggle(cls);
+      document.body.classList.toggle('sidebar-open');
+    }
+    function closeSidebars() {
+      document.body.classList.remove('sidebar-left-open', 'sidebar-right-open', 'sidebar-open');
+    }
     function closeModal() {
       var root = document.getElementById('modal-root');
       if (root) root.innerHTML = '';
     }
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') {
+        closeModal();
+        closeSidebars();
+      }
     });
   </script>
 </body>

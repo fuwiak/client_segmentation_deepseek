@@ -54,6 +54,7 @@ async def index(request: Request) -> HTMLResponse:
         {
             "request": request,
             "title": settings.app_title,
+            "active_page": "home",
             "segment_columns": SEGMENT_COLUMNS,
             "moysklad_enabled": moysklad.enabled,
             "model": settings.openrouter_model,

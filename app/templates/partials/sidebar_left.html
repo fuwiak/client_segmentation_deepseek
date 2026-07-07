@@ -1,0 +1,19 @@
+<aside class="sidebar sidebar-left" id="sidebar-left" aria-label="Навигация">
+  <div class="sidebar-inner">
+    <p class="sidebar-label">Навигация</p>
+    <nav class="sidebar-menu">
+      <a href="/" class="sidebar-link {% if active_page|default('') == 'home' %}active{% endif %}">Сегментация</a>
+      <a href="/#upload" class="sidebar-link">Загрузка данных</a>
+      <a href="/#preview-area" class="sidebar-link">Предпросмотр</a>
+      <a href="/#results-area" class="sidebar-link">Результаты</a>
+      <a href="/#integrations" class="sidebar-link">Интеграции</a>
+    </nav>
+
+    <p class="sidebar-label">Поля AI</p>
+    <ul class="sidebar-list">
+      {% for col in segment_columns %}
+      <li>{{ col }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</aside>

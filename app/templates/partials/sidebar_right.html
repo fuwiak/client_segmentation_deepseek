@@ -1,0 +1,35 @@
+<aside class="sidebar sidebar-right" id="sidebar-right" aria-label="Статус системы">
+  <div class="sidebar-inner">
+    <p class="sidebar-label">Статус</p>
+    <ul class="sidebar-status">
+      <li>
+        <span class="status-key">Модель</span>
+        <span class="status-val">{{ model }}</span>
+      </li>
+      <li>
+        <span class="status-key">API</span>
+        <span class="status-val {% if has_api_key %}ok{% else %}warn{% endif %}">
+          {% if has_api_key %}Подключён{% else %}Не задан{% endif %}
+        </span>
+      </li>
+      <li>
+        <span class="status-key">Мой Склад</span>
+        <span class="status-val {% if moysklad_enabled %}ok{% else %}muted{% endif %}">
+          {% if moysklad_enabled %}Включён{% else %}Выключен{% endif %}
+        </span>
+      </li>
+    </ul>
+
+    <p class="sidebar-label">Действия</p>
+    <nav class="sidebar-menu">
+      <a href="/#upload" class="sidebar-link">Загрузить Excel</a>
+      <a href="/download/xlsx" class="sidebar-link">Скачать результат</a>
+    </nav>
+
+    <p class="sidebar-label">Подсказка</p>
+    <p class="sidebar-hint">
+      Загрузите контрагентов, при необходимости — заказы. Запустите AI-сегментацию
+      из блока предпросмотра.
+    </p>
+  </div>
+</aside>
