@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 from typing import Any
 
@@ -20,6 +21,29 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _store: dict[str, Any] = {"results": [], "meta": {}}
+_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
+
+
+async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
+    _progress.update(status="running", done=0, total=len(rows), error="")
+    service = SegmentationService(settings)
+
+    def _bump(n: int) -> None:
+        _progress["done"] = min(_progress["total"], _progress["done"] + n)
+
+    try:
+        results = await service.segment_all(rows, progress_cb=_bump)
+        _store["results"] = results
+        _store["meta"] = {
+            "processed": len(results),
+            "source_type": parsed.source_type,
+            "total": parsed.total_rows,
+        }
+        _progress["done"] = _progress["total"]
+        _progress["status"] = "done"
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the modal
+        _progress["status"] = "error"
+        _progress["error"] = str(exc)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -66,38 +90,50 @@ async def upload_preview(
     )
 
 
-@app.post("/segment", response_class=HTMLResponse)
-async def segment(
+@app.post("/segment/start", response_class=HTMLResponse)
+async def segment_start(
     request: Request,
     limit: int = Form(50),
 ) -> HTMLResponse:
     parsed = _store.get("parsed")
     if not parsed:
         return templates.TemplateResponse(
-            "partials/error.html",
-            {"request": request, "message": "Сначала загрузите файл Excel."},
+            "partials/segment_modal.html",
+            {"request": request, "error": "Сначала загрузите файл Excel."},
         )
 
     rows = parsed.rows[: max(1, min(limit, 500))]
-    service = SegmentationService(settings)
-    results = await service.segment_all(rows)
-
-    _store["results"] = results
-    _store["meta"] = {
-        "processed": len(results),
-        "source_type": parsed.source_type,
-        "total": parsed.total_rows,
-    }
+    _progress.update(status="running", done=0, total=len(rows), error="")
+    asyncio.create_task(_run_segmentation(rows, parsed))
 
     return templates.TemplateResponse(
-        "partials/results.html",
-        {
-            "request": request,
-            "results": results,
-            "segment_columns": SEGMENT_COLUMNS,
-            "meta": _store["meta"],
-        },
+        "partials/segment_modal.html",
+        {"request": request, "error": None},
     )
+
+
+@app.get("/segment/progress", response_class=HTMLResponse)
+async def segment_progress(request: Request) -> HTMLResponse:
+    status = _progress["status"]
+    total = _progress["total"]
+    done = _progress["done"]
+    percent = int(done / total * 100) if total else 0
+
+    ctx: dict[str, Any] = {
+        "request": request,
+        "status": status,
+        "done": done,
+        "total": total,
+        "percent": percent,
+        "error": _progress["error"],
+    }
+    if status == "done":
+        ctx.update(
+            results=_store["results"],
+            segment_columns=SEGMENT_COLUMNS,
+            meta=_store["meta"],
+        )
+    return templates.TemplateResponse("partials/segment_progress.html", ctx)
 
 
 @app.get("/download/xlsx")

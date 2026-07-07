@@ -1,0 +1,28 @@
+<div id="progress-poll"
+     {% if status == 'running' %}
+     hx-get="/segment/progress"
+     hx-trigger="load delay:700ms"
+     hx-target="#progress-poll"
+     hx-swap="outerHTML"
+     {% endif %}>
+  {% if status == 'error' %}
+    <p class="progress-label error">Ошибка: {{ error }}</p>
+    <button type="button" class="btn" onclick="closeModal()">Закрыть</button>
+  {% elif status == 'done' %}
+    <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+    <p class="progress-label">Готово · {{ done }} / {{ total }}</p>
+    <button type="button" class="btn"
+            onclick="closeModal(); document.getElementById('results-area').scrollIntoView({behavior:'smooth'});">
+      Смотреть результаты
+    </button>
+  {% else %}
+    <div class="progress-track"><div class="progress-fill" style="width:{{ percent }}%"></div></div>
+    <p class="progress-label">{{ done }} / {{ total }} · {{ percent }}%</p>
+  {% endif %}
+</div>
+
+{% if status == 'done' %}
+<div id="results-area" class="card-area" hx-swap-oob="innerHTML">
+  {% include 'partials/results.html' %}
+</div>
+{% endif %}

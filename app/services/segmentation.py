@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -100,9 +101,18 @@ class SegmentationService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def segment_all(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def segment_all(
+        self,
+        rows: list[dict[str, Any]],
+        progress_cb: Callable[[int], None] | None = None,
+    ) -> list[dict[str, Any]]:
         if not self._settings.openrouter_api_key:
-            return [self._heuristic_row(r) for r in rows]
+            results = []
+            for row in rows:
+                results.append(self._heuristic_row(row))
+                if progress_cb:
+                    progress_cb(1)
+            return results
 
         batch_size = self._settings.ai_batch_size
         batches = [
@@ -113,7 +123,10 @@ class SegmentationService:
 
         async def _run(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
             async with semaphore:
-                return await self._segment_batch(batch)
+                result = await self._segment_batch(batch)
+                if progress_cb:
+                    progress_cb(len(batch))
+                return result
 
         async with httpx.AsyncClient(
             timeout=self._settings.ai_timeout_seconds
@@ -159,7 +172,7 @@ class SegmentationService:
                     headers={
                         "Authorization": f"Bearer {self._settings.openrouter_api_key}",
                         "Content-Type": "application/json",
-                        "HTTP-Referer": "https://client-segmentation.railway.app",
+                        "HTTP-Referer": "https://client-segmentation-deepseek.up.railway.app",
                         "X-Title": "Client Segmentation",
                     },
                     json={

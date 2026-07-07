@@ -14,6 +14,19 @@ class Settings(BaseSettings):
     moysklad_api_url: str = "https://api.moysklad.ru/api/remap/1.2"
     moysklad_enabled: bool = False
 
+    # --- Интеграции-источники (feature-flags; placeholder-коннекторы) ---
+    onec_enabled: bool = False
+    onec_odata_url: str = ""
+    messenger_enabled: bool = False
+
+    # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
+    repository_backend: str = "memory"
+    database_url: str = ""
+
+    # --- Модули CRM (placeholder до реализации) ---
+    leads_enabled: bool = False
+    campaigns_enabled: bool = False
+
     app_title: str = "Сегментация клиентов"
     max_upload_mb: int = 20
     ai_batch_size: int = 10

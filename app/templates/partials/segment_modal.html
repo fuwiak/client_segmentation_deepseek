@@ -1,0 +1,19 @@
+<div class="modal-overlay" id="segment-modal">
+  <div class="modal-card">
+    <h3 class="modal-title">AI-сегментация</h3>
+    {% if error %}
+      <p class="progress-label error">{{ error }}</p>
+      <button type="button" class="btn" onclick="closeModal()">Закрыть</button>
+    {% else %}
+      <p class="hint">Модель обрабатывает клиентов пакетами. Не закрывайте вкладку.</p>
+      <div id="progress-poll"
+           hx-get="/segment/progress"
+           hx-trigger="load delay:300ms"
+           hx-target="#progress-poll"
+           hx-swap="outerHTML">
+        <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+        <p class="progress-label">Запуск…</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
