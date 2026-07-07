@@ -1,0 +1,54 @@
+<div class="card">
+  <div class="card-header">
+    <h2>Предпросмотр</h2>
+    <div class="meta-tags">
+      <span class="tag">Тип: {{ parsed.source_type }}</span>
+      <span class="tag">Строк: {{ parsed.total_rows }}</span>
+      <span class="tag">Лист: {{ parsed.meta.sheet }}</span>
+      {% if parsed.meta.get('orders_enriched') %}
+      <span class="tag ok">+ заказы ({{ parsed.meta.orders_total }})</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="hint">Колонки сегментации: {{ segment_columns | join(', ') }}</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          {% for col in ['Наименование', 'Телефон', 'Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
+          <th class="{% if col in segment_columns %}segment-col{% endif %}">{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          {% for col in ['Наименование', 'Телефон', 'Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
+          <td class="{% if col in segment_columns %}segment-col{% endif %}">{{ row.get(col) or '—' }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form class="segment-form"
+        hx-post="/segment"
+        hx-target="#results-area"
+        hx-swap="innerHTML"
+        hx-indicator="#segment-loading">
+    <label>
+      Количество строк для AI-обработки:
+      <input type="number" name="limit" value="50" min="1" max="500">
+    </label>
+    <button type="submit" class="btn primary">Запустить AI-сегментацию</button>
+  </form>
+
+  <div id="segment-loading" class="htmx-indicator">
+    <div class="spinner"></div> AI анализирует данные...
+  </div>
+</div>

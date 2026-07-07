@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ title }}{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div>
+        <h1>{{ title }}</h1>
+        <p class="subtitle">AI-сегментация клиентов по данным Excel</p>
+      </div>
+      <div class="badges">
+        <span class="badge">Модель: {{ model }}</span>
+        <span class="badge {% if has_api_key %}ok{% else %}warn{% endif %}">
+          {% if has_api_key %}API подключён{% else %}API не задан{% endif %}
+        </span>
+        <span class="badge {% if moysklad_enabled %}ok{% else %}muted{% endif %}"
+              hx-get="/moysklad/status"
+              hx-trigger="load"
+              hx-target="#moysklad-status"
+              hx-swap="innerHTML">
+          Мой Склад
+        </span>
+      </div>
+    </header>
+
+  {% block content %}{% endblock %}
+  </div>
+  <div id="moysklad-status" class="moysklad-floating"></div>
+</body>
+</html>

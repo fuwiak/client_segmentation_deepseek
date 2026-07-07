@@ -1,0 +1,38 @@
+<div class="card success-card">
+  <div class="card-header">
+    <h2>Результаты сегментации</h2>
+    <div class="meta-tags">
+      <span class="tag ok">Обработано: {{ meta.processed }}</span>
+      <span class="tag">Всего в файле: {{ meta.total }}</span>
+    </div>
+  </div>
+
+  <a href="/download/xlsx" class="btn secondary">Скачать .xlsx</a>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          {% for col in ['Наименование', 'Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'Обоснование'] %}
+          <th class="{% if col in segment_columns %}segment-col{% endif %}">{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in results %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ row.get('Наименование') or '—' }}</td>
+          {% for col in ['Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
+          <td class="segment-col {% if row.get('_ai_processed') %}ai-filled{% endif %}">
+            {{ row.get(col) or '—' }}
+          </td>
+          {% endfor %}
+          <td class="reasoning">{{ row.get('_reasoning') or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -1,0 +1,9 @@
+<div class="moysklad-popup {% if enabled and healthy %}ok{% elif enabled %}warn{% else %}muted{% endif %}">
+  {% if enabled and healthy %}
+    Мой Склад: подключён
+  {% elif enabled %}
+    Мой Склад: токен задан, проверка не прошла
+  {% else %}
+    Мой Склад: не настроен (задайте MOYSKLAD_API_TOKEN)
+  {% endif %}
+</div>

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <h2>Загрузка данных</h2>
+  <p class="hint">
+    Загрузите файл контрагентов. Опционально — файл заказов покупателей для обогащения контекста.
+    AI заполнит фиолетовые колонки: <strong>Группы</strong>, <strong>Заказчик или получатель</strong>,
+    <strong>Пол</strong>, <strong>ТГ ник</strong>.
+  </p>
+
+  <form class="upload-form"
+        hx-post="/upload/preview"
+        hx-target="#preview-area"
+        hx-swap="innerHTML"
+        hx-encoding="multipart/form-data"
+        hx-indicator="#loading">
+    <div class="form-grid">
+      <label class="file-label">
+        <span>Контрагенты (.xlsx) *</span>
+        <input type="file" name="contragents_file" accept=".xlsx,.xls" required>
+      </label>
+      <label class="file-label">
+        <span>Заказы покупателей (.xlsx)</span>
+        <input type="file" name="orders_file" accept=".xlsx,.xls">
+      </label>
+    </div>
+    <button type="submit" class="btn primary">Загрузить и просмотреть</button>
+  </form>
+
+  <div id="loading" class="htmx-indicator">
+    <div class="spinner"></div> Обработка файла...
+  </div>
+</section>
+
+<section id="preview-area" class="card-area"></section>
+<section id="results-area" class="card-area"></section>
+
+<section class="card muted-card">
+  <h3>Интеграция Мой Склад (подготовлено)</h3>
+  <p class="hint">Переменные окружения для будущего подключения:</p>
+  <ul class="env-list">
+    <li><code>MOYSKLAD_API_TOKEN</code> — токен API</li>
+    <li><code>MOYSKLAD_API_URL</code> — URL API (по умолчанию remap/1.2)</li>
+    <li><code>MOYSKLAD_ENABLED</code> — <code>true</code> для активации</li>
+  </ul>
+</section>
+{% endblock %}
