@@ -461,6 +461,74 @@ th.segment-col { color: var(--body-strong); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---- Modals & progress -------------------------------------------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--lg);
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(2px);
+}
+
+/* Upload modal is driven by htmx: hidden until the request is in flight */
+.upload-modal { display: none; }
+.upload-modal.htmx-request { display: flex; }
+
+.modal-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-none);
+  padding: var(--xl);
+}
+
+.modal-title { margin-bottom: var(--md); }
+.modal-card .hint { margin-bottom: var(--lg); }
+.modal-card .btn { margin-top: var(--lg); }
+
+.progress-track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: var(--hairline);
+  overflow: hidden;
+  margin-bottom: var(--md);
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--on-dark);
+  transition: width 0.35s ease;
+}
+
+.progress-track.indeterminate .progress-fill {
+  width: 40%;
+  animation: indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.progress-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+
+.progress-label.error { color: var(--error); }
+
 /* ---- Env list / misc ---------------------------------------------------- */
 
 .env-list {

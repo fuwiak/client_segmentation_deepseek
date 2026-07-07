@@ -48,5 +48,26 @@
   </footer>
 
   <div id="moysklad-status" class="moysklad-floating"></div>
+
+  <div id="modal-root"></div>
+
+  <div id="upload-modal" class="modal-overlay upload-modal">
+    <div class="modal-card">
+      <h3 class="modal-title">Загрузка файла</h3>
+      <p class="hint">Разбор Excel и обогащение данными заказов…</p>
+      <div class="progress-track indeterminate"><div class="progress-fill"></div></div>
+      <p class="progress-label">Обработка…</p>
+    </div>
+  </div>
+
+  <script>
+    function closeModal() {
+      var root = document.getElementById('modal-root');
+      if (root) root.innerHTML = '';
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeModal();
+    });
+  </script>
 </body>
 </html>

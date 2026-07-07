@@ -14,7 +14,7 @@
         hx-target="#preview-area"
         hx-swap="innerHTML"
         hx-encoding="multipart/form-data"
-        hx-indicator="#loading">
+        hx-indicator="#upload-modal">
     <div class="form-grid">
       <label class="file-label">
         <span>Контрагенты (.xlsx) *</span>
@@ -27,10 +27,6 @@
     </div>
     <button type="submit" class="btn primary">Загрузить и просмотреть</button>
   </form>
-
-  <div id="loading" class="htmx-indicator">
-    <div class="spinner"></div> Обработка файла...
-  </div>
 </section>
 
 <section id="preview-area" class="card-area"></section>

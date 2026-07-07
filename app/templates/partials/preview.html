@@ -37,18 +37,13 @@
   </div>
 
   <form class="segment-form"
-        hx-post="/segment"
-        hx-target="#results-area"
-        hx-swap="innerHTML"
-        hx-indicator="#segment-loading">
+        hx-post="/segment/start"
+        hx-target="#modal-root"
+        hx-swap="innerHTML">
     <label>
       Количество строк для AI-обработки:
       <input type="number" name="limit" value="50" min="1" max="500">
     </label>
     <button type="submit" class="btn primary">Запустить AI-сегментацию</button>
   </form>
-
-  <div id="segment-loading" class="htmx-indicator">
-    <div class="spinner"></div> AI анализирует данные...
-  </div>
 </div>
