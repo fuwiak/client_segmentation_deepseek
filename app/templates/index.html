@@ -2,30 +2,24 @@
 
 {% block content %}
 <section id="upload" class="card">
-  <h2>Загрузка данных</h2>
-  <p class="hint">
-    Загрузите файл контрагентов. Опционально — файл заказов покупателей для обогащения контекста.
-    AI заполнит выделенные колонки: <strong>Группы</strong>, <strong>Заказчик или получатель</strong>,
-    <strong>Пол</strong>, <strong>ТГ ник</strong>.
-  </p>
-
   <form class="upload-form"
         hx-post="/upload/preview"
         hx-target="#preview-area"
         hx-swap="innerHTML"
         hx-encoding="multipart/form-data"
+        hx-trigger="change"
         hx-indicator="#upload-modal">
     <div class="form-grid">
       <label class="file-label">
-        <span>Контрагенты (.xlsx) *</span>
+        <span>Контрагенты (.xlsx) — выберите файл</span>
         <input type="file" name="contragents_file" accept=".xlsx,.xls" required>
       </label>
       <label class="file-label">
-        <span>Заказы покупателей (.xlsx)</span>
+        <span>Заказы покупателей (.xlsx) — опционально</span>
         <input type="file" name="orders_file" accept=".xlsx,.xls">
       </label>
     </div>
-    <button type="submit" class="btn primary">Загрузить и просмотреть</button>
+    <p class="hint">Предпросмотр появится сразу после выбора файла.</p>
   </form>
 </section>
 
