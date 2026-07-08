@@ -1,0 +1,27 @@
+<div id="moysklad-push-area" class="moysklad-push-area">
+  {% if result %}
+    <p class="sync-msg {% if result.success %}ok{% else %}warn{% endif %}">{{ result.message }}</p>
+    {% if result.errors %}
+      <ul class="push-errors">
+        {% for err in result.errors %}
+        <li>{{ err }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+
+  {% if moysklad_push_available %}
+    <button
+      type="button"
+      class="btn secondary"
+      hx-post="/moysklad/push-tags"
+      hx-target="#moysklad-push-area"
+      hx-swap="outerHTML"
+      hx-indicator="#moysklad-push-spinner"
+    >
+      Отправить сегменты в Мой Склад
+    </button>
+    <span id="moysklad-push-spinner" class="htmx-indicator">Отправка…</span>
+    <p class="hint">AI-теги добавляются с префиксом <code>crm:</code>, существующие теги Мой Склад сохраняются.</p>
+  {% endif %}
+</div>

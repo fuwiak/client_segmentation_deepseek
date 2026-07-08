@@ -13,6 +13,21 @@
   <div class="result-actions">
     <a href="/clients" class="btn">Открыть клиентов</a>
     <a href="/download/xlsx" class="btn secondary">Скачать .xlsx</a>
+    {% if moysklad_push_available %}
+    <div id="moysklad-push-area" class="moysklad-push-area inline-push">
+      <button
+        type="button"
+        class="btn secondary"
+        hx-post="/moysklad/push-tags"
+        hx-target="#moysklad-push-area"
+        hx-swap="outerHTML"
+        hx-indicator="#moysklad-push-spinner"
+      >
+        Отправить сегменты в Мой Склад
+      </button>
+      <span id="moysklad-push-spinner" class="htmx-indicator">Отправка…</span>
+    </div>
+    {% endif %}
   </div>
 
   <div class="table-wrap">

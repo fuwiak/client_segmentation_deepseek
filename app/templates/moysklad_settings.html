@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include 'partials/settings_subnav.html' %}
+
+<div class="settings-grid">
+  <section class="card">
+    <h3>Подключение</h3>
+    <div hx-get="/moysklad/status" hx-trigger="load" hx-swap="innerHTML"></div>
+  </section>
+
+  <section class="card">
+    <h3>Параметры интеграции</h3>
+    <dl class="config-dl">
+      <div class="config-row">
+        <dt>MOYSKLAD_ENABLED</dt>
+        <dd>
+          <span class="tag {% if moysklad_config.enabled %}ok{% else %}muted{% endif %}">
+            {{ 'true' if moysklad_config.enabled else 'false' }}
+          </span>
+        </dd>
+      </div>
+      <div class="config-row">
+        <dt>MOYSKLAD_API_TOKEN</dt>
+        <dd><code>{{ moysklad_config.token_masked }}</code></dd>
+      </div>
+      <div class="config-row">
+        <dt>MOYSKLAD_API_URL</dt>
+        <dd><code>{{ moysklad_config.api_url }}</code></dd>
+      </div>
+      <div class="config-row">
+        <dt>MOYSKLAD_SYNC_LIMIT</dt>
+        <dd>{{ moysklad_config.sync_limit }}</dd>
+      </div>
+      <div class="config-row">
+        <dt>MOYSKLAD_SYNC_ORDERS_LIMIT</dt>
+        <dd>{{ moysklad_config.sync_orders_limit }}</dd>
+      </div>
+    </dl>
+    <p class="hint">Значения задаются через переменные окружения (Railway / <code>.env</code>).</p>
+  </section>
+</div>
+
+<section class="card">
+  <h3>Выгрузка сегментов</h3>
+  {% if moysklad_push_available %}
+    <p class="hint">После AI-сегментации отправьте теги обратно в карточки контрагентов Мой Склад.</p>
+    <div id="moysklad-push-area" class="moysklad-push-area">
+      <button
+        type="button"
+        class="btn secondary"
+        hx-post="/moysklad/push-tags"
+        hx-target="#moysklad-push-area"
+        hx-swap="outerHTML"
+        hx-indicator="#moysklad-push-spinner-admin"
+      >
+        Отправить сегменты в Мой Склад
+      </button>
+      <span id="moysklad-push-spinner-admin" class="htmx-indicator">Отправка…</span>
+    </div>
+  {% else %}
+    <p class="hint muted">
+      Сначала синхронизируйте контрагентов и выполните AI-сегментацию — тогда станет доступна выгрузка тегов.
+    </p>
+  {% endif %}
+</section>
+
+<section class="card muted-card">
+  <h3>Справка</h3>
+  <ul class="env-list">
+    <li><strong>Синхронизация</strong> — контрагенты и заказы покупателей → CRM</li>
+    <li><strong>Сегментация</strong> — AI заполняет <code>Группы</code> и <code>Теги</code></li>
+    <li><strong>Выгрузка</strong> — теги с префиксом <code>crm:</code> в поле <code>tags</code> контрагента</li>
+    <li>Документация API: <a href="https://dev.moysklad.ru/doc/api/remap/1.2/" target="_blank" rel="noopener">Remap 1.2</a></li>
+  </ul>
+</section>
+{% endblock %}

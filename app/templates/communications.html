@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% include 'partials/settings_subnav.html' %}
+
 <section class="card">
   <p class="hint">Автоматические сообщения клиенту по этапам заказа.</p>
   {% for rule in comm_rules %}

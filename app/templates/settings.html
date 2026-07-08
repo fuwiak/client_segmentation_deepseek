@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% include 'partials/settings_subnav.html' %}
+
 <div class="settings-grid">
   <section class="card">
     <h3>Мессенджеры</h3>
@@ -10,7 +12,8 @@
 
   <section class="card">
     <h3>Мой Склад</h3>
-    <div hx-get="/moysklad/status" hx-trigger="load" hx-swap="innerHTML"></div>
+    <p class="hint">Управление интеграцией, синхронизацией и выгрузкой сегментов.</p>
+    <a href="/settings/moysklad" class="btn secondary">Открыть администрирование Мой Склад →</a>
   </section>
 </div>
 
@@ -20,6 +23,7 @@
     <li><code>OPENROUTER_API_KEY</code> — AI-сегментация</li>
     <li><code>GREEN_API_ID_INSTANCE</code> / <code>GREEN_API_TOKEN</code> — WhatsApp</li>
     <li><code>TELEGRAM_BOT_TOKEN</code> — Telegram</li>
+    <li><code>MOYSKLAD_API_TOKEN</code> / <code>MOYSKLAD_ENABLED</code> — <a href="/settings/moysklad">Мой Склад</a></li>
   </ul>
 </section>
 {% endblock %}

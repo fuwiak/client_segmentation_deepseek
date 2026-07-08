@@ -31,7 +31,7 @@ from app.services.excel_parser import (
 )
 from app.services.fields import enrich_row_computed
 from app.services.green_api import get_green_api_client
-from app.services.moysklad import get_moysklad_client
+from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
 from app.services.segmentation import SegmentationService
 from app.services.telegram_bot import get_telegram_client
 
@@ -76,6 +76,44 @@ def _workflow_ctx() -> dict[str, Any]:
   else:
     step = 1
   return {"has_data": has_parsed or has_results, "workflow_step": step}
+
+
+def _mask_secret(value: str) -> str:
+  value = value.strip()
+  if not value:
+    return "не задан"
+  if len(value) <= 8:
+    return "••••••••"
+  return f"{value[:4]}…{value[-4:]}"
+
+
+def _moysklad_config_ctx() -> dict[str, Any]:
+  client = get_moysklad_client(settings)
+  return {
+    "moysklad_config": {
+      "enabled": settings.moysklad_enabled,
+      "token_set": bool(settings.moysklad_api_token),
+      "token_masked": _mask_secret(settings.moysklad_api_token),
+      "api_url": settings.moysklad_api_url,
+      "sync_limit": settings.moysklad_sync_limit,
+      "sync_orders_limit": settings.moysklad_sync_orders_limit,
+      "client_enabled": client.enabled,
+    },
+  }
+
+
+def _moysklad_push_available() -> bool:
+  client = get_moysklad_client(settings)
+  if not client.enabled or not hub.results:
+    return False
+  return any(
+    row.get("_moysklad_id") or row.get("_source") == "moysklad"
+    for row in hub.results
+  )
+
+
+def _segment_results_ctx() -> dict[str, Any]:
+  return {"moysklad_push_available": _moysklad_push_available()}
 
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -311,6 +349,22 @@ async def communications_page(request: Request) -> HTMLResponse:
   )
 
 
+@app.get("/settings/moysklad", response_class=HTMLResponse)
+async def moysklad_settings_page(request: Request) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
+  return templates.TemplateResponse(
+    "moysklad_settings.html",
+    _ctx(
+      request,
+      active_page="moysklad",
+      page_title="Мой Склад",
+      subtitle="Подключение, синхронизация и выгрузка сегментов",
+      **_moysklad_config_ctx(),
+      **_segment_results_ctx(),
+    ),
+  )
+
+
 @app.post("/settings/communications/{rule_key}", response_class=HTMLResponse)
 async def communications_update(
   request: Request,
@@ -398,6 +452,7 @@ async def upload_preview(
       "results": hub.results,
       "meta": hub.meta,
       "ai_extra_columns": AI_EXTRA_COLUMNS,
+      **_segment_results_ctx(),
     },
   )
 
@@ -439,6 +494,7 @@ async def segment_start(
           "meta": hub.meta,
           "results_from_cache": True,
           "cache_backend": cache.backend_kind,
+          **_segment_results_ctx(),
         },
       )
 
@@ -476,6 +532,7 @@ async def segment_progress(request: Request) -> HTMLResponse:
       meta=hub.meta,
       results_from_cache=hub.results_from_cache,
       cache_backend=cache.backend_kind,
+      **_segment_results_ctx(),
     )
   return templates.TemplateResponse("partials/segment_progress.html", ctx)
 
@@ -508,6 +565,16 @@ async def download_xlsx() -> StreamingResponse:
 async def moysklad_status(request: Request) -> HTMLResponse:
   client = get_moysklad_client(settings)
   healthy = await client.health_check() if client.enabled else False
+  hub_rows = len(hub.parsed.rows) if hub.parsed and hub.parsed.rows else 0
+  hub_orders = (
+    len(hub.orders_parsed.rows)
+    if hub.orders_parsed and hub.orders_parsed.rows
+    else 0
+  )
+  from_moysklad = bool(
+    hub.parsed
+    and hub.parsed.meta.get("source") == "moysklad"
+  )
   return templates.TemplateResponse(
     "partials/moysklad_status.html",
     {
@@ -515,5 +582,49 @@ async def moysklad_status(request: Request) -> HTMLResponse:
       "enabled": client.enabled,
       "healthy": healthy,
       "api_url": settings.moysklad_api_url,
+      "hub_rows": hub_rows,
+      "hub_orders": hub_orders,
+      "from_moysklad": from_moysklad,
+    },
+  )
+
+
+@app.post("/moysklad/sync", response_class=HTMLResponse)
+async def moysklad_sync(request: Request) -> HTMLResponse:
+  client = get_moysklad_client(settings)
+  result = await sync_moysklad_to_hub(
+    client,
+    hub,
+    max_counterparties=settings.moysklad_sync_limit,
+    max_orders=settings.moysklad_sync_orders_limit,
+  )
+  healthy = await client.health_check() if client.enabled else False
+  return templates.TemplateResponse(
+    "partials/moysklad_status.html",
+    {
+      "request": request,
+      "enabled": client.enabled,
+      "healthy": healthy,
+      "api_url": settings.moysklad_api_url,
+      "hub_rows": result.counterparties_count if result.success else 0,
+      "hub_orders": result.orders_count if result.success else 0,
+      "from_moysklad": result.success,
+      "sync_message": result.message,
+      "sync_ok": result.success,
+    },
+  )
+
+
+@app.post("/moysklad/push-tags", response_class=HTMLResponse)
+async def moysklad_push_tags(request: Request) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
+  client = get_moysklad_client(settings)
+  result = await push_segments_to_moysklad(client, hub.results)
+  return templates.TemplateResponse(
+    "partials/moysklad_push_result.html",
+    {
+      "request": request,
+      "result": result,
+      "moysklad_push_available": _moysklad_push_available(),
     },
   )

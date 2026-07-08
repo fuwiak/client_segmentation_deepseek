@@ -34,6 +34,14 @@ class MoySkladClientBase(ABC):
     async def health_check(self) -> bool:
         ...
 
+    @abstractmethod
+    async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
+        ...
+
 
 class MoySkladClient(MoySkladClientBase):
     def __init__(self, settings: Settings) -> None:
@@ -52,29 +60,79 @@ class MoySkladClient(MoySkladClientBase):
             "Accept-Encoding": "gzip",
         }
 
-    async def get_counterparties(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
-        if not self._enabled:
-            return []
+    async def _get_page(
+        self,
+        path: str,
+        *,
+        limit: int,
+        offset: int,
+        extra_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if extra_params:
+            params.update(extra_params)
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
-                f"{self._base_url}/entity/counterparty",
+                f"{self._base_url}{path}",
                 headers=self._headers(),
-                params={"limit": limit, "offset": offset},
+                params=params,
             )
             resp.raise_for_status()
             return resp.json().get("rows", [])
 
+    async def _fetch_all(
+        self,
+        path: str,
+        *,
+        max_rows: int,
+        page_size: int = 100,
+        extra_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while len(rows) < max_rows:
+            batch = await self._get_page(
+                path,
+                limit=min(page_size, max_rows - len(rows)),
+                offset=offset,
+                extra_params=extra_params,
+            )
+            if not batch:
+                break
+            rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        return rows
+
+    async def get_counterparties(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+        if not self._enabled:
+            return []
+        return await self._get_page("/entity/counterparty", limit=limit, offset=offset)
+
     async def get_customer_orders(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         if not self._enabled:
             return []
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self._base_url}/entity/customerorder",
-                headers=self._headers(),
-                params={"limit": limit, "offset": offset},
-            )
-            resp.raise_for_status()
-            return resp.json().get("rows", [])
+        return await self._get_page(
+            "/entity/customerorder",
+            limit=limit,
+            offset=offset,
+            extra_params={"expand": "agent,state"},
+        )
+
+    async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
+        if not self._enabled:
+            return []
+        return await self._fetch_all("/entity/counterparty", max_rows=max_rows)
+
+    async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
+        if not self._enabled:
+            return []
+        return await self._fetch_all(
+            "/entity/customerorder",
+            max_rows=max_rows,
+            extra_params={"expand": "agent,state"},
+        )
 
     async def update_counterparty_groups(
         self, counterparty_id: str, groups: list[str]
@@ -127,6 +185,12 @@ class MoySkladStub(MoySkladClientBase):
 
     async def health_check(self) -> bool:
         return False
+
+    async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
+        return []
+
+    async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
+        return []
 
 
 def get_moysklad_client(settings: Settings) -> MoySkladClientBase:
