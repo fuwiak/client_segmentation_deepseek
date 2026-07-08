@@ -50,6 +50,18 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
 
 
+def _workflow_ctx() -> dict[str, Any]:
+  has_parsed = hub.parsed is not None and bool(hub.parsed.rows)
+  has_results = bool(hub.results)
+  if has_results:
+    step = 3
+  elif has_parsed:
+    step = 2
+  else:
+    step = 1
+  return {"has_data": has_parsed or has_results, "workflow_step": step}
+
+
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
   return {
     "request": request,
@@ -62,6 +74,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "has_api_key": bool(settings.openrouter_api_key),
     "wa_enabled": get_green_api_client(settings).enabled,
     "tg_enabled": get_telegram_client(settings).enabled,
+    **_workflow_ctx(),
     **extra,
   }
 
@@ -99,9 +112,10 @@ async def home(request: Request) -> HTMLResponse:
     _ctx(
       request,
       active_page="home",
-      subtitle="Основное окно — задачи, диалоги, статусы",
+      page_title="Главная",
+      subtitle="Обзор клиентской базы и быстрые действия",
       dashboard=dash,
-      clients=rows[:20],
+      clients=rows[:10],
       total_clients=len(rows),
     ),
   )
@@ -121,7 +135,8 @@ async def dashboard_page(
     _ctx(
       request,
       active_page="dashboard",
-      subtitle="Дашборд — динамика и метрики",
+      page_title="Дашборд",
+      subtitle="Метрики и динамика за выбранный период",
       dashboard=dash,
       periods=PERIOD_LABELS,
       period=period,
@@ -144,7 +159,8 @@ async def clients_page(
     _ctx(
       request,
       active_page="clients",
-      subtitle="AI база клиентов",
+      page_title="Клиенты",
+      subtitle="AI-база с фильтрами и раскрытием заказов",
       clients=rows[:200],
       total=len(rows),
       sales_filter=filter,
@@ -183,7 +199,12 @@ async def client_orders(request: Request, client_id: str) -> HTMLResponse:
 async def segment_page(request: Request) -> HTMLResponse:
   return templates.TemplateResponse(
     "segment.html",
-    _ctx(request, active_page="segment", subtitle="Загрузка и AI-сегментация"),
+    _ctx(
+      request,
+      active_page="segment",
+      page_title="Импорт данных",
+      subtitle="Загрузите Excel и запустите AI-сегментацию",
+    ),
   )
 
 
@@ -196,7 +217,8 @@ async def campaigns_page(request: Request) -> HTMLResponse:
     _ctx(
       request,
       active_page="campaigns",
-      subtitle="Маркетинговые кампании",
+      page_title="Кампании",
+      subtitle="Рассылки по сегментам клиентов",
       campaigns=campaigns,
       total_clients=len(rows),
     ),
@@ -238,7 +260,8 @@ async def settings_page(request: Request) -> HTMLResponse:
     _ctx(
       request,
       active_page="settings",
-      subtitle="Настройки",
+      page_title="Настройки",
+      subtitle="Интеграции и подключения",
       comm_rules=comm.list_rules(),
       messenger_health=health,
     ),
@@ -253,7 +276,8 @@ async def communications_page(request: Request) -> HTMLResponse:
     _ctx(
       request,
       active_page="communications",
-      subtitle="Автокоммуникация с клиентом",
+      page_title="Автокоммуникация",
+      subtitle="Автоматические сообщения клиентам",
       comm_rules=comm.list_rules(),
     ),
   )

@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="card">
+{% if not has_data %}
+  {% include 'partials/empty_state.html' %}
+{% else %}
+
+<section class="card toolbar-card">
   <form class="period-form" method="get" action="/dashboard">
-    <label>Период
+    <label class="period-label">Период
       <select name="period" onchange="this.form.submit()">
         {% for key, label in periods.items() %}
         <option value="{{ key }}" {% if period == key %}selected{% endif %}>{{ label }}</option>
@@ -20,12 +24,12 @@
 
 <section class="kpi-grid">
   {% set metrics = [
-    ('Всего клиентов', dashboard.clients),
-    ('Всего заказов', dashboard.orders),
+    ('Клиенты', dashboard.clients),
+    ('Заказы', dashboard.orders),
     ('Выручка', dashboard.revenue),
     ('Маркетплейсы', dashboard.marketplace_clients),
-    ('Прямые продажи', dashboard.direct_clients),
-    ('Повторные клиенты', dashboard.repeat_clients),
+    ('Прямые', dashboard.direct_clients),
+    ('Повторные', dashboard.repeat_clients),
   ] %}
   {% for title, m in metrics %}
   <div class="kpi-card">
@@ -40,31 +44,28 @@
   {% endfor %}
 </section>
 
-<section class="card">
-  <h3>Маркетплейсы — разбивка</h3>
-  <div class="status-chips">
-    {% for name, block in dashboard.marketplace_breakdown.items() %}
-    <span class="chip">{{ name }}: {{ block.total }}</span>
-    {% else %}
-    <p class="hint">Нет данных по маркетплейсам.</p>
-    {% endfor %}
-  </div>
-</section>
+<div class="split-grid">
+  <section class="card">
+    <h3>Маркетплейсы</h3>
+    <div class="status-chips">
+      {% for name, block in dashboard.marketplace_breakdown.items() %}
+      <span class="chip">{{ name }} · {{ block.total }}</span>
+      {% else %}
+      <p class="hint">Нет данных</p>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="card">
+    <h3>Прямые продажи</h3>
+    <div class="status-chips">
+      {% for name, block in dashboard.direct_breakdown.items() %}
+      <span class="chip">{{ name }} · {{ block.total }}</span>
+      {% else %}
+      <p class="hint">Нет данных</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
 
-<section class="card">
-  <h3>Прямые продажи — по источникам</h3>
-  <div class="status-chips">
-    {% for name, block in dashboard.direct_breakdown.items() %}
-    <span class="chip">{{ name }}: {{ block.total }}</span>
-    {% else %}
-    <p class="hint">Нет данных по прямым продажам.</p>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="card ai-assistant-card">
-  <h3>ИИ ассистент дашборда</h3>
-  <p class="hint">Сформируйте отчёт или задайте вопрос по метрикам за выбранный период.</p>
-  <textarea placeholder="Сравни выручку маркетплейсов и прямых продаж за период" rows="2" disabled></textarea>
-</section>
+{% endif %}
 {% endblock %}

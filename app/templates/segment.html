@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section id="upload" class="card">
+{% include 'partials/workflow.html' %}
+
+<section class="card upload-card">
+  <h3>Шаг 1 — загрузите файлы</h3>
+  <p class="hint">Выберите Excel с контрагентами. Файл заказов необязателен, но улучшает AI-сегментацию.</p>
   <form class="upload-form"
         hx-post="/upload/preview"
         hx-target="#preview-area"
@@ -10,30 +14,26 @@
         hx-trigger="change"
         hx-indicator="#upload-modal">
     <div class="form-grid">
-      <label class="file-label">
-        <span>Контрагенты (.xlsx) — выберите файл</span>
+      <label class="file-drop">
+        <span class="file-drop-title">Контрагенты</span>
+        <span class="file-drop-hint">.xlsx — обязательно</span>
         <input type="file" name="contragents_file" accept=".xlsx,.xls" required>
       </label>
-      <label class="file-label">
-        <span>Заказы покупателей (.xlsx) — опционально</span>
+      <label class="file-drop">
+        <span class="file-drop-title">Заказы</span>
+        <span class="file-drop-hint">.xlsx — опционально</span>
         <input type="file" name="orders_file" accept=".xlsx,.xls">
       </label>
     </div>
-    <p class="hint">Предпросмотр появится сразу после выбора файла.</p>
   </form>
 </section>
 
-<section id="preview-area" class="card-area"></section>
-<section id="results-area" class="card-area"></section>
+<div id="preview-area" class="card-area"></div>
+<div id="results-area" class="card-area"></div>
 
-<section id="integrations" class="card muted-card">
-  <h3>Интеграции</h3>
-  <div hx-get="/messenger/status" hx-trigger="load" hx-swap="innerHTML"></div>
-  <ul class="env-list">
-    <li><code>GREEN_API_ID_INSTANCE</code> — WhatsApp инстанс</li>
-    <li><code>GREEN_API_TOKEN</code> — токен Green API</li>
-    <li><code>TELEGRAM_BOT_TOKEN</code> — токен Telegram бота</li>
-    <li><code>MESSENGER_ENABLED=true</code> — активация мессенджеров</li>
-  </ul>
+{% if workflow_step|default(0) >= 3 %}
+<section class="callout-light">
+  <p><strong>Сегментация завершена.</strong> Перейдите к <a href="/clients">базе клиентов</a> или <a href="/dashboard">дашборду</a>.</p>
 </section>
+{% endif %}
 {% endblock %}

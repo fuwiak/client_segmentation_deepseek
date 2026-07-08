@@ -1,19 +1,23 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="card">
-  <div class="filter-bar">
-    <a href="/clients?filter=all" class="btn secondary small {% if sales_filter == 'all' %}active{% endif %}">Все клиенты</a>
-    <a href="/clients?filter=marketplace" class="btn secondary small {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
-    <a href="/clients?filter=direct" class="btn secondary small {% if sales_filter == 'direct' %}active{% endif %}">Прямые продажи</a>
+{% if not has_data %}
+  {% include 'partials/empty_state.html' %}
+{% else %}
+
+<section class="card toolbar-card">
+  <div class="filter-tabs" role="tablist">
+    <a href="/clients?filter=all" class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
+    <a href="/clients?filter=marketplace" class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
+    <a href="/clients?filter=direct" class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
   </div>
   <form class="filter-form" method="get">
     <input type="hidden" name="filter" value="{{ sales_filter }}">
-    <input type="text" name="tag" placeholder="Фильтр по тегу" value="{{ tag_filter }}">
-    <input type="text" name="status" placeholder="Статус заказа" value="{{ status_filter }}">
-    <button type="submit" class="btn secondary small">Фильтр</button>
+    <input type="search" name="tag" placeholder="Тег или группа…" value="{{ tag_filter }}">
+    <input type="search" name="status" placeholder="Статус заказа…" value="{{ status_filter }}">
+    <button type="submit" class="btn secondary small">Найти</button>
   </form>
-  <p class="hint">Найдено: {{ total }}</p>
+  <p class="result-count">{{ total }} клиентов</p>
 </section>
 
 <section class="card">
@@ -22,42 +26,46 @@
       <thead>
         <tr>
           <th></th>
-          {% for col in client_columns %}
-          <th class="{% if col in segment_columns + ai_extra_columns %}segment-col{% endif %}">{{ col }}</th>
-          {% endfor %}
+          <th>Клиент</th>
+          <th>Тип</th>
+          <th>Статус</th>
+          <th>Теги</th>
+          <th>ВИП</th>
+          <th>AI</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for row in clients %}
         {% set cid = row.get('UUID') or row.get('Наименование') %}
-        <tr class="client-row">
+        <tr>
           <td>
-            <button class="btn secondary small expand-btn"
+            <button class="btn-icon expand-btn" title="Заказы"
                     hx-get="/clients/{{ cid }}/orders"
                     hx-target="#orders-{{ loop.index }}"
-                    hx-swap="innerHTML">+</button>
+                    hx-swap="innerHTML">▾</button>
           </td>
-          {% for col in client_columns %}
-          {% set is_ai = col in (row.get('_ai_fields') or []) %}
-          <td class="{% if is_ai %}ai-added{% endif %}">
-            <span class="cell-value">{{ row.get(col) or '—' }}</span>
-            {% if is_ai %}
-            <span class="ai-badge">AI</span>
-            {% if row.get('_ai_refs', {}).get(col) %}
-            <span class="ai-ref" title="{{ row.get('_ai_refs', {}).get(col) }}">ref</span>
-            {% endif %}
-            {% endif %}
+          <td><strong>{{ row.get('Наименование') or '—' }}</strong></td>
+          <td>{{ row.get('Тип продаж') or '—' }}</td>
+          <td>{{ row.get('Статус последнего заказа') or '—' }}</td>
+          <td class="tags-cell">{{ row.get('Теги') or row.get('Группы') or '—' }}</td>
+          <td>{{ row.get('ВИП') or '—' }}</td>
+          <td>{% if row.get('_ai_processed') %}<span class="ai-badge">AI</span>{% else %}—{% endif %}</td>
+          <td>
+            <button class="btn-text"
+                    hx-get="/clients/{{ cid }}"
+                    hx-target="#modal-root"
+                    hx-swap="innerHTML">Карточка</button>
           </td>
-          {% endfor %}
         </tr>
         <tr class="orders-expand-row">
-          <td colspan="{{ client_columns|length + 1 }}" id="orders-{{ loop.index }}"></td>
+          <td colspan="8" id="orders-{{ loop.index }}"></td>
         </tr>
-        {% else %}
-        <tr><td colspan="{{ client_columns|length + 1 }}" class="hint">Нет клиентов. Загрузите Excel.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </section>
+
+{% endif %}
 {% endblock %}

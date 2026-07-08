@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{{ title }}{% endblock %}</title>
+  <title>{% block title %}{{ page_title|default(title) }}{% endblock %} · Client CRM</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,68 +12,57 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <nav class="top-nav">
-    <button type="button" class="nav-btn nav-left" onclick="toggleSidebar('left')" aria-label="Меню">
-      Меню
-    </button>
-    <a href="/" class="wordmark" aria-label="{{ title }}">
-      <svg class="spike" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 2v20M12 12H2M12 12h10M12 12L4.5 4.5M12 12l7.5 7.5M12 12L4.5 19.5M12 12l7.5-7.5"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      <span>Client <span class="wordmark-accent">CRM</span></span>
-    </a>
-    <button type="button" class="nav-btn nav-right" onclick="toggleSidebar('right')" aria-label="Панель">
-      Панель
-    </button>
-  </nav>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="/" class="wordmark" aria-label="Client CRM">
+        <svg class="spike" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2v20M12 12H2M12 12h10M12 12L4.5 4.5M12 12l7.5 7.5M12 12L4.5 19.5M12 12l7.5-7.5"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>Client <span class="wordmark-accent">CRM</span></span>
+      </a>
 
-  <div class="sidebar-backdrop" onclick="closeSidebars()"></div>
+      {% include 'partials/nav.html' %}
 
-  <div class="app-shell">
-    {% include 'partials/sidebar_left.html' %}
-
-    <main class="main-content">
-      <div class="container">
-        <header class="header">
-          <div>
-            <h1>{{ title }}</h1>
-            <p class="subtitle">{{ subtitle|default('AI-сегментация и CRM для цветочного бизнеса') }}</p>
-          </div>
-          <div class="badges badges-compact">
-            <span class="badge">{{ model }}</span>
-            <span class="badge {% if has_api_key %}ok{% else %}warn{% endif %}">
-              {% if has_api_key %}API подключён{% else %}Нет API-ключа{% endif %}
-            </span>
-            <span class="badge {% if wa_enabled or tg_enabled %}ok{% else %}muted{% endif %}"
-                  hx-get="/messenger/sidebar"
-                  hx-trigger="load"
-                  hx-target="#messenger-badge"
-                  hx-swap="innerHTML">
-              <span id="messenger-badge">Мессенджеры</span>
-            </span>
-          </div>
-        </header>
-
-        {% block content %}{% endblock %}
+      <div class="header-actions">
+        <a href="/segment" class="btn btn-nav">+ Импорт</a>
       </div>
 
-      <footer class="footer">
-        <a href="/" class="wordmark" aria-hidden="true">
-          <svg class="spike" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2v20M12 12H2M12 12h10M12 12L4.5 4.5M12 12l7.5 7.5M12 12L4.5 19.5M12 12l7.5-7.5"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-          <span>Client CRM</span>
-        </a>
-        <p class="footer-copy">© Client Segmentation · Powered by AI</p>
-      </footer>
-    </main>
+      <button type="button" class="nav-toggle" onclick="toggleMobileNav()" aria-label="Меню">☰</button>
+    </div>
+    <div class="mobile-nav" id="mobile-nav">
+      {% include 'partials/nav.html' %}
+    </div>
+  </header>
 
-    {% include 'partials/sidebar_right.html' %}
-  </div>
+  <main class="main-content">
+    <div class="container">
+      <header class="page-header">
+        <div>
+          <h1>{{ page_title|default(title) }}</h1>
+          {% if subtitle %}
+          <p class="subtitle">{{ subtitle }}</p>
+          {% endif %}
+        </div>
+        <div class="status-strip"
+             hx-get="/messenger/sidebar"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <span class="status-pill muted">Загрузка статуса…</span>
+        </div>
+      </header>
 
-  <div id="moysklad-status" class="moysklad-floating"></div>
+      {% block content %}{% endblock %}
+    </div>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <span class="footer-brand">Client CRM</span>
+        <span class="footer-meta">{{ model }} · {% if has_api_key %}AI активен{% else %}Нет API-ключа{% endif %}</span>
+      </div>
+    </footer>
+  </main>
+
   <div id="modal-root"></div>
 
   <div id="upload-modal" class="modal-overlay upload-modal">
@@ -86,23 +75,15 @@
   </div>
 
   <script>
-    function toggleSidebar(side) {
-      var cls = side === 'left' ? 'sidebar-left-open' : 'sidebar-right-open';
-      document.body.classList.toggle(cls);
-      document.body.classList.toggle('sidebar-open');
-    }
-    function closeSidebars() {
-      document.body.classList.remove('sidebar-left-open', 'sidebar-right-open', 'sidebar-open');
+    function toggleMobileNav() {
+      document.getElementById('mobile-nav').classList.toggle('open');
     }
     function closeModal() {
       var root = document.getElementById('modal-root');
       if (root) root.innerHTML = '';
     }
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        closeModal();
-        closeSidebars();
-      }
+      if (e.key === 'Escape') closeModal();
     });
   </script>
 </body>

@@ -1,0 +1,14 @@
+<ol class="workflow" aria-label="Шаги работы">
+  <li class="workflow-step {% if workflow_step|default(0) >= 1 %}done{% endif %} {% if workflow_step|default(0) == 1 %}current{% endif %}">
+    <span class="workflow-num">1</span>
+    <span class="workflow-text">Загрузить Excel</span>
+  </li>
+  <li class="workflow-step {% if workflow_step|default(0) >= 2 %}done{% endif %} {% if workflow_step|default(0) == 2 %}current{% endif %}">
+    <span class="workflow-num">2</span>
+    <span class="workflow-text">AI-сегментация</span>
+  </li>
+  <li class="workflow-step {% if workflow_step|default(0) >= 3 %}done{% endif %} {% if workflow_step|default(0) == 3 %}current{% endif %}">
+    <span class="workflow-num">3</span>
+    <span class="workflow-text">Работа с клиентами</span>
+  </li>
+</ol>
