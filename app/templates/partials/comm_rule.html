@@ -1,0 +1,29 @@
+<div id="rule-{{ rule.key }}">
+<form class="comm-rule-form"
+      hx-post="/settings/communications/{{ rule.key }}"
+      hx-target="#rule-{{ rule.key }}"
+      hx-swap="innerHTML">
+  <div class="comm-rule-header">
+    <h4>{{ rule.title }}</h4>
+    <label class="toggle">
+      <input type="checkbox" name="enabled" value="true" {% if rule.enabled %}checked{% endif %}>
+      Вкл
+    </label>
+  </div>
+  <p class="hint">{{ rule.description }}</p>
+  <label>Канал
+    <select name="channel">
+      <option value="whatsapp" {% if rule.channel == 'whatsapp' %}selected{% endif %}>WhatsApp</option>
+      <option value="telegram" {% if rule.channel == 'telegram' %}selected{% endif %}>Telegram</option>
+    </select>
+  </label>
+  <label>Шаблон
+    <textarea name="template" rows="2">{{ rule.template }}</textarea>
+  </label>
+  {% if rule.delay_hours %}
+  <p class="hint">Задержка: {{ rule.delay_hours }} ч.</p>
+  {% endif %}
+  <button type="submit" class="btn secondary small">Сохранить</button>
+</form>
+</div>
+<hr class="rule-divider">

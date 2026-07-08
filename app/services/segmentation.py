@@ -9,10 +9,10 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.services.excel_parser import SEGMENT_COLUMNS
+from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 
 SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочного бизнеса (продажа букетов, доставка).
-Твоя задача — по данным клиента и его заказов заполнить 4 поля сегментации.
+Твоя задача — по данным клиента и его заказов заполнить поля сегментации и профиль клиента.
 
 ПРАВИЛА ПО КАЖДОМУ ПОЛЮ:
 
@@ -28,27 +28,31 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
    - "событие" — если в данных есть указание на праздник/событие
    Если уже есть значение в "Группы" — уточни или дополни его, не удаляй.
 
-2. "Заказчик или получатель" — ФИО реального человека.
-   Ищи в: комментариях к заказу (шаблон "Получатель<TAB>Имя телефон"), в поле Наименование
-   (если это имя, а не номер телефона), в полях Фамилия/Имя/Отчество.
-   Если только номер телефона и нет имени — null.
+2. "Заказчик или получатель" — кто заказывает: заказчик или получатель; укажи ФИО если есть.
+   Ищи в комментариях к заказу, в Наименовании, в полях Фамилия/Имя/Отчество.
 
-3. "Пол" — "Мужской" или "Женский", определяй по имени получателя/заказчика:
-   - женские имена (Ксения, Ольга, Анна, Мария, Елена...) → "Женский"
-   - мужские имена (Иван, Пётр, Сергей, Александр...) → "Мужской"
-   - имя на -а/-я обычно женское, на согласную обычно мужское (кроме Никита, Илья и т.п.)
+3. "Пол" — "Мужской" или "Женский", определяй по имени получателя/заказчика.
    Если имя неизвестно или неоднозначно (Саша, Женя) → null.
 
 4. "ТГ ник" — telegram username в формате @username.
-   Ищи в email (часть до @, если похоже на ник), в комментариях, в поле Наименование.
-   Если явного ника нет — null. НЕ выдумывай ник.
+   Ищи в email, комментариях, поле Наименование. НЕ выдумывай.
+
+5. "Теги" — хэштеги событий и характеристик через пробел, например: #деньрождения #vip #проблемный #доволен
+   Определи по датам заказов (праздники), сумме, комментариям, тону коммуникации.
+   Теги: события (8марта, деньрождения, свадьба), настроение (доволен/недоволен), проблемный, постоянный, vip.
+
+6. "Саммари" — 1-2 предложения на русском: кто клиент, для кого заказывает, постоянный ли, есть ли проблемы.
+
+Дополнительно в reasoning укажи источник данных (какое поле/заказ).
 
 ВАЖНО:
 - Опирайся ТОЛЬКО на данные. Если сигнала нет — ставь null, не фантазируй.
-- reasoning — 1 короткое предложение на русском, на основании чего сделан вывод.
+- reasoning — 1 короткое предложение на русском с указанием источника.
+- references — объект: поле → откуда взято (например {"Пол": "имя в комментарии заказа №123"}).
 - Верни СТРОГО JSON-объект вида {"results": [...]}, где каждый элемент содержит ключи:
-  uuid, "Группы", "Заказчик или получатель", "Пол", "ТГ ник", reasoning, confidence
-  confidence — число от 0 до 1 (общая уверенность в заполнении)."""
+  uuid, "Группы", "Заказчик или получатель", "Пол", "ТГ ник", "Теги", "Саммари",
+  reasoning, confidence, references
+  confidence — число от 0 до 1."""
 
 FEMALE_NAMES = {
     "ксения", "ольга", "анна", "мария", "елена", "татьяна", "наталья", "ирина",
@@ -211,7 +215,8 @@ class SegmentationService:
             ai = by_uuid.get(self._row_key(row), {})
             merged = dict(row)
             ai_fields: list[str] = []
-            for col in SEGMENT_COLUMNS:
+            all_ai_cols = SEGMENT_COLUMNS + AI_EXTRA_COLUMNS
+            for col in all_ai_cols:
                 value = ai.get(col)
                 if value not in (None, "", "null"):
                     if not row.get(col):
@@ -226,6 +231,7 @@ class SegmentationService:
 
             merged["_reasoning"] = ai.get("reasoning", "")
             merged["_confidence"] = ai.get("confidence")
+            merged["_ai_refs"] = ai.get("references") or {}
             merged["_ai_processed"] = True
             merged["_ai_fields"] = ai_fields
             results.append(merged)
@@ -281,11 +287,41 @@ class SegmentationService:
                 merged["ТГ ник"] = tg
                 ai_fields.append("ТГ ник")
 
+        if not merged.get("Теги"):
+            tags = self._heuristic_tags(row)
+            if tags:
+                merged["Теги"] = tags
+                ai_fields.append("Теги")
+
         merged["_reasoning"] = "Эвристика без AI (ключ API не задан)"
         merged["_confidence"] = None
+        merged["_ai_refs"] = {}
         merged["_ai_processed"] = False
         merged["_ai_fields"] = ai_fields
         return merged
+
+    @staticmethod
+    def _heuristic_tags(row: dict[str, Any]) -> str | None:
+        tags: list[str] = []
+        try:
+            orders = int(row.get("Всего заказов") or row.get("_orders_count") or 0)
+        except (TypeError, ValueError):
+            orders = 0
+        if orders > 2:
+            tags.append("#постоянный")
+        try:
+            avg = float(row.get("Средний чек") or 0)
+            if avg >= 15000:
+                tags.append("#vip")
+        except (TypeError, ValueError):
+            pass
+        for order in row.get("_orders_context") or []:
+            comment = str(order.get("Комментарий") or "").lower()
+            if any(w in comment for w in ("день рождения", "др", "birthday")):
+                tags.append("#деньрождения")
+            if any(w in comment for w in ("8 марта", "8марта")):
+                tags.append("#8марта")
+        return " ".join(dict.fromkeys(tags)) if tags else None
 
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:

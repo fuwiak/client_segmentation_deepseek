@@ -19,6 +19,17 @@ class Settings(BaseSettings):
     onec_odata_url: str = ""
     messenger_enabled: bool = False
 
+    # --- Green API (WhatsApp) ---
+    green_api_enabled: bool = False
+    green_api_id_instance: str = ""
+    green_api_token: str = ""
+    green_api_url: str = "https://api.green-api.com"
+    green_api_media_url: str = "https://media.green-api.com"
+
+    # --- Telegram Bot API ---
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+
     # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
     repository_backend: str = "memory"
     database_url: str = ""
@@ -31,7 +42,7 @@ class Settings(BaseSettings):
     leads_enabled: bool = False
     campaigns_enabled: bool = False
 
-    app_title: str = "Сегментация клиентов"
+    app_title: str = "BUGATTI CRM"
     max_upload_mb: int = 20
     ai_batch_size: int = 10
     ai_concurrency: int = 4

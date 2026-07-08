@@ -1,0 +1,16 @@
+<h3>Кампании</h3>
+{% if campaigns %}
+<ul class="campaign-list">
+  {% for c in campaigns %}
+  <li class="campaign-item">
+    <strong>{{ c.title }}</strong>
+    <span class="chip">{{ c.status.value }}</span>
+    <span class="chip">{{ c.channel }}</span>
+    <p class="hint">Сегменты: {{ c.target_segments|join(', ') or '—' }}</p>
+    <p>{{ c.offer or '—' }}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="hint">Кампаний пока нет.</p>
+{% endif %}

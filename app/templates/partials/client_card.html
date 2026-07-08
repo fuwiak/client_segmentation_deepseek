@@ -1,0 +1,68 @@
+<div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal-card client-card-modal">
+    <button type="button" class="modal-close" onclick="closeModal()">×</button>
+    <h2 class="modal-title">{{ client.get('Наименование') or 'Клиент' }}</h2>
+
+    <div class="client-meta">
+      {% if client.get('Статус последнего заказа') %}
+      <span class="chip warn">Открытый заказ: {{ client.get('Статус последнего заказа') }}</span>
+      {% endif %}
+      <span class="chip">{{ client.get('Заказчик или получатель') or '—' }} / {{ client.get('Пол') or '—' }}</span>
+      <span class="chip">{{ client.get('Тип продаж') or '—' }}</span>
+    </div>
+
+    <div class="tags-row">
+      {% for tag in (client.get('Теги') or '').split() %}
+      <span class="tag-chip">{{ tag }}</span>
+      {% endfor %}
+      {% for g in (client.get('Группы') or '').split('/') %}
+      <span class="tag-chip">{{ g.strip() }}</span>
+      {% endfor %}
+    </div>
+
+    <section class="client-section">
+      <h4>Контакты</h4>
+      <p>Телефон: {{ client.get('Телефон') or '—' }}</p>
+      <p>Email: {{ client.get('E-mail') or '—' }}</p>
+      <p>Telegram: {{ client.get('ТГ ник') or '—' }}</p>
+      <p class="hint">Основной канал: {% if client.get('ТГ ник') %}Telegram{% elif client.get('Телефон') %}WhatsApp{% else %}—{% endif %}</p>
+    </section>
+
+    <section class="client-section kpi-inline">
+      <div><span class="kpi-label">Средний чек</span><span class="kpi-value sm">{{ client.get('Средний чек') or '—' }}</span></div>
+      <div><span class="kpi-label">Заказов</span><span class="kpi-value sm">{{ client.get('Всего заказов') or client.get('_orders_count') or 0 }}</span></div>
+      <div><span class="kpi-label">ВИП</span><span class="kpi-value sm">{{ client.get('ВИП') or 'нет' }}</span></div>
+      <div><span class="kpi-label">Лояльность</span><span class="kpi-value sm">{{ client.get('Баллы начисленные') or '—' }} б.</span></div>
+    </section>
+
+  {% if orders %}
+    <section class="client-section">
+      <h4>Последний заказ</h4>
+      {% set last = orders[-1] %}
+      <p>№ {{ last.get('№') or last.get('Номер') or '—' }} — {{ last.get('Сумма') or '—' }} руб., {{ last.get('Статус') or last.get('Отгружено') or '—' }}</p>
+      <button class="btn secondary small"
+              hx-get="/clients/{{ client.get('UUID') or client.get('Наименование') }}/orders"
+              hx-target="#client-orders-list"
+              hx-swap="innerHTML">Все заказы ({{ orders|length }})</button>
+      <div id="client-orders-list"></div>
+    </section>
+  {% endif %}
+
+    {% if client.get('Саммари') or client.get('_reasoning') %}
+    <section class="client-section ai-block">
+      <h4>Рекомендация AI</h4>
+      <p class="ai-summary">{{ client.get('Саммари') or client.get('_reasoning') }}</p>
+    </section>
+    {% endif %}
+
+    <section class="client-section">
+      <h4>Быстрые действия</h4>
+      <div class="action-buttons">
+        <button class="btn secondary small" disabled>Напоминание</button>
+        <button class="btn secondary small" disabled>Контакт</button>
+        <button class="btn secondary small" disabled>События</button>
+      </div>
+      <p class="hint">Чат с клиентом и отправка — через WhatsApp/Telegram (Green API).</p>
+    </section>
+  </div>
+</div>

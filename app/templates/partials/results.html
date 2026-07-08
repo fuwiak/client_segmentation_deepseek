@@ -8,14 +8,15 @@
   </div>
 
   <a href="/download/xlsx" class="btn secondary">Скачать .xlsx</a>
+  <a href="/clients" class="btn secondary">Открыть AI базу клиентов</a>
 
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
           <th>#</th>
-          {% for col in ['Наименование', 'Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'Увер.', 'Обоснование'] %}
-          <th class="{% if col in segment_columns %}segment-col{% endif %}">{{ col }}</th>
+          {% for col in ['Наименование', 'Тип продаж', 'Группы', 'Теги', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'ВИП', 'Саммари', 'Увер.', 'Обоснование'] %}
+          <th class="{% if col in segment_columns + ai_extra_columns|default([]) %}segment-col{% endif %}">{{ col }}</th>
           {% endfor %}
         </tr>
       </thead>
@@ -24,11 +25,14 @@
         <tr>
           <td>{{ loop.index }}</td>
           <td>{{ row.get('Наименование') or '—' }}</td>
-          {% for col in ['Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
+          {% for col in ['Тип продаж', 'Группы', 'Теги', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'ВИП', 'Саммари'] %}
           {% set is_ai = col in (row.get('_ai_fields') or []) %}
           <td class="segment-col {% if is_ai %}ai-added{% endif %}">
             <span class="cell-value">{{ row.get(col) or '—' }}</span>
-            {% if is_ai %}<span class="ai-badge">добавлено AI</span>{% endif %}
+            {% if is_ai %}<span class="ai-badge">AI</span>{% endif %}
+            {% if row.get('_ai_refs', {}).get(col) %}
+            <span class="ai-ref" title="{{ row.get('_ai_refs', {}).get(col) }}">ref</span>
+            {% endif %}
           </td>
           {% endfor %}
           <td class="confidence">

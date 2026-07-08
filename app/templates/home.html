@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="kpi-grid">
+  <div class="kpi-card">
+    <span class="kpi-label">Открытых задач</span>
+    <span class="kpi-value">{{ dashboard.open_tasks }}</span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Открытых диалогов</span>
+    <span class="kpi-value">{{ dashboard.open_dialogs }}</span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Клиентов в базе</span>
+    <span class="kpi-value">{{ total_clients }}</span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Повторных клиентов</span>
+    <span class="kpi-value">{{ dashboard.repeat_clients.total }}</span>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Разбивка по статусам заказов</h3>
+  <div class="status-chips">
+    {% for status, count in dashboard.orders_by_status.items() %}
+    <span class="chip">{{ status }}: {{ count }}</span>
+    {% else %}
+    <p class="hint">Загрузите Excel с заказами для статистики.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h3>Клиенты</h3>
+    <div class="filter-bar">
+      <a href="/clients?filter=all" class="btn secondary small">Все</a>
+      <a href="/clients?filter=marketplace" class="btn secondary small">Маркетплейс</a>
+      <a href="/clients?filter=direct" class="btn secondary small">Прямые продажи</a>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Наименование</th>
+          <th>Тип продаж</th>
+          <th>Статус</th>
+          <th>Теги</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in clients %}
+        <tr>
+          <td>{{ row.get('Наименование') or '—' }}</td>
+          <td>{{ row.get('Тип продаж') or '—' }}</td>
+          <td>{{ row.get('Статус последнего заказа') or '—' }}</td>
+          <td class="tags-cell">{{ row.get('Теги') or row.get('Группы') or '—' }}</td>
+          <td>
+            <button class="btn secondary small"
+                    hx-get="/clients/{{ row.get('UUID') or row.get('Наименование') }}"
+                    hx-target="#modal-root"
+                    hx-swap="innerHTML">
+              Карточка
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="hint">Нет данных — загрузите Excel в разделе «Сегментация».</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card ai-assistant-card">
+  <h3>ИИ ассистент</h3>
+  <p class="hint">Задайте вопрос по клиентской базе или попросите сформировать отчёт для дашборда.</p>
+  <form class="ai-chat-form" onsubmit="return false;">
+    <textarea placeholder="Например: сколько VIP-клиентов с маркетплейсов за месяц?" rows="3"></textarea>
+    <button type="button" class="btn" disabled>Скоро</button>
+  </form>
+</section>
+{% endblock %}

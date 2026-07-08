@@ -1,0 +1,24 @@
+<div class="orders-nested">
+  <table>
+    <thead>
+      <tr>
+        <th>№</th>
+        <th>Дата</th>
+        <th>Сумма</th>
+        <th>Статус</th>
+        <th>Канал</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td>{{ order.get('№') or order.get('Номер') or loop.index }}</td>
+        <td>{{ order.get('Дата') or order.get('Момент времени') or '—' }}</td>
+        <td>{{ order.get('Сумма') or '—' }}</td>
+        <td>{{ order.get('Статус') or order.get('Отгружено') or '—' }}</td>
+        <td>{{ order.get('Канал продаж') or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

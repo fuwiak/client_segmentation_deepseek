@@ -827,3 +827,169 @@ td.ai-added {
   h1 { font-size: 32px; letter-spacing: 2px; }
   h2 { font-size: 32px; letter-spacing: 2px; }
 }
+
+/* ---- CRM dashboard & clients ------------------------------------------- */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--lg);
+  margin-bottom: var(--xxl);
+}
+
+.kpi-card {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  padding: var(--lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--xs);
+}
+
+.kpi-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.kpi-value {
+  font-family: var(--font-display);
+  font-size: 36px;
+  letter-spacing: 2px;
+  color: var(--on-dark);
+}
+
+.kpi-value.sm { font-size: 20px; }
+
+.kpi-growth {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.kpi-growth.up { color: var(--success); }
+.kpi-growth.down { color: var(--error); }
+
+.status-chips, .filter-bar, .action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sm);
+  margin-top: var(--md);
+}
+
+.chip, .tag-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: var(--xs) var(--sm);
+  border: 1px solid var(--hairline-strong);
+  color: var(--muted);
+}
+
+.chip.warn { border-color: var(--warning); color: var(--warning); }
+
+.btn.small {
+  height: 32px;
+  padding: 8px 16px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}
+
+.btn.secondary.active { border-color: var(--on-dark); color: var(--on-dark); }
+
+.filter-form, .period-form, .campaign-form, .comm-rule-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md);
+  align-items: flex-end;
+  margin-bottom: var(--lg);
+}
+
+.filter-form input[type="text"],
+.period-form select,
+.campaign-form input,
+.campaign-form textarea,
+.campaign-form select,
+.comm-rule-form textarea,
+.comm-rule-form select {
+  color: var(--on-dark);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--hairline-strong);
+  padding: var(--sm) 0;
+  font-family: var(--font-text);
+  min-width: 160px;
+}
+
+.campaign-form label, .comm-rule-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ai-ref {
+  display: inline-block;
+  margin-left: var(--xxs);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--link);
+  cursor: help;
+  border: 1px solid var(--hairline);
+  padding: 0 4px;
+}
+
+.orders-nested { padding: var(--md); background: var(--surface-soft); }
+.orders-expand-row td { padding: 0; border: none; }
+
+.client-card-modal { max-width: 640px; max-height: 90vh; overflow-y: auto; position: relative; }
+.modal-close {
+  position: absolute;
+  top: var(--md);
+  right: var(--md);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.client-meta, .tags-row, .kpi-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sm);
+  margin-bottom: var(--lg);
+}
+
+.client-section { margin-bottom: var(--lg); padding-top: var(--md); border-top: 1px solid var(--hairline); }
+.client-section h4 { margin-bottom: var(--sm); font-size: 16px; }
+
+.ai-block .ai-summary { color: var(--body-strong); font-style: italic; }
+
+.ai-assistant-card textarea {
+  width: 100%;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  color: var(--body);
+  padding: var(--md);
+  font-family: var(--font-text);
+  margin-bottom: var(--md);
+}
+
+.messenger-status-block .ok { color: var(--success); }
+.messenger-status-block .warn { color: var(--warning); }
+
+.campaign-list { list-style: none; padding: 0; margin: 0; }
+.campaign-item { padding: var(--lg) 0; border-bottom: 1px solid var(--hairline); }
+
+.comm-rule-header { display: flex; justify-content: space-between; align-items: center; }
+.rule-divider { border: none; border-top: 1px solid var(--hairline); margin: var(--lg) 0; }
+
+.tags-cell { white-space: normal; max-width: 200px; }

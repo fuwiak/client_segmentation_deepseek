@@ -1,0 +1,12 @@
+<li>
+  <span class="status-key">WA</span>
+  <span class="status-val {% if health.whatsapp %}ok{% else %}warn{% endif %}">
+    {% if health.whatsapp %}OK{% else %}—{% endif %}
+  </span>
+</li>
+<li>
+  <span class="status-key">TG</span>
+  <span class="status-val {% if health.telegram %}ok{% else %}warn{% endif %}">
+    {% if health.telegram %}OK{% else %}—{% endif %}
+  </span>
+</li>

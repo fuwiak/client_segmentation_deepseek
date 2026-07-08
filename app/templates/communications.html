@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <p class="hint">Автоматические сообщения клиенту по этапам заказа.</p>
+  {% for rule in comm_rules %}
+  {% include 'partials/comm_rule.html' %}
+  {% endfor %}
+</section>
+{% endblock %}

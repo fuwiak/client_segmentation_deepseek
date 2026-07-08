@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <h3>Новая кампания</h3>
+  <form hx-post="/campaigns/create"
+        hx-target="#campaign-list"
+        hx-swap="innerHTML"
+        class="campaign-form">
+    <label>Название <input type="text" name="title" required></label>
+    <label>Сегменты (через запятую) <input type="text" name="target_segments" placeholder="vip, постоянный"></label>
+    <label>Канал
+      <select name="channel">
+        <option value="whatsapp">WhatsApp</option>
+        <option value="telegram">Telegram</option>
+      </select>
+    </label>
+    <label>Оффер <textarea name="offer" rows="3"></textarea></label>
+    <button type="submit" class="btn">Создать черновик</button>
+  </form>
+  <p class="hint">База: {{ total_clients }} клиентов. AI-ассистент для таргетинга — в разработке.</p>
+</section>
+
+<section class="card" id="campaign-list">
+  {% include 'partials/campaign_list.html' %}
+</section>
+{% endblock %}

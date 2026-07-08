@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <div class="filter-bar">
+    <a href="/clients?filter=all" class="btn secondary small {% if sales_filter == 'all' %}active{% endif %}">Все клиенты</a>
+    <a href="/clients?filter=marketplace" class="btn secondary small {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
+    <a href="/clients?filter=direct" class="btn secondary small {% if sales_filter == 'direct' %}active{% endif %}">Прямые продажи</a>
+  </div>
+  <form class="filter-form" method="get">
+    <input type="hidden" name="filter" value="{{ sales_filter }}">
+    <input type="text" name="tag" placeholder="Фильтр по тегу" value="{{ tag_filter }}">
+    <input type="text" name="status" placeholder="Статус заказа" value="{{ status_filter }}">
+    <button type="submit" class="btn secondary small">Фильтр</button>
+  </form>
+  <p class="hint">Найдено: {{ total }}</p>
+</section>
+
+<section class="card">
+  <div class="table-wrap">
+    <table class="clients-table">
+      <thead>
+        <tr>
+          <th></th>
+          {% for col in client_columns %}
+          <th class="{% if col in segment_columns + ai_extra_columns %}segment-col{% endif %}">{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in clients %}
+        {% set cid = row.get('UUID') or row.get('Наименование') %}
+        <tr class="client-row">
+          <td>
+            <button class="btn secondary small expand-btn"
+                    hx-get="/clients/{{ cid }}/orders"
+                    hx-target="#orders-{{ loop.index }}"
+                    hx-swap="innerHTML">+</button>
+          </td>
+          {% for col in client_columns %}
+          {% set is_ai = col in (row.get('_ai_fields') or []) %}
+          <td class="{% if is_ai %}ai-added{% endif %}">
+            <span class="cell-value">{{ row.get(col) or '—' }}</span>
+            {% if is_ai %}
+            <span class="ai-badge">AI</span>
+            {% if row.get('_ai_refs', {}).get(col) %}
+            <span class="ai-ref" title="{{ row.get('_ai_refs', {}).get(col) }}">ref</span>
+            {% endif %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        <tr class="orders-expand-row">
+          <td colspan="{{ client_columns|length + 1 }}" id="orders-{{ loop.index }}"></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ client_columns|length + 1 }}" class="hint">Нет клиентов. Загрузите Excel.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

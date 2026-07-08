@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <form class="period-form" method="get" action="/dashboard">
+    <label>Период
+      <select name="period" onchange="this.form.submit()">
+        {% for key, label in periods.items() %}
+        <option value="{{ key }}" {% if period == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if period == 'custom' %}
+    <label>С <input type="date" name="date_from" value="{{ date_from or '' }}"></label>
+    <label>По <input type="date" name="date_to" value="{{ date_to or '' }}"></label>
+    <button type="submit" class="btn secondary small">Применить</button>
+    {% endif %}
+  </form>
+</section>
+
+<section class="kpi-grid">
+  {% set metrics = [
+    ('Всего клиентов', dashboard.clients),
+    ('Всего заказов', dashboard.orders),
+    ('Выручка', dashboard.revenue),
+    ('Маркетплейсы', dashboard.marketplace_clients),
+    ('Прямые продажи', dashboard.direct_clients),
+    ('Повторные клиенты', dashboard.repeat_clients),
+  ] %}
+  {% for title, m in metrics %}
+  <div class="kpi-card">
+    <span class="kpi-label">{{ title }}</span>
+    <span class="kpi-value">{{ m.total }}</span>
+    {% if m.growth_pct is not none %}
+    <span class="kpi-growth {% if m.growth_pct >= 0 %}up{% else %}down{% endif %}">
+      {{ '%+.1f'|format(m.growth_pct) }}%
+    </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <h3>Маркетплейсы — разбивка</h3>
+  <div class="status-chips">
+    {% for name, block in dashboard.marketplace_breakdown.items() %}
+    <span class="chip">{{ name }}: {{ block.total }}</span>
+    {% else %}
+    <p class="hint">Нет данных по маркетплейсам.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h3>Прямые продажи — по источникам</h3>
+  <div class="status-chips">
+    {% for name, block in dashboard.direct_breakdown.items() %}
+    <span class="chip">{{ name }}: {{ block.total }}</span>
+    {% else %}
+    <p class="hint">Нет данных по прямым продажам.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card ai-assistant-card">
+  <h3>ИИ ассистент дашборда</h3>
+  <p class="hint">Сформируйте отчёт или задайте вопрос по метрикам за выбранный период.</p>
+  <textarea placeholder="Сравни выручку маркетплейсов и прямых продаж за период" rows="2" disabled></textarea>
+</section>
+{% endblock %}

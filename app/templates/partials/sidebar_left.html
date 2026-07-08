@@ -1,17 +1,27 @@
 <aside class="sidebar sidebar-left" id="sidebar-left" aria-label="Навигация">
   <div class="sidebar-inner">
-    <p class="sidebar-label">Навигация</p>
+    <p class="sidebar-label">CRM</p>
     <nav class="sidebar-menu">
-      <a href="/" class="sidebar-link {% if active_page|default('') == 'home' %}active{% endif %}">Сегментация</a>
-      <a href="/#upload" class="sidebar-link">Загрузка данных</a>
-      <a href="/#preview-area" class="sidebar-link">Предпросмотр</a>
-      <a href="/#results-area" class="sidebar-link">Результаты</a>
-      <a href="/#integrations" class="sidebar-link">Интеграции</a>
+      <a href="/" class="sidebar-link {% if active_page|default('') == 'home' %}active{% endif %}">Главная</a>
+      <a href="/dashboard" class="sidebar-link {% if active_page|default('') == 'dashboard' %}active{% endif %}">Дашборд</a>
+      <a href="/clients" class="sidebar-link {% if active_page|default('') == 'clients' %}active{% endif %}">AI база клиентов</a>
+      <a href="/segment" class="sidebar-link {% if active_page|default('') == 'segment' %}active{% endif %}">Сегментация</a>
+      <a href="/campaigns" class="sidebar-link {% if active_page|default('') == 'campaigns' %}active{% endif %}">Кампании</a>
+      <a href="/settings" class="sidebar-link {% if active_page|default('') == 'settings' %}active{% endif %}">Настройки</a>
+      <a href="/settings/communications" class="sidebar-link {% if active_page|default('') == 'communications' %}active{% endif %}">Автокоммуникация</a>
     </nav>
+
+    <p class="sidebar-label">Интеграции</p>
+    <ul class="sidebar-status" id="messenger-sidebar-status"
+        hx-get="/messenger/sidebar"
+        hx-trigger="load"
+        hx-swap="innerHTML">
+      <li><span class="status-key">Загрузка…</span></li>
+    </ul>
 
     <p class="sidebar-label">Поля AI</p>
     <ul class="sidebar-list">
-      {% for col in segment_columns %}
+      {% for col in segment_columns + ai_extra_columns|default([]) %}
       <li>{{ col }}</li>
       {% endfor %}
     </ul>

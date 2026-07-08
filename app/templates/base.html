@@ -32,19 +32,19 @@
         <header class="header">
           <div>
             <h1>{{ title }}</h1>
-            <p class="subtitle">AI-сегментация клиентов по данным Excel</p>
+            <p class="subtitle">{{ subtitle|default('AI-сегментация и CRM для цветочного бизнеса') }}</p>
           </div>
           <div class="badges badges-compact">
             <span class="badge">Модель: {{ model }}</span>
             <span class="badge {% if has_api_key %}ok{% else %}warn{% endif %}">
               {% if has_api_key %}API{% else %}Нет API{% endif %}
             </span>
-            <span class="badge {% if moysklad_enabled %}ok{% else %}muted{% endif %}"
-                  hx-get="/moysklad/status"
+            <span class="badge {% if wa_enabled or tg_enabled %}ok{% else %}muted{% endif %}"
+                  hx-get="/messenger/sidebar"
                   hx-trigger="load"
-                  hx-target="#moysklad-status"
+                  hx-target="#messenger-badge"
                   hx-swap="innerHTML">
-              МС
+              <span id="messenger-badge">MSG</span>
             </span>
           </div>
         </header>

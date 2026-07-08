@@ -1,0 +1,11 @@
+<div class="messenger-status-block">
+  <p class="hint">WhatsApp (Green API): 
+    {% if health.whatsapp %}<span class="ok">подключён</span>{% else %}<span class="warn">не подключён</span>{% endif %}
+  </p>
+  <p class="hint">Telegram Bot: 
+    {% if health.telegram %}<span class="ok">@{{ tg_me.username or 'ok' }}</span>{% else %}<span class="warn">не подключён</span>{% endif %}
+  </p>
+  {% if wa_state.stateInstance %}
+  <p class="hint">WA статус: {{ wa_state.stateInstance }}</p>
+  {% endif %}
+</div>
