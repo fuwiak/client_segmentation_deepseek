@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     leads_enabled: bool = False
     campaigns_enabled: bool = False
 
-    app_title: str = "BUGATTI CRM"
+    app_title: str = "Client CRM"
     max_upload_mb: int = 20
     ai_batch_size: int = 10
     ai_concurrency: int = 4

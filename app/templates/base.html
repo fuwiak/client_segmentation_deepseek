@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400&family=Cormorant+Garamond:wght@400&family=JetBrains+Mono:wght@400&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -16,7 +16,13 @@
     <button type="button" class="nav-btn nav-left" onclick="toggleSidebar('left')" aria-label="Меню">
       Меню
     </button>
-    <a href="/" class="wordmark-display">BUGATTI</a>
+    <a href="/" class="wordmark" aria-label="{{ title }}">
+      <svg class="spike" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2v20M12 12H2M12 12h10M12 12L4.5 4.5M12 12l7.5 7.5M12 12L4.5 19.5M12 12l7.5-7.5"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>Client <span class="wordmark-accent">CRM</span></span>
+    </a>
     <button type="button" class="nav-btn nav-right" onclick="toggleSidebar('right')" aria-label="Панель">
       Панель
     </button>
@@ -35,16 +41,16 @@
             <p class="subtitle">{{ subtitle|default('AI-сегментация и CRM для цветочного бизнеса') }}</p>
           </div>
           <div class="badges badges-compact">
-            <span class="badge">Модель: {{ model }}</span>
+            <span class="badge">{{ model }}</span>
             <span class="badge {% if has_api_key %}ok{% else %}warn{% endif %}">
-              {% if has_api_key %}API{% else %}Нет API{% endif %}
+              {% if has_api_key %}API подключён{% else %}Нет API-ключа{% endif %}
             </span>
             <span class="badge {% if wa_enabled or tg_enabled %}ok{% else %}muted{% endif %}"
                   hx-get="/messenger/sidebar"
                   hx-trigger="load"
                   hx-target="#messenger-badge"
                   hx-swap="innerHTML">
-              <span id="messenger-badge">MSG</span>
+              <span id="messenger-badge">Мессенджеры</span>
             </span>
           </div>
         </header>
@@ -53,8 +59,14 @@
       </div>
 
       <footer class="footer">
-        <p class="footer-copy">© Client Segmentation. Powered by AI.</p>
-        <a href="/" class="wordmark-display">BUGATTI</a>
+        <a href="/" class="wordmark" aria-hidden="true">
+          <svg class="spike" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2v20M12 12H2M12 12h10M12 12L4.5 4.5M12 12l7.5 7.5M12 12L4.5 19.5M12 12l7.5-7.5"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Client CRM</span>
+        </a>
+        <p class="footer-copy">© Client Segmentation · Powered by AI</p>
       </footer>
     </main>
 
@@ -62,7 +74,6 @@
   </div>
 
   <div id="moysklad-status" class="moysklad-floating"></div>
-
   <div id="modal-root"></div>
 
   <div id="upload-modal" class="modal-overlay upload-modal">
