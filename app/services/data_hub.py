@@ -14,6 +14,8 @@ class DataHub:
     self.orders_parsed: ParsedWorkbook | None = None
     self.results: list[dict[str, Any]] = []
     self.meta: dict[str, Any] = {}
+    self.workbook_hash: str | None = None
+    self.results_from_cache: bool = False
 
   def set_workbook(
     self,
@@ -35,6 +37,18 @@ class DataHub:
   def set_results(self, results: list[dict[str, Any]], meta: dict[str, Any]) -> None:
     self.results = [enrich_row_computed(r) for r in results]
     self.meta = meta
+    self.results_from_cache = False
+
+  def apply_cached_results(self, payload: dict[str, Any]) -> bool:
+    results = payload.get("results")
+    if not results:
+      return False
+    self.results = [enrich_row_computed(r) for r in results]
+    self.meta = payload.get("meta") or {}
+    if payload.get("workbook_key"):
+      self.workbook_hash = str(payload["workbook_key"])
+    self.results_from_cache = True
+    return True
 
   def get_client(self, client_id: str) -> dict[str, Any] | None:
     key = client_id.strip().lower()

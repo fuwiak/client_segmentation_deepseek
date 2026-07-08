@@ -9,7 +9,10 @@
       <span class="tag ok">+ заказы ({{ parsed.meta.orders_total }})</span>
       {% endif %}
       {% if from_cache %}
-      <span class="tag ok" title="Взято из кэша ({{ cache_backend }})">⚡ из кэша</span>
+      <span class="tag ok" title="Взято из кэша ({{ cache_backend }})">⚡ Excel из кэша</span>
+      {% endif %}
+      {% if results_from_cache %}
+      <span class="tag ok" title="Сегментация из {{ cache_backend }}">⚡ сегментация из кэша</span>
       {% endif %}
     </div>
   </div>
@@ -47,6 +50,14 @@
       Количество строк для AI-обработки:
       <input type="number" name="limit" value="50" min="1" max="500">
     </label>
-    <button type="submit" class="btn primary">Запустить AI-сегментацию</button>
+    <button type="submit" class="btn primary">
+      {% if has_segment_results %}Пересегментировать{% else %}Запустить AI-сегментацию{% endif %}
+    </button>
   </form>
 </div>
+
+{% if has_segment_results %}
+<div id="results-area" class="card-area" hx-swap-oob="innerHTML">
+  {% include 'partials/results.html' %}
+</div>
+{% endif %}

@@ -124,17 +124,37 @@ class CacheService:
     async def save_results(
         self, payload: Any, key: str = LATEST_RESULTS_KEY
     ) -> None:
-        """Сохранить сгенерированные записи сегментации, чтобы использовать позже."""
+        """Сохранить сгенерированные записи сегментации."""
         try:
             await self._backend.set(RESULTS_PREFIX + key, payload, self._ttl)
-        except Exception:  # noqa: BLE001 — запись в кэш не критична
+        except Exception:  # noqa: BLE001
             pass
 
     async def get_results(self, key: str = LATEST_RESULTS_KEY) -> Any | None:
         try:
             return await self._backend.get(RESULTS_PREFIX + key)
-        except Exception:  # noqa: BLE001 — деградируем без кэша
+        except Exception:  # noqa: BLE001
             return None
+
+    async def save_segmentation_results(
+        self,
+        workbook_key: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Сохранить результаты по ключу workbook и как latest."""
+        full = {**payload, "workbook_key": workbook_key}
+        await self.save_results(full, key=LATEST_RESULTS_KEY)
+        await self.save_results(full, key=workbook_key)
+
+    async def get_segmentation_results(
+        self, workbook_key: str | None = None
+    ) -> dict[str, Any] | None:
+        """Вернуть результаты для workbook или последние сохранённые."""
+        if workbook_key:
+            hit = await self.get_results(workbook_key)
+            if hit:
+                return hit
+        return await self.get_results(LATEST_RESULTS_KEY)
 
 
 _cache_service: CacheService | None = None

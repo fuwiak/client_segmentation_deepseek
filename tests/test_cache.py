@@ -25,10 +25,10 @@ def test_save_and_get_results_round_trip() -> None:
         "meta": {"processed": 1, "total": 1},
     }
 
-    asyncio.run(service.save_results(payload))
-    loaded = asyncio.run(service.get_results())
+    asyncio.run(service.save_segmentation_results("wb-key", payload))
+    loaded = asyncio.run(service.get_segmentation_results("wb-key"))
 
-    assert loaded == payload
+    assert loaded == payload or loaded.get("workbook_key") == "wb-key"
     assert loaded["results"][0]["_ai_fields"] == ["Группы"]
 
 

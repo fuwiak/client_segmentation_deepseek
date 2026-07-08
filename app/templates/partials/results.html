@@ -4,6 +4,9 @@
     <div class="meta-tags">
       <span class="tag ok">Обработано: {{ meta.processed }}</span>
       <span class="tag">Всего в файле: {{ meta.total }}</span>
+      {% if results_from_cache %}
+      <span class="tag ok" title="Загружено из {{ cache_backend }}">⚡ из кэша</span>
+      {% endif %}
     </div>
   </div>
 

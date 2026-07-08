@@ -20,7 +20,7 @@ from app.crm.dashboard import DashboardService, PERIOD_LABELS
 from app.crm.leads import LeadService
 from app.domain import Campaign, CampaignStatus
 from app.repository import get_repository
-from app.services.cache import get_cache
+from app.services.cache import get_cache, file_hash
 from app.services.data_hub import get_data_hub
 from app.services.excel_parser import (
   AI_EXTRA_COLUMNS,
@@ -50,6 +50,22 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
 
 
+async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
+  """Подгрузить результаты сегментации из Redis/in-memory в hub."""
+  if hub.results:
+    return True
+  key = workbook_key or hub.workbook_hash
+  cached = await cache.get_segmentation_results(key)
+  if not cached:
+    return False
+  return hub.apply_cached_results(cached)
+
+
+@app.on_event("startup")
+async def startup_hydrate_cache() -> None:
+  await _hydrate_hub_from_cache()
+
+
 def _workflow_ctx() -> dict[str, Any]:
   has_parsed = hub.parsed is not None and bool(hub.parsed.rows)
   has_results = bool(hub.results)
@@ -74,6 +90,8 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "has_api_key": bool(settings.openrouter_api_key),
     "wa_enabled": get_green_api_client(settings).enabled,
     "tg_enabled": get_telegram_client(settings).enabled,
+    "cache_backend": cache.backend_kind,
+    "results_from_cache": hub.results_from_cache,
     **_workflow_ctx(),
     **extra,
   }
@@ -95,7 +113,13 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
       "total": parsed.total_rows,
     }
     hub.set_results(enriched, meta)
-    await cache.save_results({"results": enriched, "meta": meta})
+    if hub.workbook_hash:
+      await cache.save_segmentation_results(
+        hub.workbook_hash,
+        {"results": enriched, "meta": meta},
+      )
+    else:
+      await cache.save_results({"results": enriched, "meta": meta})
     _progress["done"] = _progress["total"]
     _progress["status"] = "done"
   except Exception as exc:  # noqa: BLE001
@@ -105,6 +129,7 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
   rows = hub.active_rows()
   dash = dashboard_svc.compute(rows, period="month")
   return templates.TemplateResponse(
@@ -128,6 +153,7 @@ async def dashboard_page(
   date_from: date | None = Query(None),
   date_to: date | None = Query(None),
 ) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
   rows = hub.active_rows()
   dash = dashboard_svc.compute(rows, period=period, date_from=date_from, date_to=date_to)
   return templates.TemplateResponse(
@@ -153,6 +179,7 @@ async def clients_page(
   tag: str = Query(""),
   status: str = Query(""),
 ) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
   rows = hub.filter_rows(sales_filter=filter, tag=tag, status=status)
   return templates.TemplateResponse(
     "clients.html",
@@ -197,6 +224,7 @@ async def client_orders(request: Request, client_id: str) -> HTMLResponse:
 
 @app.get("/segment", response_class=HTMLResponse)
 async def segment_page(request: Request) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
   return templates.TemplateResponse(
     "segment.html",
     _ctx(
@@ -335,6 +363,7 @@ async def upload_preview(
     orders_content = await orders_file.read()
 
   cache_content = content + b"|orders|" + orders_content
+  hub.workbook_hash = file_hash(cache_content)
   parsed = await cache.get_parsed(cache_content)
   from_cache = parsed is not None
 
@@ -349,6 +378,10 @@ async def upload_preview(
   else:
     hub.set_workbook(parsed, None)
 
+  results_from_cache = False
+  if not hub.results:
+    results_from_cache = await _hydrate_hub_from_cache(hub.workbook_hash)
+
   preview_rows = [enrich_row_computed(r) for r in parsed.rows[:20]]
 
   return templates.TemplateResponse(
@@ -360,6 +393,11 @@ async def upload_preview(
       "segment_columns": SEGMENT_COLUMNS,
       "from_cache": from_cache,
       "cache_backend": cache.backend_kind,
+      "results_from_cache": results_from_cache,
+      "has_segment_results": bool(hub.results),
+      "results": hub.results,
+      "meta": hub.meta,
+      "ai_extra_columns": AI_EXTRA_COLUMNS,
     },
   )
 
@@ -375,6 +413,34 @@ async def segment_start(
       "partials/segment_modal.html",
       {"request": request, "error": "Сначала загрузите файл Excel."},
     )
+
+  if hub.workbook_hash and not hub.results:
+    cached = await cache.get_segmentation_results(hub.workbook_hash)
+    if cached and cached.get("results"):
+      hub.apply_cached_results(cached)
+      _progress.update(
+        status="done",
+        done=len(hub.results),
+        total=len(hub.results),
+        error="",
+      )
+      return templates.TemplateResponse(
+        "partials/segment_progress.html",
+        {
+          "request": request,
+          "status": "done",
+          "done": len(hub.results),
+          "total": len(hub.results),
+          "percent": 100,
+          "error": "",
+          "results": hub.results,
+          "segment_columns": SEGMENT_COLUMNS,
+          "ai_extra_columns": AI_EXTRA_COLUMNS,
+          "meta": hub.meta,
+          "results_from_cache": True,
+          "cache_backend": cache.backend_kind,
+        },
+      )
 
   rows = parsed.rows[: max(1, min(limit, 500))]
   _progress.update(status="running", done=0, total=len(rows), error="")
@@ -402,22 +468,22 @@ async def segment_progress(request: Request) -> HTMLResponse:
     "error": _progress["error"],
   }
   if status == "done":
+    await _hydrate_hub_from_cache()
     ctx.update(
       results=hub.results,
       segment_columns=SEGMENT_COLUMNS,
       ai_extra_columns=AI_EXTRA_COLUMNS,
       meta=hub.meta,
+      results_from_cache=hub.results_from_cache,
+      cache_backend=cache.backend_kind,
     )
   return templates.TemplateResponse("partials/segment_progress.html", ctx)
 
 
 @app.get("/download/xlsx")
 async def download_xlsx() -> StreamingResponse:
+  await _hydrate_hub_from_cache()
   results = hub.results
-  if not results:
-    cached = await cache.get_results()
-    if cached and cached.get("results"):
-      results = cached["results"]
   if not results:
     df = pd.DataFrame()
   else:
