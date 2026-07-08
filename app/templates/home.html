@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block content %}
-{% include 'partials/workflow.html' %}
+{% block page_header %}{% endblock %}
 
+{% block content %}
 {% if not has_data %}
   {% include 'partials/empty_state.html' %}
 {% else %}
@@ -10,15 +10,15 @@
 <section class="quick-actions">
   <a href="/segment" class="action-card">
     <span class="action-label">Импорт</span>
-    <span class="action-desc">Загрузить новый Excel</span>
+    <span class="action-desc">Новый Excel</span>
   </a>
   <a href="/clients" class="action-card">
     <span class="action-label">Клиенты</span>
-    <span class="action-desc">{{ total_clients }} в базе</span>
+    <span class="action-desc">{{ total_clients }} записей</span>
   </a>
   <a href="/dashboard" class="action-card">
     <span class="action-label">Дашборд</span>
-    <span class="action-desc">Метрики и отчёты</span>
+    <span class="action-desc">Метрики</span>
   </a>
   <a href="/download/xlsx" class="action-card">
     <span class="action-label">Экспорт</span>
@@ -48,17 +48,12 @@
 <section class="card">
   <div class="card-header">
     <h3>Последние клиенты</h3>
-    <a href="/clients" class="text-link">Все клиенты →</a>
+    <a href="/clients" class="text-link">Все →</a>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr>
-          <th>Имя</th>
-          <th>Тип</th>
-          <th>Теги</th>
-          <th></th>
-        </tr>
+        <tr><th>Имя</th><th>Тип</th><th>Теги</th><th></th></tr>
       </thead>
       <tbody>
         {% for row in clients %}

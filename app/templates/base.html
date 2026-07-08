@@ -8,67 +8,90 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
-  <link rel="stylesheet" href="/static/style.css">
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
   <header class="site-header">
     <div class="header-inner">
-      <a href="/" class="wordmark" aria-label="Client CRM">
-        <svg class="spike" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 2v20M12 12H2M12 12h10M12 12L4.5 4.5M12 12l7.5 7.5M12 12L4.5 19.5M12 12l7.5-7.5"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        <span>Client <span class="wordmark-accent">CRM</span></span>
-      </a>
+      <a href="/" class="wordmark">Client <span class="wordmark-accent">CRM</span></a>
 
-      {% include 'partials/nav.html' %}
+      <nav class="desktop-nav" aria-label="Основная навигация">
+        {% include 'partials/nav_items.html' %}
+      </nav>
 
       <div class="header-actions">
-        <a href="/segment" class="btn btn-nav">+ Импорт</a>
+        <div class="status-strip"
+             hx-get="/messenger/sidebar"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <span class="status-pill muted">…</span>
+        </div>
+        <a href="/segment" class="btn btn-nav">Импорт Excel</a>
       </div>
 
-      <button type="button" class="nav-toggle" onclick="toggleMobileNav()" aria-label="Меню">☰</button>
+      <button type="button" class="nav-toggle" onclick="toggleMobileNav()" aria-label="Меню" aria-expanded="false" id="nav-toggle-btn">☰</button>
     </div>
-    <div class="mobile-nav" id="mobile-nav">
-      {% include 'partials/nav.html' %}
+
+    <div class="mobile-drawer" id="mobile-drawer" hidden>
+      <nav class="mobile-drawer-nav" aria-label="Мобильное меню">
+        {% include 'partials/nav_items.html' %}
+        <a href="/segment" class="btn mobile-drawer-cta">Импорт Excel</a>
+      </nav>
     </div>
   </header>
 
   <main class="main-content">
     <div class="container">
+      {% block page_header %}
       <header class="page-header">
         <div>
           <h1>{{ page_title|default(title) }}</h1>
-          {% if subtitle %}
-          <p class="subtitle">{{ subtitle }}</p>
-          {% endif %}
-        </div>
-        <div class="status-strip"
-             hx-get="/messenger/sidebar"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-          <span class="status-pill muted">Загрузка статуса…</span>
+          {% if subtitle %}<p class="subtitle">{{ subtitle }}</p>{% endif %}
         </div>
       </header>
+      {% endblock %}
 
       {% block content %}{% endblock %}
     </div>
 
     <footer class="footer">
       <div class="footer-inner">
-        <span class="footer-brand">Client CRM</span>
-        <span class="footer-meta">{{ model }} · {% if has_api_key %}AI активен{% else %}Нет API-ключа{% endif %}</span>
+        <span>Client CRM</span>
+        <span>{{ model }} · {% if has_api_key %}AI активен{% else %}Нужен API-ключ{% endif %}</span>
       </div>
     </footer>
   </main>
 
+  <nav class="bottom-nav" aria-label="Быстрая навигация">
+    <a href="/" class="bottom-nav-item {% if active_page|default('') == 'home' %}active{% endif %}">
+      <span class="bottom-nav-icon">⌂</span>
+      <span>Главная</span>
+    </a>
+    <a href="/clients" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
+      <span class="bottom-nav-icon">👥</span>
+      <span>Клиенты</span>
+    </a>
+    <a href="/segment" class="bottom-nav-item {% if active_page|default('') == 'segment' %}active{% endif %}">
+      <span class="bottom-nav-icon">↑</span>
+      <span>Импорт</span>
+    </a>
+    <a href="/dashboard" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
+      <span class="bottom-nav-icon">▦</span>
+      <span>Дашборд</span>
+    </a>
+    <a href="/settings" class="bottom-nav-item {% if active_page in ['settings', 'communications'] %}active{% endif %}">
+      <span class="bottom-nav-icon">⚙</span>
+      <span>Ещё</span>
+    </a>
+  </nav>
+
   <div id="modal-root"></div>
 
-  <div id="upload-modal" class="modal-overlay upload-modal">
+  <div id="upload-modal" class="modal-overlay upload-modal" hidden>
     <div class="modal-card">
-      <h3 class="modal-title">Загрузка файла</h3>
-      <p class="hint">Разбор Excel и обогащение данными заказов…</p>
+      <h3>Загрузка файла</h3>
+      <p class="hint">Разбор Excel…</p>
       <div class="progress-track indeterminate"><div class="progress-fill"></div></div>
       <p class="progress-label">Обработка…</p>
     </div>
@@ -76,14 +99,33 @@
 
   <script>
     function toggleMobileNav() {
-      document.getElementById('mobile-nav').classList.toggle('open');
+      var drawer = document.getElementById('mobile-drawer');
+      var btn = document.getElementById('nav-toggle-btn');
+      var open = drawer.hidden;
+      drawer.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.textContent = open ? '✕' : '☰';
     }
     function closeModal() {
       var root = document.getElementById('modal-root');
       if (root) root.innerHTML = '';
     }
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') {
+        closeModal();
+        var drawer = document.getElementById('mobile-drawer');
+        if (drawer && !drawer.hidden) toggleMobileNav();
+      }
+    });
+    document.body.addEventListener('htmx:beforeRequest', function (e) {
+      if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest('.upload-form')) {
+        document.getElementById('upload-modal').hidden = false;
+      }
+    });
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+      if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest('.upload-form')) {
+        document.getElementById('upload-modal').hidden = true;
+      }
     });
   </script>
 </body>

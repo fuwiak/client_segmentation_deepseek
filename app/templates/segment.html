@@ -4,24 +4,23 @@
 {% include 'partials/workflow.html' %}
 
 <section class="card upload-card">
-  <h3>Шаг 1 — загрузите файлы</h3>
-  <p class="hint">Выберите Excel с контрагентами. Файл заказов необязателен, но улучшает AI-сегментацию.</p>
+  <h3>Загрузите Excel-файлы</h3>
+  <p class="hint">Контрагенты — обязательно. Заказы — для лучшей сегментации.</p>
   <form class="upload-form"
         hx-post="/upload/preview"
         hx-target="#preview-area"
         hx-swap="innerHTML"
         hx-encoding="multipart/form-data"
-        hx-trigger="change"
-        hx-indicator="#upload-modal">
+        hx-trigger="change">
     <div class="form-grid">
       <label class="file-drop">
         <span class="file-drop-title">Контрагенты</span>
-        <span class="file-drop-hint">.xlsx — обязательно</span>
+        <span class="file-drop-hint">Нажмите или перетащите .xlsx</span>
         <input type="file" name="contragents_file" accept=".xlsx,.xls" required>
       </label>
       <label class="file-drop">
         <span class="file-drop-title">Заказы</span>
-        <span class="file-drop-hint">.xlsx — опционально</span>
+        <span class="file-drop-hint">Опционально</span>
         <input type="file" name="orders_file" accept=".xlsx,.xls">
       </label>
     </div>
@@ -33,7 +32,7 @@
 
 {% if workflow_step|default(0) >= 3 %}
 <section class="callout-light">
-  <p><strong>Сегментация завершена.</strong> Перейдите к <a href="/clients">базе клиентов</a> или <a href="/dashboard">дашборду</a>.</p>
+  <strong>Готово!</strong> <a href="/clients">Откройте базу клиентов</a> или <a href="/dashboard">дашборд</a>.
 </section>
 {% endif %}
 {% endblock %}
