@@ -138,10 +138,14 @@ def enrich_with_orders(
         return contragents
 
     by_name: dict[str, list[dict[str, Any]]] = {}
+    by_agent_id: dict[str, list[dict[str, Any]]] = {}
     for order in orders.rows:
         key = str(order.get("Контрагент") or "").strip().lower()
         if key:
             by_name.setdefault(key, []).append(order)
+        agent_id = str(order.get("_moysklad_agent_id") or "").strip()
+        if agent_id:
+            by_agent_id.setdefault(agent_id, []).append(order)
 
     enriched_rows: list[dict[str, Any]] = []
     for row in contragents.rows:
@@ -150,13 +154,25 @@ def enrich_with_orders(
             str(row.get("Наименование") or "").strip().lower(),
             str(row.get("Телефон") or "").strip().lower(),
         ]
+        cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
         related: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        def _add(items: list[dict[str, Any]]) -> None:
+            for item in items:
+                oid = str(item.get("№") or item.get("_moysklad_id") or id(item))
+                if oid not in seen_ids:
+                    seen_ids.add(oid)
+                    related.append(item)
+
+        if cp_id and cp_id in by_agent_id:
+            _add(by_agent_id[cp_id])
         for key in keys:
             if key and key in by_name:
-                related.extend(by_name[key])
+                _add(by_name[key])
 
         if related:
-            copy["_orders_context"] = related[:5]
+            copy["_orders_context"] = related[:20]
             copy["_orders_count"] = len(related)
         enriched_rows.append(copy)
 

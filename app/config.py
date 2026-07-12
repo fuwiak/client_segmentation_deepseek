@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     moysklad_enabled: bool = False
     moysklad_sync_limit: int = 500
     moysklad_sync_orders_limit: int = 2000
+    moysklad_auto_sync: bool = True
 
     # --- Интеграции-источники (feature-flags; placeholder-коннекторы) ---
     onec_enabled: bool = False
@@ -51,6 +52,10 @@ class Settings(BaseSettings):
     ai_max_retries: int = 2
     ai_temperature: float = 0.2
     ai_timeout_seconds: int = 120
+
+    enrichment_chat_limit: int = 50
+    enrichment_batch_size: int = 5
+    enrichment_concurrency: int = 3
 
 
 @lru_cache

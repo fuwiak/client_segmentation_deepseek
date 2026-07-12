@@ -4,27 +4,39 @@
 {% include 'partials/workflow.html' %}
 
 <section class="card upload-card">
-  <h3>Загрузите Excel-файлы</h3>
-  <p class="hint">Контрагенты — обязательно. Заказы — для лучшей сегментации.</p>
-  <form class="upload-form"
-        hx-post="/upload/preview"
-        hx-target="#preview-area"
-        hx-swap="innerHTML"
-        hx-encoding="multipart/form-data"
-        hx-trigger="change">
-    <div class="form-grid">
-      <label class="file-drop">
-        <span class="file-drop-title">Контрагенты</span>
-        <span class="file-drop-hint">Нажмите или перетащите .xlsx</span>
-        <input type="file" name="contragents_file" accept=".xlsx,.xls" required>
-      </label>
-      <label class="file-drop">
-        <span class="file-drop-title">Заказы</span>
-        <span class="file-drop-hint">Опционально</span>
-        <input type="file" name="orders_file" accept=".xlsx,.xls">
-      </label>
-    </div>
-  </form>
+  <h3>Источник данных</h3>
+  <p class="hint">Загрузите Excel или синхронизируйте актуальную базу из Мой Склад.</p>
+
+  {% if moysklad_enabled %}
+  <div class="source-block">
+    <h4>Мой Склад</h4>
+    <div hx-get="/moysklad/status" hx-trigger="load" hx-swap="innerHTML"></div>
+  </div>
+  {% endif %}
+
+  <div class="source-block">
+    <h4>Excel-файлы</h4>
+    <p class="hint">Контрагенты — обязательно. Заказы — для лучшей сегментации.</p>
+    <form class="upload-form"
+          hx-post="/upload/preview"
+          hx-target="#preview-area"
+          hx-swap="innerHTML"
+          hx-encoding="multipart/form-data"
+          hx-trigger="change">
+      <div class="form-grid">
+        <label class="file-drop">
+          <span class="file-drop-title">Контрагенты</span>
+          <span class="file-drop-hint">Нажмите или перетащите .xlsx</span>
+          <input type="file" name="contragents_file" accept=".xlsx,.xls" required>
+        </label>
+        <label class="file-drop">
+          <span class="file-drop-title">Заказы</span>
+          <span class="file-drop-hint">Опционально</span>
+          <input type="file" name="orders_file" accept=".xlsx,.xls">
+        </label>
+      </div>
+    </form>
+  </div>
 </section>
 
 <div id="preview-area" class="card-area"></div>

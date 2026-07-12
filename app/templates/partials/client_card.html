@@ -52,6 +52,24 @@
     <section class="client-section ai-block">
       <h4>Рекомендация AI</h4>
       <p class="ai-summary">{{ client.get('Саммари') or client.get('_reasoning') }}</p>
+      {% if client.get('_enrichment_fields') %}
+      <p class="hint">Обогащено: {{ client.get('_enrichment_fields')|join(', ') }}</p>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% set messages = client.get('_messenger_context') or [] %}
+    {% if messages %}
+    <section class="client-section">
+      <h4>Переписка ({{ messages|length }})</h4>
+      <ul class="message-list">
+        {% for msg in messages[-8:] %}
+        <li class="message-item {{ msg.get('direction') }}">
+          <span class="msg-channel">{{ msg.get('channel') }}</span>
+          <span class="msg-text">{{ msg.get('text') }}</span>
+        </li>
+        {% endfor %}
+      </ul>
     </section>
     {% endif %}
 

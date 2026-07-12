@@ -83,6 +83,20 @@ class GreenApiClient:
     async with httpx.AsyncClient(timeout=30) as client:
       await client.delete(url)
 
+  async def get_chat_history(self, phone: str, *, count: int = 50) -> list[dict]:
+    if not self.enabled:
+      raise RuntimeError("Green API не настроен")
+    chat_id = self.normalize_chat_id(phone)
+    url = f"{self._base()}/getChatHistory/{self._token}"
+    payload = {"chatId": chat_id, "count": max(1, min(count, 100))}
+    async with httpx.AsyncClient(timeout=60) as client:
+      resp = await client.post(url, json=payload)
+      resp.raise_for_status()
+      data = resp.json()
+      if isinstance(data, list):
+        return data
+      return data.get("messages") or data.get("history") or []
+
 
 def get_green_api_client(settings: Settings) -> GreenApiClient:
   return GreenApiClient(settings)

@@ -52,6 +52,20 @@ class TelegramBotClient:
       resp.raise_for_status()
       return resp.json()
 
+  async def get_updates(self, *, offset: int | None = None, limit: int = 100) -> list[dict]:
+    if not self.enabled:
+      return []
+    params: dict[str, int] = {"limit": max(1, min(limit, 100))}
+    if offset is not None:
+      params["offset"] = offset
+    async with httpx.AsyncClient(timeout=30) as client:
+      resp = await client.get(self._url("getUpdates"), params=params)
+      resp.raise_for_status()
+      data = resp.json()
+      if not data.get("ok"):
+        return []
+      return data.get("result") or []
+
 
 def get_telegram_client(settings: Settings) -> TelegramBotClient:
   return TelegramBotClient(settings)

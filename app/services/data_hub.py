@@ -50,6 +50,16 @@ class DataHub:
     self.results_from_cache = True
     return True
 
+  def data_source_label(self) -> str:
+    if self.parsed and self.parsed.meta.get("source") == "moysklad":
+      return "moysklad"
+    if self.parsed:
+      return str(self.parsed.meta.get("source") or "excel")
+    return "none"
+
+  def has_data(self) -> bool:
+    return bool(self.results) or (self.parsed is not None and bool(self.parsed.rows))
+
   def get_client(self, client_id: str) -> dict[str, Any] | None:
     key = client_id.strip().lower()
     for row in self.active_rows():

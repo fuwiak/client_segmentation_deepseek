@@ -17,7 +17,25 @@
     <input type="search" name="status" placeholder="Статус заказа…" value="{{ status_filter }}">
     <button type="submit" class="btn secondary small">Найти</button>
   </form>
-  <p class="result-count">{{ total }} клиентов</p>
+  <div class="toolbar-actions">
+    {% if moysklad_enabled %}
+    <button type="button" class="btn secondary small"
+            hx-post="/moysklad/sync"
+            hx-target="#clients-sync-status"
+            hx-swap="innerHTML">↻ Мой Склад</button>
+    {% endif %}
+    <button type="button" class="btn secondary small"
+            hx-post="/enrich/start"
+            hx-target="#enrich-progress-block"
+            hx-swap="outerHTML"
+            {% if not messenger_available %}title="Задайте GREEN_API_* или TELEGRAM_BOT_TOKEN"{% endif %}>
+      Обогатить из мессенджеров
+    </button>
+    <a href="/download/clients/xlsx" class="btn secondary small">Экспорт .xlsx</a>
+  </div>
+  <p class="result-count">{{ total }} клиентов{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}</p>
+  <div id="clients-sync-status"></div>
+  {% include 'partials/enrich_progress.html' %}
 </section>
 
 <section class="card">
@@ -45,7 +63,12 @@
                     hx-target="#orders-{{ loop.index }}"
                     hx-swap="innerHTML">▾</button>
           </td>
-          <td><strong>{{ row.get('Наименование') or '—' }}</strong></td>
+          <td>
+            <strong>{{ row.get('Наименование') or '—' }}</strong>
+            {% if row.get('_messenger_sources') %}
+            <span class="mini-badge" title="Есть переписка">{{ row.get('_messenger_sources')|join(', ') }}</span>
+            {% endif %}
+          </td>
           <td>{{ row.get('Тип продаж') or '—' }}</td>
           <td>{{ row.get('Статус последнего заказа') or '—' }}</td>
           <td class="tags-cell">{{ row.get('Теги') or row.get('Группы') or '—' }}</td>

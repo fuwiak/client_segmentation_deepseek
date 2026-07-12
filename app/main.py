@@ -31,6 +31,7 @@ from app.services.excel_parser import (
 )
 from app.services.fields import enrich_row_computed
 from app.services.green_api import get_green_api_client
+from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
 from app.services.segmentation import SegmentationService
 from app.services.telegram_bot import get_telegram_client
@@ -48,6 +49,7 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
+_enrich_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
 
 
 async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
@@ -64,6 +66,15 @@ async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
   await _hydrate_hub_from_cache()
+  if settings.moysklad_auto_sync and not hub.has_data():
+    client = get_moysklad_client(settings)
+    if client.enabled:
+      await sync_moysklad_to_hub(
+        client,
+        hub,
+        max_counterparties=settings.moysklad_sync_limit,
+        max_orders=settings.moysklad_sync_orders_limit,
+      )
 
 
 def _workflow_ctx() -> dict[str, Any]:
@@ -133,6 +144,50 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     **_workflow_ctx(),
     **extra,
   }
+
+
+async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
+  _enrich_progress.update(status="running", done=0, total=len(rows), error="")
+  service = MessengerEnrichmentService(settings)
+
+  def _bump(n: int) -> None:
+    _enrich_progress["done"] = min(_enrich_progress["total"], _enrich_progress["done"] + n)
+
+  try:
+    enriched = await service.enrich_all(rows, progress_cb=_bump)
+    enriched = [enrich_row_computed(r) for r in enriched]
+    with_messages = sum(1 for r in enriched if r.get("_messenger_context"))
+    meta = {
+      **(hub.meta or {}),
+      "enriched": True,
+      "enrichment_total": len(enriched),
+      "enrichment_with_messages": with_messages,
+    }
+    hub.set_results(enriched, meta)
+    if hub.workbook_hash:
+      await cache.save_segmentation_results(
+        hub.workbook_hash,
+        {"results": enriched, "meta": meta},
+      )
+    _enrich_progress["done"] = _enrich_progress["total"]
+    _enrich_progress["status"] = "done"
+  except Exception as exc:  # noqa: BLE001
+    _enrich_progress["status"] = "error"
+    _enrich_progress["error"] = str(exc)
+
+
+def _export_rows() -> list[dict[str, Any]]:
+  rows = hub.active_rows()
+  clean: list[dict[str, Any]] = []
+  for row in rows:
+    item = {col: row.get(col) for col in CLIENT_DISPLAY_COLUMNS}
+    item["Источник обогащения"] = row.get("_enrichment_source") or (
+      "ai_segmentation" if row.get("_ai_processed") else hub.data_source_label()
+    )
+    channels = row.get("_messenger_sources") or []
+    item["Каналы переписки"] = ", ".join(channels) if channels else "—"
+    clean.append(item)
+  return clean
 
 
 async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
@@ -231,6 +286,8 @@ async def clients_page(
       sales_filter=filter,
       tag_filter=tag,
       status_filter=status,
+      data_source=hub.data_source_label(),
+      messenger_available=get_green_api_client(settings).enabled or get_telegram_client(settings).enabled,
     ),
   )
 
@@ -251,12 +308,18 @@ async def client_card(request: Request, client_id: str) -> HTMLResponse:
 
 
 @app.get("/clients/{client_id}/orders", response_class=HTMLResponse)
-async def client_orders(request: Request, client_id: str) -> HTMLResponse:
+async def client_orders(
+  request: Request,
+  client_id: str,
+  collapsed: bool = Query(False),
+) -> HTMLResponse:
+  if collapsed:
+    return HTMLResponse("")
   client = hub.get_client(client_id)
   orders = (client or {}).get("_orders_context") or []
   return templates.TemplateResponse(
     "partials/client_orders.html",
-    _ctx(request, client=client, orders=orders),
+    _ctx(request, client=client, orders=orders, client_id=client_id),
   )
 
 
@@ -558,6 +621,76 @@ async def download_xlsx() -> StreamingResponse:
     buffer,
     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     headers={"Content-Disposition": 'attachment; filename="segmentation_result.xlsx"'},
+  )
+
+
+@app.get("/download/clients/xlsx")
+async def download_clients_xlsx() -> StreamingResponse:
+  await _hydrate_hub_from_cache()
+  rows = _export_rows()
+  df = pd.DataFrame(rows) if rows else pd.DataFrame()
+  buffer = io.BytesIO()
+  df.to_excel(buffer, index=False, engine="openpyxl")
+  buffer.seek(0)
+  return StreamingResponse(
+    buffer,
+    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    headers={"Content-Disposition": 'attachment; filename="clients_enriched.xlsx"'},
+  )
+
+
+@app.post("/enrich/start", response_class=HTMLResponse)
+async def enrich_start(
+  request: Request,
+  limit: int = Form(50),
+) -> HTMLResponse:
+  rows = hub.active_rows()
+  if not rows:
+    return templates.TemplateResponse(
+      "partials/enrich_progress.html",
+      _ctx(
+        request,
+        status="error",
+        done=0,
+        total=0,
+        percent=0,
+        error="Нет данных клиентов. Сначала синхронизируйте Мой Склад или загрузите Excel.",
+      ),
+    )
+
+  selected = rows[: max(1, min(limit, 200))]
+  _enrich_progress.update(status="running", done=0, total=len(selected), error="")
+  asyncio.create_task(_run_enrichment(selected))
+
+  return templates.TemplateResponse(
+    "partials/enrich_progress.html",
+    _ctx(
+      request,
+      status="running",
+      done=0,
+      total=len(selected),
+      percent=0,
+      error="",
+    ),
+  )
+
+
+@app.get("/enrich/progress", response_class=HTMLResponse)
+async def enrich_progress(request: Request) -> HTMLResponse:
+  status = _enrich_progress["status"]
+  total = _enrich_progress["total"]
+  done = _enrich_progress["done"]
+  percent = int(done / total * 100) if total else 0
+  return templates.TemplateResponse(
+    "partials/enrich_progress.html",
+    _ctx(
+      request,
+      status=status,
+      done=done,
+      total=total,
+      percent=percent,
+      error=_enrich_progress["error"],
+    ),
   )
 
 
