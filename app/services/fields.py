@@ -101,3 +101,29 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
   return enriched
+
+
+def _normalized_cell(value: Any) -> str:
+  if value in (None, "", "null"):
+    return ""
+  return str(value).strip()
+
+
+def apply_ai_field(
+  merged: dict[str, Any],
+  col: str,
+  new_value: Any,
+  ai_fields: list[str],
+) -> None:
+  """Записать AI-поле и сохранить прежнее значение, если оно изменилось."""
+  new_str = _normalized_cell(new_value)
+  if not new_str:
+    return
+  old_str = _normalized_cell(merged.get(col))
+  if old_str and old_str != new_str:
+    originals = dict(merged.get("_ai_original") or {})
+    originals[col] = merged.get(col)
+    merged["_ai_original"] = originals
+  merged[col] = new_value
+  if col not in ai_fields:
+    ai_fields.append(col)

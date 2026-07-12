@@ -44,6 +44,8 @@ def test_parse_ai_response_marks_ai_returned_fields() -> None:
     assert result["Группы"] == "постоянный клиент"
     assert "Группы" in result["_ai_fields"]
     assert "Пол" in result["_ai_fields"]
+    assert result["_ai_original"]["Группы"] == "новый"
+    assert "Пол" not in result.get("_ai_original", {})
 
 
 def test_parse_ai_response_invalid_json_falls_back_to_heuristic() -> None:

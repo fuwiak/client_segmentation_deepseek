@@ -1,0 +1,14 @@
+{% macro render(row, col, value) %}
+{% set is_ai = col in (row.get('_ai_fields') or []) or col in (row.get('_enrichment_fields') or []) %}
+{% set original = row.get('_ai_original', {}).get(col) %}
+{% if is_ai %}
+<span class="ai-cell-stack">
+  <span class="ai-cell-new" title="Добавлено AI">{{ value or '—' }}</span>
+  {% if original is not none and original|string|trim %}
+  <span class="ai-cell-old" title="Было">{{ original }}</span>
+  {% endif %}
+</span>
+{% else %}
+{{ value or '—' }}
+{% endif %}
+{% endmacro %}

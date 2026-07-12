@@ -1,3 +1,4 @@
+{% from 'partials/ai_cell.html' import render as ai_cell %}
 <div class="card success-card">
   <div class="card-header">
     <h2>Результаты сегментации</h2>
@@ -46,14 +47,7 @@
           <td>{{ loop.index }}</td>
           <td>{{ row.get('Наименование') or '—' }}</td>
           {% for col in ['Тип продаж', 'Группы', 'Теги', 'Заказчик или получатель', 'Пол', 'ТГ ник', 'ВИП', 'Саммари'] %}
-          {% set is_ai = col in (row.get('_ai_fields') or []) %}
-          <td class="segment-col {% if is_ai %}ai-added{% endif %}">
-            <span class="cell-value">{{ row.get(col) or '—' }}</span>
-            {% if is_ai %}<span class="ai-badge">AI</span>{% endif %}
-            {% if row.get('_ai_refs', {}).get(col) %}
-            <span class="ai-ref" title="{{ row.get('_ai_refs', {}).get(col) }}">ref</span>
-            {% endif %}
-          </td>
+          <td class="segment-col">{{ ai_cell(row, col, row.get(col)) }}</td>
           {% endfor %}
           <td class="confidence">
             {% if row.get('_confidence') is not none %}

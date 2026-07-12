@@ -10,6 +10,7 @@ import httpx
 
 from app.config import Settings
 from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
+from app.services.fields import apply_ai_field
 
 SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочного бизнеса (продажа букетов, доставка).
 Твоя задача — по данным клиента и его заказов заполнить поля сегментации и профиль клиента.
@@ -231,15 +232,12 @@ class SegmentationService:
             for col in all_ai_cols:
                 value = ai.get(col)
                 if value not in (None, "", "null"):
-                    merged[col] = value
-                    if col not in ai_fields:
-                        ai_fields.append(col)
+                    apply_ai_field(merged, col, value, ai_fields)
 
             if not merged.get("Пол"):
                 guessed = guess_gender(merged.get("Заказчик или получатель"))
                 if guessed:
-                    merged["Пол"] = guessed
-                    ai_fields.append("Пол")
+                    apply_ai_field(merged, "Пол", guessed, ai_fields)
 
             merged["_reasoning"] = ai.get("reasoning", "")
             merged["_confidence"] = ai.get("confidence")
@@ -277,42 +275,41 @@ class SegmentationService:
         if not merged.get("Группы"):
             group = self._heuristic_group(row)
             if group:
-                merged["Группы"] = group
-                ai_fields.append("Группы")
+                apply_ai_field(merged, "Группы", group, ai_fields)
 
         recipient = self._extract_recipient(row)
         if recipient and not merged.get("Заказчик или получатель"):
-            merged["Заказчик или получатель"] = recipient
-            ai_fields.append("Заказчик или получатель")
+            apply_ai_field(merged, "Заказчик или получатель", recipient, ai_fields)
 
         if not merged.get("Пол"):
             guessed = guess_gender(
                 merged.get("Заказчик или получатель") or merged.get("Наименование")
             )
             if guessed:
-                merged["Пол"] = guessed
-                ai_fields.append("Пол")
+                apply_ai_field(merged, "Пол", guessed, ai_fields)
 
         if not merged.get("ТГ ник"):
             tg = self._extract_tg(row)
             if tg:
-                merged["ТГ ник"] = tg
-                ai_fields.append("ТГ ник")
+                apply_ai_field(merged, "ТГ ник", tg, ai_fields)
 
         if not merged.get("Теги"):
             tags = self._heuristic_tags(row)
             if tags:
-                merged["Теги"] = tags
-                ai_fields.append("Теги")
+                apply_ai_field(merged, "Теги", tags, ai_fields)
 
         if not merged.get("Саммари") and row.get("_messenger_context"):
             msgs = row["_messenger_context"]
             channels = ", ".join(sorted({m.get("channel", "") for m in msgs if m.get("channel")}))
-            merged["Саммари"] = (
-                f"Есть переписка ({channels}, {len(msgs)} сообщ.). "
-                f"Последнее: {msgs[-1].get('text', '')[:100]}"
+            apply_ai_field(
+                merged,
+                "Саммари",
+                (
+                    f"Есть переписка ({channels}, {len(msgs)} сообщ.). "
+                    f"Последнее: {msgs[-1].get('text', '')[:100]}"
+                ),
+                ai_fields,
             )
-            ai_fields.append("Саммари")
 
         merged["_reasoning"] = "Эвристика без AI (ключ API не задан)"
         merged["_confidence"] = None

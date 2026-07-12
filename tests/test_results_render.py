@@ -27,4 +27,4 @@ def test_progress_endpoint_renders_ai_badge_when_done() -> None:
     html = client.get("/segment/progress").text
 
     assert "AI" in html
-    assert "ai-added" in html
+    assert "ai-cell-new" in html

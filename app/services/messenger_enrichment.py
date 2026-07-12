@@ -14,6 +14,7 @@ import httpx
 from app.config import Settings
 from app.services.cache import CacheService
 from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
+from app.services.fields import apply_ai_field
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
 from app.services.segmentation import SegmentationService, guess_gender
@@ -328,17 +329,14 @@ class MessengerEnrichmentService:
         for col in ENRICHMENT_COLUMNS:
             value = ai.get(col)
             if value not in (None, "", "null"):
-                merged[col] = value
-                if col not in ai_fields:
-                    ai_fields.append(col)
+                apply_ai_field(merged, col, value, ai_fields)
                 if col not in enrichment_fields:
                     enrichment_fields.append(col)
 
         if not merged.get("Пол"):
             guessed = guess_gender(merged.get("Заказчик или получатель"))
             if guessed:
-                merged["Пол"] = guessed
-                ai_fields.append("Пол")
+                apply_ai_field(merged, "Пол", guessed, ai_fields)
                 enrichment_fields.append("Пол")
 
         merged["_reasoning"] = ai.get("reasoning") or merged.get("_reasoning") or ""
@@ -365,8 +363,7 @@ class MessengerEnrichmentService:
                 if msg.get("channel") == "telegram" and msg.get("sender"):
                     nick = _normalize_tg(str(msg["sender"]))
                     if nick:
-                        merged["ТГ ник"] = f"@{nick}"
-                        ai_fields.append("ТГ ник")
+                        apply_ai_field(merged, "ТГ ник", f"@{nick}", ai_fields)
                         enrichment_fields.append("ТГ ник")
                         break
 
@@ -381,17 +378,20 @@ class MessengerEnrichmentService:
             tags.append("#8марта")
 
         if tags and not merged.get("Теги"):
-            merged["Теги"] = " ".join(dict.fromkeys(tags))
-            ai_fields.append("Теги")
+            apply_ai_field(merged, "Теги", " ".join(dict.fromkeys(tags)), ai_fields)
             enrichment_fields.append("Теги")
 
         if not merged.get("Саммари") and messages:
             channels = ", ".join(sorted({m.get("channel", "") for m in messages}))
-            merged["Саммари"] = (
-                f"Переписка в {channels}: {len(messages)} сообщений. "
-                f"Последнее: {messages[-1].get('text', '')[:120]}"
+            apply_ai_field(
+                merged,
+                "Саммари",
+                (
+                    f"Переписка в {channels}: {len(messages)} сообщений. "
+                    f"Последнее: {messages[-1].get('text', '')[:120]}"
+                ),
+                ai_fields,
             )
-            ai_fields.append("Саммари")
             enrichment_fields.append("Саммари")
 
         merged["_reasoning"] = "Эвристика по переписке (без AI или API недоступен)"
