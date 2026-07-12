@@ -64,21 +64,31 @@ async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
   return hub.apply_cached_results(cached)
 
 
+async def _ensure_moysklad_data() -> None:
+  """Подгрузить контрагентов Мой Склад из кэша или API, если hub пуст."""
+  if hub.has_data():
+    return
+  client = get_moysklad_client(settings)
+  if not client.enabled:
+    return
+  await sync_moysklad_to_hub(
+    client,
+    hub,
+    max_counterparties=settings.moysklad_sync_limit,
+    max_orders=settings.moysklad_sync_orders_limit,
+    cache=cache,
+    force_refresh=False,
+  )
+
+
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
   await _hydrate_hub_from_cache()
   messenger = MessengerEnrichmentService(settings, cache)
   if messenger.telegram_enabled:
     await messenger.sync_telegram_inbox()
-  if settings.moysklad_auto_sync and not hub.has_data():
-    client = get_moysklad_client(settings)
-    if client.enabled:
-      await sync_moysklad_to_hub(
-        client,
-        hub,
-        max_counterparties=settings.moysklad_sync_limit,
-        max_orders=settings.moysklad_sync_orders_limit,
-      )
+  if settings.moysklad_auto_sync:
+    await _ensure_moysklad_data()
 
 
 def _workflow_ctx() -> dict[str, Any]:
@@ -325,6 +335,7 @@ async def clients_page(
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
+  await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "clients.html",
     {
@@ -345,6 +356,7 @@ async def clients_table_partial(
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
+  await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "partials/clients_table.html",
     _clients_ctx(request, sales_filter=filter, tag=tag, status=status, page=page),
@@ -385,6 +397,7 @@ async def client_orders(
 @app.get("/segment", response_class=HTMLResponse)
 async def segment_page(request: Request) -> HTMLResponse:
   await _hydrate_hub_from_cache()
+  await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "segment.html",
     _ctx(
@@ -474,6 +487,7 @@ async def communications_page(request: Request) -> HTMLResponse:
 @app.get("/settings/moysklad", response_class=HTMLResponse)
 async def moysklad_settings_page(request: Request) -> HTMLResponse:
   await _hydrate_hub_from_cache()
+  await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "moysklad_settings.html",
     _ctx(
@@ -766,10 +780,16 @@ async def enrich_progress(
 
 @app.get("/moysklad/status", response_class=HTMLResponse)
 async def moysklad_status(request: Request) -> HTMLResponse:
+  await _ensure_moysklad_data()
   client = get_moysklad_client(settings)
   healthy = await client.health_check() if client.enabled else False
-  api_cp_total = await client.get_entity_count("/entity/counterparty") if client.enabled else None
-  api_orders_total = await client.get_entity_count("/entity/customerorder") if client.enabled else None
+  cached_ms = await cache.get_moysklad_sync()
+  api_cp_total = cached_ms.get("api_cp_total") if cached_ms else None
+  api_orders_total = cached_ms.get("api_orders_total") if cached_ms else None
+  if client.enabled and api_cp_total is None:
+    api_cp_total = await client.get_entity_count("/entity/counterparty")
+  if client.enabled and api_orders_total is None:
+    api_orders_total = await client.get_entity_count("/entity/customerorder")
   hub_rows = len(hub.parsed.rows) if hub.parsed and hub.parsed.rows else 0
   hub_orders = (
     len(hub.orders_parsed.rows)
@@ -780,6 +800,7 @@ async def moysklad_status(request: Request) -> HTMLResponse:
     hub.parsed
     and hub.parsed.meta.get("source") == "moysklad"
   )
+  from_cache = bool(cached_ms and from_moysklad)
   return templates.TemplateResponse(
     "partials/moysklad_status.html",
     {
@@ -792,6 +813,7 @@ async def moysklad_status(request: Request) -> HTMLResponse:
       "api_cp_total": api_cp_total,
       "api_orders_total": api_orders_total,
       "from_moysklad": from_moysklad,
+      "from_cache": from_cache,
     },
   )
 
@@ -804,6 +826,8 @@ async def moysklad_sync(request: Request) -> HTMLResponse:
     hub,
     max_counterparties=settings.moysklad_sync_limit,
     max_orders=settings.moysklad_sync_orders_limit,
+    cache=cache,
+    force_refresh=True,
   )
   healthy = await client.health_check() if client.enabled else False
   return templates.TemplateResponse(
@@ -820,6 +844,7 @@ async def moysklad_sync(request: Request) -> HTMLResponse:
       "from_moysklad": result.success,
       "sync_message": result.message,
       "sync_ok": result.success,
+      "from_cache": result.from_cache,
     },
   )
 

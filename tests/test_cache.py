@@ -16,6 +16,23 @@ def test_backend_falls_back_to_memory_without_redis() -> None:
     assert service.backend_kind == "memory"
 
 
+def test_save_and_get_moysklad_sync_round_trip() -> None:
+    service = _service()
+    payload = {
+        "counterparty_rows": [{"UUID": "1", "Наименование": "Test"}],
+        "order_rows": [],
+        "api_cp_total": 9850,
+        "max_counterparties": 0,
+        "max_orders": 0,
+    }
+
+    asyncio.run(service.save_moysklad_sync(payload))
+    loaded = asyncio.run(service.get_moysklad_sync())
+
+    assert loaded == payload
+    assert loaded["api_cp_total"] == 9850
+
+
 def test_save_and_get_results_round_trip() -> None:
     service = _service()
     payload = {

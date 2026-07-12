@@ -140,6 +140,7 @@ async def test_sync_moysklad_to_hub_populates_data_hub() -> None:
     assert result.success is True
     assert result.counterparties_count == 1
     assert result.orders_count == 1
+    assert result.from_cache is False
     assert hub.parsed is not None
     assert len(hub.parsed.rows) == 1
     assert hub.parsed.rows[0]["Наименование"] == "Иван Петров"
@@ -148,6 +149,62 @@ async def test_sync_moysklad_to_hub_populates_data_hub() -> None:
     assert hub.parsed.meta["source"] == "moysklad"
     assert hub.orders_parsed is not None
     assert len(hub.orders_parsed.rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_moysklad_uses_cache_without_api() -> None:
+    from app.config import Settings
+    from app.services.cache import CacheService
+
+    cache = CacheService(Settings(redis_url=""))
+    row = counterparty_to_row(SAMPLE_CP)
+    await cache.save_moysklad_sync(
+        {
+            "counterparty_rows": [row],
+            "order_rows": [],
+            "api_cp_total": 9850,
+            "api_orders_total": 100,
+            "max_counterparties": 0,
+            "max_orders": 0,
+        }
+    )
+
+    client = MagicMock()
+    client.enabled = True
+    hub = DataHub()
+    result = await sync_moysklad_to_hub(
+        client,
+        hub,
+        cache=cache,
+        force_refresh=False,
+    )
+
+    assert result.success is True
+    assert result.from_cache is True
+    assert result.counterparties_count == 1
+    assert result.api_counterparties_total == 9850
+    client.fetch_all_counterparties.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_moysklad_saves_to_cache_after_api() -> None:
+    from app.config import Settings
+    from app.services.cache import CacheService
+
+    cache = CacheService(Settings(redis_url=""))
+    client = MagicMock()
+    client.enabled = True
+    client.get_entity_count = AsyncMock(side_effect=[9850, 100])
+    client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
+    client.fetch_all_customer_orders = AsyncMock(return_value=[SAMPLE_ORDER])
+
+    hub = DataHub()
+    await sync_moysklad_to_hub(client, hub, cache=cache, force_refresh=True)
+
+    cached = await cache.get_moysklad_sync()
+    assert cached is not None
+    assert len(cached["counterparty_rows"]) == 1
+    assert cached["api_cp_total"] == 9850
 
 
 @pytest.mark.asyncio

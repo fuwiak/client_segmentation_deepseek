@@ -33,6 +33,9 @@
             (из {{ api_orders_total }} в Мой Склад)
           {% endif %}
         {% endif %}
+        {% if from_cache %}
+          <span class="cache-badge">кэш</span>
+        {% endif %}
       {% elif hub_rows %}
         В CRM: {{ hub_rows }} записей (другой источник)
       {% elif api_cp_total is not none %}
@@ -51,7 +54,8 @@
     >
       Синхронизировать с Мой Склад
     </button>
-    <span id="moysklad-sync-spinner" class="htmx-indicator">Загрузка… (может занять минуту)</span>
+    <span id="moysklad-sync-spinner" class="htmx-indicator">Загрузка из API… (может занять минуту)</span>
+    <p class="hint">Повторный запуск приложения берёт данные из кэша (Redis). Кнопка — полное обновление из API.</p>
     <p class="hint">API: <code>{{ api_url }}</code></p>
   {% endif %}
 </div>

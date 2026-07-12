@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from app.services.data_hub import DataHub
 from app.services.export_format import MOYSKLAD_EXCEL_COLUMNS
@@ -15,6 +16,9 @@ from app.services.moysklad.mapper import (
     order_to_row,
 )
 
+if TYPE_CHECKING:
+    from app.services.cache import CacheService
+
 
 @dataclass
 class MoySkladSyncResult:
@@ -24,6 +28,81 @@ class MoySkladSyncResult:
     message: str
     api_counterparties_total: int | None = None
     api_orders_total: int | None = None
+    from_cache: bool = False
+
+
+def _apply_rows_to_hub(
+    hub: DataHub,
+    counterparty_rows: list[dict[str, Any]],
+    order_rows: list[dict[str, Any]],
+) -> None:
+    contragents = ParsedWorkbook(
+        source_type="contragents",
+        rows=counterparty_rows,
+        context_columns=[c for c in MOYSKLAD_EXCEL_COLUMNS if c not in SEGMENT_COLUMNS],
+        segment_columns=[],
+        total_rows=len(counterparty_rows),
+        meta={"source": "moysklad", "synced": True},
+    )
+    orders_wb = ParsedWorkbook(
+        source_type="orders",
+        rows=order_rows,
+        context_columns=[
+            "№",
+            "Контрагент",
+            "Дата",
+            "Сумма",
+            "Статус",
+            "Комментарий",
+            "Канал продаж",
+        ],
+        segment_columns=[],
+        total_rows=len(order_rows),
+        meta={"source": "moysklad", "synced": True},
+    )
+    hub.set_workbook(contragents, orders_wb)
+    hub.results = []
+    hub.meta = {}
+    hub.results_from_cache = False
+    hub.workbook_hash = f"moysklad:{len(counterparty_rows)}:{len(order_rows)}"
+
+
+def _cache_matches_limits(cached: dict[str, Any], max_counterparties: int, max_orders: int) -> bool:
+    return (
+        cached.get("max_counterparties") == max_counterparties
+        and cached.get("max_orders") == max_orders
+    )
+
+
+async def _load_from_cache(
+    cache: CacheService,
+    hub: DataHub,
+    *,
+    max_counterparties: int,
+    max_orders: int,
+) -> MoySkladSyncResult | None:
+    cached = await cache.get_moysklad_sync()
+    if not cached or not _cache_matches_limits(cached, max_counterparties, max_orders):
+        return None
+    counterparty_rows = cached.get("counterparty_rows") or []
+    order_rows = cached.get("order_rows") or []
+    if not counterparty_rows:
+        return None
+    _apply_rows_to_hub(hub, counterparty_rows, order_rows)
+    cp_count = len(counterparty_rows)
+    orders_count = len(order_rows)
+    return MoySkladSyncResult(
+        success=True,
+        counterparties_count=cp_count,
+        orders_count=orders_count,
+        api_counterparties_total=cached.get("api_cp_total"),
+        api_orders_total=cached.get("api_orders_total"),
+        from_cache=True,
+        message=(
+            f"Из кэша: {cp_count} контрагентов и {orders_count} заказов "
+            f"(Мой Склад)"
+        ),
+    )
 
 
 async def sync_moysklad_to_hub(
@@ -32,6 +111,8 @@ async def sync_moysklad_to_hub(
     *,
     max_counterparties: int = 0,
     max_orders: int = 0,
+    cache: CacheService | None = None,
+    force_refresh: bool = False,
 ) -> MoySkladSyncResult:
     if not client.enabled:
         return MoySkladSyncResult(
@@ -40,6 +121,16 @@ async def sync_moysklad_to_hub(
             orders_count=0,
             message="Мой Склад не настроен (MOYSKLAD_API_TOKEN / MOYSKLAD_ENABLED)",
         )
+
+    if cache and not force_refresh:
+        cached_result = await _load_from_cache(
+            cache,
+            hub,
+            max_counterparties=max_counterparties,
+            max_orders=max_orders,
+        )
+        if cached_result:
+            return cached_result
 
     try:
         api_cp_total = await client.get_entity_count("/entity/counterparty")
@@ -66,36 +157,19 @@ async def sync_moysklad_to_hub(
     order_rows = [order_to_row(order, agents_by_id) for order in orders_raw]
     apply_order_stats(counterparty_rows, compute_order_stats(order_rows))
 
-    contragents = ParsedWorkbook(
-        source_type="contragents",
-        rows=counterparty_rows,
-        context_columns=[c for c in MOYSKLAD_EXCEL_COLUMNS if c not in SEGMENT_COLUMNS],
-        segment_columns=[],
-        total_rows=len(counterparty_rows),
-        meta={"source": "moysklad", "synced": True},
-    )
-    orders_wb = ParsedWorkbook(
-        source_type="orders",
-        rows=order_rows,
-        context_columns=[
-            "№",
-            "Контрагент",
-            "Дата",
-            "Сумма",
-            "Статус",
-            "Комментарий",
-            "Канал продаж",
-        ],
-        segment_columns=[],
-        total_rows=len(order_rows),
-        meta={"source": "moysklad", "synced": True},
-    )
+    _apply_rows_to_hub(hub, counterparty_rows, order_rows)
 
-    hub.set_workbook(contragents, orders_wb)
-    hub.results = []
-    hub.meta = {}
-    hub.results_from_cache = False
-    hub.workbook_hash = f"moysklad:{len(counterparty_rows)}:{len(order_rows)}"
+    if cache:
+        await cache.save_moysklad_sync(
+            {
+                "counterparty_rows": counterparty_rows,
+                "order_rows": order_rows,
+                "api_cp_total": api_cp_total,
+                "api_orders_total": api_orders_total,
+                "max_counterparties": max_counterparties,
+                "max_orders": max_orders,
+            }
+        )
 
     return MoySkladSyncResult(
         success=True,

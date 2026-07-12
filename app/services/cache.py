@@ -18,6 +18,7 @@ from app.config import Settings
 
 CACHE_PREFIX = "xlsx:"
 RESULTS_PREFIX = "results:"
+MOYSKLAD_SYNC_KEY = "moysklad:sync"
 LATEST_RESULTS_KEY = "latest"
 
 
@@ -165,6 +166,19 @@ class CacheService:
     async def get_messenger_index(self) -> dict[str, Any] | None:
         try:
             hit = await self._backend.get("messenger:telegram")
+            return hit if isinstance(hit, dict) else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    async def save_moysklad_sync(self, payload: dict[str, Any]) -> None:
+        try:
+            await self._backend.set(MOYSKLAD_SYNC_KEY, payload, self._ttl)
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def get_moysklad_sync(self) -> dict[str, Any] | None:
+        try:
+            hit = await self._backend.get(MOYSKLAD_SYNC_KEY)
             return hit if isinstance(hit, dict) else None
         except Exception:  # noqa: BLE001
             return None
