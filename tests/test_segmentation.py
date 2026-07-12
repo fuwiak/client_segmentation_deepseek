@@ -31,7 +31,7 @@ def test_parse_ai_response_marks_only_newly_filled_fields() -> None:
     assert "ТГ ник" not in ai_fields
 
 
-def test_parse_ai_response_does_not_mark_preexisting_values() -> None:
+def test_parse_ai_response_marks_ai_returned_fields() -> None:
     service = _service()
     rows = [{"UUID": "2", "Группы": "новый", "Пол": "Женский"}]
     content = (
@@ -41,9 +41,9 @@ def test_parse_ai_response_does_not_mark_preexisting_values() -> None:
 
     result = service._parse_ai_response(content, rows)[0]
 
-    # Both columns already had a value before -> not "added by AI"
-    assert "Группы" not in result["_ai_fields"]
-    assert "Пол" not in result["_ai_fields"]
+    assert result["Группы"] == "постоянный клиент"
+    assert "Группы" in result["_ai_fields"]
+    assert "Пол" in result["_ai_fields"]
 
 
 def test_parse_ai_response_invalid_json_falls_back_to_heuristic() -> None:

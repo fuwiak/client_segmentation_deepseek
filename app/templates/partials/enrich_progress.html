@@ -4,16 +4,23 @@
   {% set total = total|default(0) %}
   {% set percent = percent|default(0) %}
   {% set error = error|default('') %}
+  {% set sales_filter = sales_filter|default('all') %}
+  {% set tag_filter = tag_filter|default('') %}
+  {% set status_filter = status_filter|default('') %}
   {% if status == 'running' %}
     <p class="hint">Обогащение из WhatsApp/Telegram… {{ done }}/{{ total }} ({{ percent }}%)</p>
     <div class="progress-bar"><div class="progress-fill" style="width: {{ percent }}%"></div></div>
-    <div hx-get="/enrich/progress" hx-trigger="every 2s" hx-target="#enrich-progress-block" hx-swap="outerHTML"></div>
+    <div hx-get="/enrich/progress?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}" hx-trigger="every 2s" hx-target="#enrich-progress-block" hx-swap="outerHTML"></div>
   {% elif status == 'done' %}
-    <p class="hint ok">Обогащение завершено: {{ total }} клиентов.</p>
+    <p class="hint ok">Обогащение завершено: {{ total }} клиентов. Таблица обновлена.</p>
     <a href="/download/clients/xlsx" class="btn secondary small">Скачать таблицу (.xlsx)</a>
+    <div hx-get="/clients/table?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}"
+         hx-trigger="load"
+         hx-target="#clients-table-block"
+         hx-swap="innerHTML"></div>
   {% elif status == 'error' %}
     <p class="hint warn">Ошибка: {{ error }}</p>
   {% else %}
-    <p class="hint muted">Нажмите «Обогатить из мессенджеров», чтобы подтянуть переписку и заполнить поля AI.</p>
+    <p class="hint muted">Нажмите «Обогатить из мессенджеров», чтобы подтянуть переписку и заполнить поля AI (Группы, Пол, ТГ ник…).</p>
   {% endif %}
 </div>

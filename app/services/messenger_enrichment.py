@@ -328,10 +328,11 @@ class MessengerEnrichmentService:
         for col in ENRICHMENT_COLUMNS:
             value = ai.get(col)
             if value not in (None, "", "null"):
-                if not merged.get(col):
-                    ai_fields.append(col)
-                    enrichment_fields.append(col)
                 merged[col] = value
+                if col not in ai_fields:
+                    ai_fields.append(col)
+                if col not in enrichment_fields:
+                    enrichment_fields.append(col)
 
         if not merged.get("Пол"):
             guessed = guess_gender(merged.get("Заказчик или получатель"))
@@ -394,7 +395,7 @@ class MessengerEnrichmentService:
             enrichment_fields.append("Саммари")
 
         merged["_reasoning"] = "Эвристика по переписке (без AI или API недоступен)"
-        merged["_ai_processed"] = bool(merged.get("_ai_processed"))
+        merged["_ai_processed"] = bool(enrichment_fields) or bool(merged.get("_ai_processed"))
         merged["_ai_fields"] = list(dict.fromkeys(ai_fields))
         merged["_enrichment_fields"] = list(dict.fromkeys(enrichment_fields))
         merged["_enrichment_source"] = "messenger_heuristic"
@@ -405,6 +406,9 @@ class MessengerEnrichmentService:
         base["_enrichment_source"] = "orders_only"
         base["_messenger_sources"] = row.get("_messenger_sources") or []
         base["_messenger_context"] = row.get("_messenger_context") or []
+        if base.get("_ai_fields"):
+            base["_enrichment_fields"] = list(base.get("_ai_fields") or [])
+            base["_ai_processed"] = True
         return base
 
     @staticmethod

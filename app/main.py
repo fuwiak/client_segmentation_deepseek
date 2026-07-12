@@ -29,6 +29,7 @@ from app.services.excel_parser import (
   enrich_with_orders,
   parse_workbook,
 )
+from app.services.export_format import export_columns, merge_enriched_rows, row_for_export
 from app.services.fields import enrich_row_computed
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
@@ -154,6 +155,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
 async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
   _enrich_progress.update(status="running", done=0, total=len(rows), error="")
   service = MessengerEnrichmentService(settings, cache)
+  all_rows = hub.active_rows()
 
   def _bump(n: int) -> None:
     _enrich_progress["done"] = min(_enrich_progress["total"], _enrich_progress["done"] + n)
@@ -161,18 +163,21 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
   try:
     enriched = await service.enrich_all(rows, progress_cb=_bump)
     enriched = [enrich_row_computed(r) for r in enriched]
-    with_messages = sum(1 for r in enriched if r.get("_messenger_context"))
+    merged = merge_enriched_rows(all_rows, enriched, key_fn=service._row_key)
+    with_messages = sum(1 for r in merged if r.get("_messenger_context"))
+    ai_filled = sum(1 for r in merged if r.get("_enrichment_fields") or r.get("_ai_processed"))
     meta = {
       **(hub.meta or {}),
       "enriched": True,
-      "enrichment_total": len(enriched),
+      "enrichment_total": len(merged),
       "enrichment_with_messages": with_messages,
+      "enrichment_ai_filled": ai_filled,
     }
-    hub.set_results(enriched, meta)
+    hub.set_results(merged, meta)
     if hub.workbook_hash:
       await cache.save_segmentation_results(
         hub.workbook_hash,
-        {"results": enriched, "meta": meta},
+        {"results": merged, "meta": meta},
       )
     _enrich_progress["done"] = _enrich_progress["total"]
     _enrich_progress["status"] = "done"
@@ -183,16 +188,30 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
 
 def _export_rows() -> list[dict[str, Any]]:
   rows = hub.active_rows()
-  clean: list[dict[str, Any]] = []
-  for row in rows:
-    item = {col: row.get(col) for col in CLIENT_DISPLAY_COLUMNS}
-    item["Источник обогащения"] = row.get("_enrichment_source") or (
-      "ai_segmentation" if row.get("_ai_processed") else hub.data_source_label()
-    )
-    channels = row.get("_messenger_sources") or []
-    item["Каналы переписки"] = ", ".join(channels) if channels else "—"
-    clean.append(item)
-  return clean
+  columns = export_columns(hub.parsed)
+  return [row_for_export(row, columns) for row in rows]
+
+
+def _clients_ctx(
+  request: Request,
+  *,
+  sales_filter: str = "all",
+  tag: str = "",
+  status: str = "",
+) -> dict[str, Any]:
+  rows = hub.filter_rows(sales_filter=sales_filter, tag=tag, status=status)
+  return _ctx(
+    request,
+    clients=rows[:200],
+    total=len(rows),
+    sales_filter=sales_filter,
+    tag_filter=tag,
+    status_filter=status,
+    data_source=hub.data_source_label(),
+    messenger_available=settings.messenger_enabled and (
+      get_green_api_client(settings).enabled or get_telegram_client(settings).enabled
+    ),
+  )
 
 
 async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
@@ -283,24 +302,28 @@ async def clients_page(
   status: str = Query(""),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
-  rows = hub.filter_rows(sales_filter=filter, tag=tag, status=status)
   return templates.TemplateResponse(
     "clients.html",
-    _ctx(
-      request,
-      active_page="clients",
-      page_title="Клиенты",
-      subtitle="AI-база с фильтрами и раскрытием заказов",
-      clients=rows[:200],
-      total=len(rows),
-      sales_filter=filter,
-      tag_filter=tag,
-      status_filter=status,
-      data_source=hub.data_source_label(),
-      messenger_available=settings.messenger_enabled and (
-        get_green_api_client(settings).enabled or get_telegram_client(settings).enabled
-      ),
-    ),
+    {
+      **_clients_ctx(request, sales_filter=filter, tag=tag, status=status),
+      "active_page": "clients",
+      "page_title": "Клиенты",
+      "subtitle": "AI-база с фильтрами и раскрытием заказов",
+    },
+  )
+
+
+@app.get("/clients/table", response_class=HTMLResponse)
+async def clients_table_partial(
+  request: Request,
+  filter: str = Query("all"),
+  tag: str = Query(""),
+  status: str = Query(""),
+) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
+  return templates.TemplateResponse(
+    "partials/clients_table.html",
+    _clients_ctx(request, sales_filter=filter, tag=tag, status=status),
   )
 
 
@@ -617,16 +640,8 @@ async def segment_progress(request: Request) -> HTMLResponse:
 @app.get("/download/xlsx")
 async def download_xlsx() -> StreamingResponse:
   await _hydrate_hub_from_cache()
-  results = hub.results
-  if not results:
-    df = pd.DataFrame()
-  else:
-    clean = []
-    for row in results:
-      item = {k: v for k, v in row.items() if not str(k).startswith("_")}
-      clean.append(item)
-    df = pd.DataFrame(clean)
-
+  rows = _export_rows()
+  df = pd.DataFrame(rows) if rows else pd.DataFrame()
   buffer = io.BytesIO()
   df.to_excel(buffer, index=False, engine="openpyxl")
   buffer.seek(0)
@@ -656,7 +671,10 @@ async def download_clients_xlsx() -> StreamingResponse:
 @app.post("/enrich/start", response_class=HTMLResponse)
 async def enrich_start(
   request: Request,
-  limit: int = Form(50),
+  limit: int = Form(500),
+  filter: str = Query("all"),
+  tag: str = Query(""),
+  status: str = Query(""),
 ) -> HTMLResponse:
   rows = hub.active_rows()
   if not rows:
@@ -669,10 +687,13 @@ async def enrich_start(
         total=0,
         percent=0,
         error="Нет данных клиентов. Сначала синхронизируйте Мой Склад или загрузите Excel.",
+        sales_filter=filter,
+        tag_filter=tag,
+        status_filter=status,
       ),
     )
 
-  selected = rows[: max(1, min(limit, 200))]
+  selected = rows[: max(1, min(limit, 500))]
   _enrich_progress.update(status="running", done=0, total=len(selected), error="")
   asyncio.create_task(_run_enrichment(selected))
 
@@ -685,13 +706,21 @@ async def enrich_start(
       total=len(selected),
       percent=0,
       error="",
+      sales_filter=filter,
+      tag_filter=tag,
+      status_filter=status,
     ),
   )
 
 
 @app.get("/enrich/progress", response_class=HTMLResponse)
-async def enrich_progress(request: Request) -> HTMLResponse:
-  status = _enrich_progress["status"]
+async def enrich_progress(
+  request: Request,
+  filter: str = Query("all"),
+  tag: str = Query(""),
+  status: str = Query(""),
+) -> HTMLResponse:
+  enrich_status = _enrich_progress["status"]
   total = _enrich_progress["total"]
   done = _enrich_progress["done"]
   percent = int(done / total * 100) if total else 0
@@ -699,11 +728,14 @@ async def enrich_progress(request: Request) -> HTMLResponse:
     "partials/enrich_progress.html",
     _ctx(
       request,
-      status=status,
+      status=enrich_status,
       done=done,
       total=total,
       percent=percent,
       error=_enrich_progress["error"],
+      sales_filter=filter,
+      tag_filter=tag,
+      status_filter=status,
     ),
   )
 

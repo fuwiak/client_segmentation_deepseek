@@ -52,7 +52,7 @@ def test_counterparty_to_row_maps_fields() -> None:
     assert row["UUID"] == "cp-uuid-1"
     assert row["Наименование"] == "Иван Петров"
     assert row["Телефон"] == "+79991234567"
-    assert row["Группы"] == "VIP, Розница"
+    assert row["Метки"] == "VIP, Розница"
     assert row["_moysklad_id"] == "cp-uuid-1"
     assert row["_moysklad_tags"] == ["VIP", "Розница"]
 

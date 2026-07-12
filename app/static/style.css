@@ -937,12 +937,12 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   color: var(--muted);
 }
 
-.comment-cell {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.clients-table-wide { font-size: 13px; }
+.clients-table-wide th,
+.clients-table-wide td { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.clients-table-wide .tags-cell { max-width: 140px; }
+.clients-table-wide .muted-cell { color: var(--muted); font-size: 12px; }
+.tag-chip.ai-chip { background: var(--primary-soft); color: var(--primary); }
 
 /* ---- Responsive --------------------------------------------------------- */
 

@@ -12,11 +12,14 @@
     </div>
 
     <div class="tags-row">
+      {% if client.get('Метки') or client.get('_moysklad_tags_display') %}
+      <span class="chip muted">МС: {{ client.get('Метки') or client.get('_moysklad_tags_display') }}</span>
+      {% endif %}
       {% for tag in (client.get('Теги') or '').split() %}
       <span class="tag-chip">{{ tag }}</span>
       {% endfor %}
       {% for g in (client.get('Группы') or '').split('/') %}
-      <span class="tag-chip">{{ g.strip() }}</span>
+      {% if g.strip() %}<span class="tag-chip ai-chip">{{ g.strip() }}</span>{% endif %}
       {% endfor %}
     </div>
 

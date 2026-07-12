@@ -1,0 +1,57 @@
+<div class="table-wrap">
+  <table class="clients-table clients-table-wide">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Клиент</th>
+        <th>Метки</th>
+        <th>Группы</th>
+        <th>Заказчик / получатель</th>
+        <th>Пол</th>
+        <th>ТГ ник</th>
+        <th>Теги AI</th>
+        <th>AI</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in clients %}
+      {% set cid = row.get('UUID') or row.get('Наименование') %}
+      <tr>
+        <td>
+          <button class="btn-icon expand-btn" title="Заказы"
+                  hx-get="/clients/{{ cid }}/orders"
+                  hx-target="#orders-{{ loop.index }}"
+                  hx-swap="innerHTML">▾</button>
+        </td>
+        <td>
+          <strong>{{ row.get('Наименование') or '—' }}</strong>
+          {% if row.get('_messenger_sources') %}
+          <span class="mini-badge" title="Есть переписка">{{ row.get('_messenger_sources')|join(', ') }}</span>
+          {% endif %}
+        </td>
+        <td class="tags-cell muted-cell">{{ row.get('Метки') or row.get('_moysklad_tags_display') or '—' }}</td>
+        <td>{{ row.get('Группы') or '—' }}</td>
+        <td>{{ row.get('Заказчик или получатель') or '—' }}</td>
+        <td>{{ row.get('Пол') or '—' }}</td>
+        <td>{{ row.get('ТГ ник') or row.get('Ник в тг/вк') or '—' }}</td>
+        <td class="tags-cell">{{ row.get('Теги') or '—' }}</td>
+        <td>
+          {% if row.get('_ai_processed') or row.get('_enrichment_fields') %}
+          <span class="ai-badge" title="{{ row.get('_enrichment_fields')|join(', ') if row.get('_enrichment_fields') else 'AI' }}">AI</span>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          <button class="btn-text"
+                  hx-get="/clients/{{ cid }}"
+                  hx-target="#modal-root"
+                  hx-swap="innerHTML">Карточка</button>
+        </td>
+      </tr>
+      <tr class="orders-expand-row">
+        <td colspan="10" id="orders-{{ loop.index }}"></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

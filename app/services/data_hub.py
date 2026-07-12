@@ -87,6 +87,7 @@ class DataHub:
         for r in rows
         if tag_l in str(r.get("Теги") or "").lower()
         or tag_l in str(r.get("Группы") or "").lower()
+        or tag_l in str(r.get("Метки") or "").lower()
       ]
     if status:
       rows = [

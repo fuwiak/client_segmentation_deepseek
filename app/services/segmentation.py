@@ -231,9 +231,9 @@ class SegmentationService:
             for col in all_ai_cols:
                 value = ai.get(col)
                 if value not in (None, "", "null"):
-                    if not row.get(col):
-                        ai_fields.append(col)
                     merged[col] = value
+                    if col not in ai_fields:
+                        ai_fields.append(col)
 
             if not merged.get("Пол"):
                 guessed = guess_gender(merged.get("Заказчик или получатель"))

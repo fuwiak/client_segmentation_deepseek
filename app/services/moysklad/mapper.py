@@ -26,20 +26,21 @@ def _minor_to_rub(value: Any) -> float | None:
 
 def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
     tags = counterparty.get("tags") or []
-    groups = ", ".join(str(t) for t in tags) if isinstance(tags, list) else str(tags)
+    labels = ", ".join(str(t) for t in tags) if isinstance(tags, list) else str(tags)
 
     return {
         "UUID": counterparty.get("id"),
         "Наименование": counterparty.get("name"),
         "Телефон": counterparty.get("phone"),
         "E-mail": counterparty.get("email"),
-        "Группы": groups,
+        "Метки": labels,
         "Код": counterparty.get("externalCode"),
         "Архивный": "да" if counterparty.get("archived") else "нет",
         "Фактический адрес": counterparty.get("actualAddress"),
         "Юридический адрес": counterparty.get("legalAddress"),
         "_moysklad_id": counterparty.get("id"),
         "_moysklad_tags": list(tags) if isinstance(tags, list) else [],
+        "_moysklad_tags_display": labels,
         "_source": SourceType.MOYSKLAD.value,
     }
 
