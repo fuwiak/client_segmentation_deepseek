@@ -22,14 +22,16 @@ class MoySkladSyncResult:
     counterparties_count: int
     orders_count: int
     message: str
+    api_counterparties_total: int | None = None
+    api_orders_total: int | None = None
 
 
 async def sync_moysklad_to_hub(
     client: MoySkladClientBase,
     hub: DataHub,
     *,
-    max_counterparties: int = 500,
-    max_orders: int = 2000,
+    max_counterparties: int = 0,
+    max_orders: int = 0,
 ) -> MoySkladSyncResult:
     if not client.enabled:
         return MoySkladSyncResult(
@@ -40,6 +42,8 @@ async def sync_moysklad_to_hub(
         )
 
     try:
+        api_cp_total = await client.get_entity_count("/entity/counterparty")
+        api_orders_total = await client.get_entity_count("/entity/customerorder")
         counterparties_raw = await client.fetch_all_counterparties(
             max_rows=max_counterparties
         )
@@ -97,6 +101,8 @@ async def sync_moysklad_to_hub(
         success=True,
         counterparties_count=len(counterparty_rows),
         orders_count=len(order_rows),
+        api_counterparties_total=api_cp_total,
+        api_orders_total=api_orders_total,
         message=(
             f"Загружено {len(counterparty_rows)} контрагентов "
             f"и {len(order_rows)} заказов из Мой Склад"

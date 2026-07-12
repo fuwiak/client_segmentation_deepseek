@@ -33,7 +33,23 @@
     </button>
     <a href="/download/clients/xlsx" class="btn secondary small">Экспорт .xlsx</a>
   </div>
-  <p class="result-count">{{ total }} клиентов{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}</p>
+  <p class="result-count">
+    {{ total }} клиентов{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}
+    {% if total > per_page %}
+      · показано {{ page_start }}–{{ page_end }}
+    {% endif %}
+  </p>
+  {% if total_pages > 1 %}
+  <nav class="pagination" aria-label="Страницы клиентов">
+    {% if page > 1 %}
+    <a href="/clients?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}&page={{ page - 1 }}" class="btn secondary small">← Назад</a>
+    {% endif %}
+    <span class="pagination-info">Стр. {{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="/clients?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}&page={{ page + 1 }}" class="btn secondary small">Вперёд →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
   <div id="clients-sync-status"></div>
   {% include 'partials/enrich_progress.html' %}
 </section>

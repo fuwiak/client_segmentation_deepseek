@@ -130,6 +130,7 @@ async def test_push_segments_to_moysklad_updates_counterparties() -> None:
 async def test_sync_moysklad_to_hub_populates_data_hub() -> None:
     client = MagicMock()
     client.enabled = True
+    client.get_entity_count = AsyncMock(return_value=1)
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
     client.fetch_all_customer_orders = AsyncMock(return_value=[SAMPLE_ORDER])
 
@@ -174,7 +175,8 @@ async def test_moysklad_client_pagination() -> None:
     client = MoySkladClient(settings)
 
     responses = [
-        {"rows": [{"id": "1", "name": "A"}, {"id": "2", "name": "B"}]},
+        {"rows": [{"id": "1", "name": "A"}, {"id": "2", "name": "B"}], "meta": {"size": 2}},
+        {"rows": [{"id": "1", "name": "A"}], "meta": {"size": 2}},
     ]
     call_idx = {"n": 0}
 
@@ -198,3 +200,5 @@ async def test_moysklad_client_pagination() -> None:
         assert len(rows) == 2
         assert rows[0]["id"] == "1"
         assert rows[1]["id"] == "2"
+        count = await client.get_entity_count("/entity/counterparty")
+        assert count == 2

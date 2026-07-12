@@ -35,6 +35,10 @@ class MoySkladClientBase(ABC):
         ...
 
     @abstractmethod
+    async def get_entity_count(self, path: str) -> int | None:
+        ...
+
+    @abstractmethod
     async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
         ...
 
@@ -67,58 +71,72 @@ class MoySkladClient(MoySkladClientBase):
         limit: int,
         offset: int,
         extra_params: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+        timeout: float = 30,
+    ) -> tuple[list[dict[str, Any]], int | None]:
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if extra_params:
             params.update(extra_params)
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(
                 f"{self._base_url}{path}",
                 headers=self._headers(),
                 params=params,
             )
             resp.raise_for_status()
-            return resp.json().get("rows", [])
+            payload = resp.json()
+            total = payload.get("meta", {}).get("size")
+            return payload.get("rows", []), total
 
     async def _fetch_all(
         self,
         path: str,
         *,
         max_rows: int,
-        page_size: int = 100,
+        page_size: int = 1000,
         extra_params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         offset = 0
-        while len(rows) < max_rows:
-            batch = await self._get_page(
+        unlimited = max_rows <= 0
+        while unlimited or len(rows) < max_rows:
+            batch_limit = page_size if unlimited else min(page_size, max_rows - len(rows))
+            batch, _ = await self._get_page(
                 path,
-                limit=min(page_size, max_rows - len(rows)),
+                limit=batch_limit,
                 offset=offset,
                 extra_params=extra_params,
+                timeout=60,
             )
             if not batch:
                 break
             rows.extend(batch)
             if len(batch) < page_size:
                 break
-            offset += page_size
+            offset += len(batch)
         return rows
 
     async def get_counterparties(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         if not self._enabled:
             return []
-        return await self._get_page("/entity/counterparty", limit=limit, offset=offset)
+        rows, _ = await self._get_page("/entity/counterparty", limit=limit, offset=offset)
+        return rows
+
+    async def get_entity_count(self, path: str) -> int | None:
+        if not self._enabled:
+            return None
+        _, total = await self._get_page(path, limit=1, offset=0)
+        return total
 
     async def get_customer_orders(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         if not self._enabled:
             return []
-        return await self._get_page(
+        rows, _ = await self._get_page(
             "/entity/customerorder",
             limit=limit,
             offset=offset,
             extra_params={"expand": "agent,state"},
         )
+        return rows
 
     async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
         if not self._enabled:
@@ -185,6 +203,9 @@ class MoySkladStub(MoySkladClientBase):
 
     async def health_check(self) -> bool:
         return False
+
+    async def get_entity_count(self, path: str) -> int | None:
+        return None
 
     async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
         return []

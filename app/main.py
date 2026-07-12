@@ -204,12 +204,24 @@ def _clients_ctx(
   sales_filter: str = "all",
   tag: str = "",
   status: str = "",
+  page: int = 1,
 ) -> dict[str, Any]:
   rows = hub.filter_rows(sales_filter=sales_filter, tag=tag, status=status)
+  per_page = max(1, settings.clients_page_size)
+  total = len(rows)
+  total_pages = max(1, (total + per_page - 1) // per_page)
+  page = max(1, min(page, total_pages))
+  start = (page - 1) * per_page
+  end = start + per_page
   return _ctx(
     request,
-    clients=rows[:200],
-    total=len(rows),
+    clients=rows[start:end],
+    total=total,
+    page=page,
+    per_page=per_page,
+    total_pages=total_pages,
+    page_start=start + 1 if total else 0,
+    page_end=min(end, total),
     sales_filter=sales_filter,
     tag_filter=tag,
     status_filter=status,
@@ -310,12 +322,13 @@ async def clients_page(
   filter: str = Query("all"),
   tag: str = Query(""),
   status: str = Query(""),
+  page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   return templates.TemplateResponse(
     "clients.html",
     {
-      **_clients_ctx(request, sales_filter=filter, tag=tag, status=status),
+      **_clients_ctx(request, sales_filter=filter, tag=tag, status=status, page=page),
       "active_page": "clients",
       "page_title": "Клиенты",
       "subtitle": "AI-база с фильтрами и раскрытием заказов",
@@ -329,11 +342,12 @@ async def clients_table_partial(
   filter: str = Query("all"),
   tag: str = Query(""),
   status: str = Query(""),
+  page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   return templates.TemplateResponse(
     "partials/clients_table.html",
-    _clients_ctx(request, sales_filter=filter, tag=tag, status=status),
+    _clients_ctx(request, sales_filter=filter, tag=tag, status=status, page=page),
   )
 
 
@@ -754,6 +768,8 @@ async def enrich_progress(
 async def moysklad_status(request: Request) -> HTMLResponse:
   client = get_moysklad_client(settings)
   healthy = await client.health_check() if client.enabled else False
+  api_cp_total = await client.get_entity_count("/entity/counterparty") if client.enabled else None
+  api_orders_total = await client.get_entity_count("/entity/customerorder") if client.enabled else None
   hub_rows = len(hub.parsed.rows) if hub.parsed and hub.parsed.rows else 0
   hub_orders = (
     len(hub.orders_parsed.rows)
@@ -773,6 +789,8 @@ async def moysklad_status(request: Request) -> HTMLResponse:
       "api_url": settings.moysklad_api_url,
       "hub_rows": hub_rows,
       "hub_orders": hub_orders,
+      "api_cp_total": api_cp_total,
+      "api_orders_total": api_orders_total,
       "from_moysklad": from_moysklad,
     },
   )
@@ -797,6 +815,8 @@ async def moysklad_sync(request: Request) -> HTMLResponse:
       "api_url": settings.moysklad_api_url,
       "hub_rows": result.counterparties_count if result.success else 0,
       "hub_orders": result.orders_count if result.success else 0,
+      "api_cp_total": result.api_counterparties_total,
+      "api_orders_total": result.api_orders_total,
       "from_moysklad": result.success,
       "sync_message": result.message,
       "sync_ok": result.success,

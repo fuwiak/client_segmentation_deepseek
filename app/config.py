@@ -13,8 +13,9 @@ class Settings(BaseSettings):
     moysklad_api_token: str = ""
     moysklad_api_url: str = "https://api.moysklad.ru/api/remap/1.2"
     moysklad_enabled: bool = False
-    moysklad_sync_limit: int = 500
-    moysklad_sync_orders_limit: int = 2000
+    moysklad_sync_limit: int = 0  # 0 = все контрагенты
+    moysklad_sync_orders_limit: int = 0  # 0 = все заказы
+    clients_page_size: int = 100
     moysklad_auto_sync: bool = True
 
     # --- Интеграции-источники (feature-flags; placeholder-коннекторы) ---

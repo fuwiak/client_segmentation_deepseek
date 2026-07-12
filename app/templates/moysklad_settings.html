@@ -30,11 +30,11 @@
       </div>
       <div class="config-row">
         <dt>MOYSKLAD_SYNC_LIMIT</dt>
-        <dd>{{ moysklad_config.sync_limit }}</dd>
+        <dd>{{ moysklad_config.sync_limit if moysklad_config.sync_limit else '0 (все)' }}</dd>
       </div>
       <div class="config-row">
         <dt>MOYSKLAD_SYNC_ORDERS_LIMIT</dt>
-        <dd>{{ moysklad_config.sync_orders_limit }}</dd>
+        <dd>{{ moysklad_config.sync_orders_limit if moysklad_config.sync_orders_limit else '0 (все)' }}</dd>
       </div>
     </dl>
     <p class="hint">Значения задаются через переменные окружения (Railway / <code>.env</code>).</p>

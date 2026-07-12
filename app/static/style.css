@@ -835,6 +835,11 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .moysklad-block .sync-msg.ok { color: var(--success); }
 .moysklad-block .sync-msg.warn { color: var(--warning); }
 .moysklad-stats { margin: 0; }
+.moysklad-total { font-weight: 500; }
+.moysklad-stats strong { color: var(--text); }
+
+.pagination { display: flex; align-items: center; gap: var(--sm); flex-wrap: wrap; margin-top: var(--xs); }
+.pagination-info { font-size: 0.85rem; color: var(--muted); }
 
 .moysklad-push-area { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sm); }
 .moysklad-push-area.inline-push { margin: 0; }
