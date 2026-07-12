@@ -37,6 +37,7 @@ from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
 from app.services.segmentation import SegmentationService
 from app.services.tag_rules import (
+  RULE_TYPE_OPTIONS,
   get_tag_rules,
   hydrate_tag_rules,
   rule_label,
@@ -410,7 +411,7 @@ async def clients_table_partial(
 async def tag_rules_panel(request: Request) -> HTMLResponse:
   return templates.TemplateResponse(
     "partials/tag_rules_panel.html",
-    _ctx(request, tag_rules=get_tag_rules(), saved=False),
+    _ctx(request, tag_rules=get_tag_rules(), saved=False, rule_type_options=RULE_TYPE_OPTIONS),
   )
 
 
@@ -421,7 +422,7 @@ async def tag_rules_save(request: Request) -> HTMLResponse:
   await save_tag_rules(cache, rules)
   return templates.TemplateResponse(
     "partials/tag_rules_panel.html",
-    _ctx(request, tag_rules=get_tag_rules(), saved=True),
+    _ctx(request, tag_rules=get_tag_rules(), saved=True, rule_type_options=RULE_TYPE_OPTIONS),
   )
 
 

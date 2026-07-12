@@ -7,7 +7,7 @@
 <p class="sync-msg ok">Правила сохранены</p>
 {% endif %}
 
-<p class="hint">Теги присваиваются по этим правилам при обогащении и сегментации. Изменения сохраняются в кэше (Redis).</p>
+<p class="hint">Теги присваиваются по этим правилам при обогащении и сегментации. Можно добавлять свои теги.</p>
 
 <form
   class="tag-rules-form"
@@ -15,14 +15,37 @@
   hx-target="#tag-rules-panel"
   hx-swap="innerHTML"
 >
+  <input type="hidden" name="rule_keys" value="{{ tag_rules | map(attribute='key') | join(',') }}">
+
   {% for rule in tag_rules %}
-  <fieldset class="tag-rule-card">
+  <fieldset class="tag-rule-card {% if rule.key.startswith('custom_') %}tag-rule-custom{% endif %}">
     <label class="tag-rule-enable">
       <input type="checkbox" name="rule_{{ rule.key }}_enabled" {% if rule.enabled %}checked{% endif %}>
+      {% if rule.key.startswith('custom_') %}
+      <input type="text" class="tag-rule-tag-input" name="rule_{{ rule.key }}_tag" value="{{ rule.tag }}" placeholder="#тег">
+      <input type="text" class="tag-rule-title-input" name="rule_{{ rule.key }}_title" value="{{ rule.title }}" placeholder="Название">
+      {% else %}
       <strong>{{ rule.tag }}</strong> — {{ rule.title }}
+      <input type="hidden" name="rule_{{ rule.key }}_tag" value="{{ rule.tag }}">
+      <input type="hidden" name="rule_{{ rule.key }}_title" value="{{ rule.title }}">
+      <input type="hidden" name="rule_{{ rule.key }}_rule_type" value="{{ rule.rule_type }}">
+      {% endif %}
     </label>
-    <input type="hidden" name="rule_{{ rule.key }}_tag" value="{{ rule.tag }}">
-    <input type="hidden" name="rule_{{ rule.key }}_title" value="{{ rule.title }}">
+
+    {% if rule.key.startswith('custom_') %}
+    <label class="tag-rule-field">
+      <span>Тип правила</span>
+      <select name="rule_{{ rule.key }}_rule_type">
+        {% for value, label in rule_type_options %}
+        <option value="{{ value }}" {% if rule.rule_type == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="tag-rule-delete">
+      <input type="checkbox" name="rule_{{ rule.key }}_delete">
+      Удалить это правило
+    </label>
+    {% endif %}
 
     <label class="tag-rule-field">
       <span>Описание (видно в подсказке)</span>
@@ -44,6 +67,42 @@
     {% endif %}
   </fieldset>
   {% endfor %}
+
+  <fieldset class="tag-rule-card tag-rule-new">
+    <legend><strong>+ Новый тег</strong></legend>
+    <label class="tag-rule-field">
+      <span>Тег</span>
+      <input type="text" name="new_tag" placeholder="#корпоратив">
+    </label>
+    <label class="tag-rule-field">
+      <span>Название</span>
+      <input type="text" name="new_title" placeholder="Корпоративный клиент">
+    </label>
+    <label class="tag-rule-field">
+      <span>Описание</span>
+      <textarea name="new_description" rows="2" placeholder="Когда присваивать этот тег…"></textarea>
+    </label>
+    <label class="tag-rule-field">
+      <span>Тип правила</span>
+      <select name="new_rule_type">
+        {% for value, label in rule_type_options %}
+        <option value="{{ value }}" {% if value == 'text_keywords' %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="tag-rule-field">
+      <span>Ключевые слова (через запятую)</span>
+      <input type="text" name="new_keywords" placeholder="корпоратив, юрлицо, ип">
+    </label>
+    <label class="tag-rule-field">
+      <span>Порог (для правил по заказам / чеку)</span>
+      <input type="number" name="new_threshold" min="0" step="1" placeholder="необязательно">
+    </label>
+    <label class="tag-rule-enable">
+      <input type="checkbox" name="new_enabled" checked>
+      Включить сразу после сохранения
+    </label>
+  </fieldset>
 
   <div class="rules-drawer-actions">
     <button type="submit" class="btn">Сохранить правила</button>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -110,7 +111,22 @@ DEFAULT_TAG_RULES: list[TagRule] = [
     ),
 ]
 
+RULE_TYPE_OPTIONS: list[tuple[str, str]] = [
+    ("text_keywords", "Ключевые слова в заказе / переписке"),
+    ("messenger_positive", "Позитив в переписке"),
+    ("messenger_negative", "Негатив в переписке"),
+    ("orders_min", "Мин. число заказов"),
+    ("avg_check_min", "Мин. средний чек"),
+    ("order_amount_min", "Мин. сумма одного заказа"),
+]
+
+NUMERIC_RULE_TYPES = {"orders_min", "avg_check_min", "order_amount_min"}
+
 _rules: list[TagRule] = [TagRule.from_dict(r.to_dict()) for r in DEFAULT_TAG_RULES]
+
+
+def is_custom_rule(rule: TagRule) -> bool:
+    return rule.key.startswith("custom_")
 
 
 def get_tag_rules() -> list[TagRule]:
@@ -266,10 +282,14 @@ async def hydrate_tag_rules(cache: CacheService) -> None:
     raw = await cache.get_tag_rules()
     if not raw:
         return
-    by_key = {r.key: TagRule.from_dict(r) for r in raw}
+    by_key = {str(r["key"]): TagRule.from_dict(r) for r in raw}
     merged: list[TagRule] = []
+    default_keys = {d.key for d in DEFAULT_TAG_RULES}
     for default in DEFAULT_TAG_RULES:
         merged.append(by_key.get(default.key, default))
+    for key, rule in by_key.items():
+        if key not in default_keys:
+            merged.append(rule)
     _rules = merged
 
 
@@ -279,28 +299,90 @@ async def save_tag_rules(cache: CacheService, rules: list[TagRule]) -> None:
     await cache.save_tag_rules([r.to_dict() for r in rules])
 
 
+def _slug_from_tag(tag: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", tag.lstrip("#").lower().replace("ё", "е"))
+    return slug.strip("_") or "tag"
+
+
+def _unique_custom_key(tag: str, used: set[str]) -> str:
+    base = f"custom_{_slug_from_tag(tag)}"
+    key = base
+    n = 2
+    while key in used:
+        key = f"{base}_{n}"
+        n += 1
+    return key
+
+
+def _sources_for_type(rule_type: str) -> list[str]:
+    if rule_type in {"messenger_positive", "messenger_negative"}:
+        return ["messenger"]
+    if rule_type in NUMERIC_RULE_TYPES:
+        return ["orders"]
+    return ["orders", "messenger"]
+
+
+def _parse_rule_from_form(form: dict[str, str], key: str, base: TagRule) -> TagRule | None:
+    if form.get(f"rule_{key}_delete") == "on":
+        return None
+    keywords_raw = form.get(f"rule_{key}_keywords", "")
+    keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
+    threshold_raw = form.get(f"rule_{key}_threshold", "").strip()
+    threshold = float(threshold_raw) if threshold_raw else None
+    rule_type = form.get(f"rule_{key}_rule_type", base.rule_type).strip() or base.rule_type
+    tag = _normalize_tag(form.get(f"rule_{key}_tag", base.tag).strip() or base.tag)
+    title = form.get(f"rule_{key}_title", base.title).strip() or base.title
+    return TagRule(
+        key=key,
+        tag=tag,
+        title=title,
+        description=form.get(f"rule_{key}_description", base.description).strip() or base.description,
+        rule_type=rule_type,
+        enabled=form.get(f"rule_{key}_enabled") == "on",
+        threshold=threshold if threshold is not None else base.threshold,
+        keywords=keywords or base.keywords,
+        sources=_sources_for_type(rule_type),
+    )
+
+
 def rules_from_form(form: dict[str, str]) -> list[TagRule]:
     current = get_tag_rule_map()
+    keys_raw = form.get("rule_keys", "")
+    keys = [k.strip() for k in keys_raw.split(",") if k.strip()]
+    if not keys:
+        keys = [r.key for r in get_tag_rules()]
+
     updated: list[TagRule] = []
-    for default in DEFAULT_TAG_RULES:
-        base = current.get(default.key, default)
-        key = default.key
-        keywords_raw = form.get(f"rule_{key}_keywords", "")
+    used_keys: set[str] = set()
+    for key in keys:
+        base = current.get(key)
+        if not base:
+            continue
+        parsed = _parse_rule_from_form(form, key, base)
+        if parsed:
+            updated.append(parsed)
+            used_keys.add(key)
+
+    new_tag = _normalize_tag(form.get("new_tag", "").strip())
+    if new_tag:
+        new_type = form.get("new_rule_type", "text_keywords").strip() or "text_keywords"
+        new_key = _unique_custom_key(new_tag, used_keys)
+        keywords_raw = form.get("new_keywords", "")
         keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
-        threshold_raw = form.get(f"rule_{key}_threshold", "").strip()
+        threshold_raw = form.get("new_threshold", "").strip()
         threshold = float(threshold_raw) if threshold_raw else None
         updated.append(
             TagRule(
-                key=key,
-                tag=form.get(f"rule_{key}_tag", base.tag).strip() or base.tag,
-                title=form.get(f"rule_{key}_title", base.title).strip() or base.title,
-                description=form.get(f"rule_{key}_description", base.description).strip()
-                or base.description,
-                rule_type=base.rule_type,
-                enabled=form.get(f"rule_{key}_enabled") == "on",
-                threshold=threshold if threshold is not None else base.threshold,
-                keywords=keywords or base.keywords,
-                sources=list(base.sources),
+                key=new_key,
+                tag=new_tag,
+                title=form.get("new_title", "").strip() or new_tag.lstrip("#"),
+                description=form.get("new_description", "").strip()
+                or f"Пользовательское правило для {new_tag}",
+                rule_type=new_type,
+                enabled=form.get("new_enabled") == "on",
+                threshold=threshold,
+                keywords=keywords,
+                sources=_sources_for_type(new_type),
             )
         )
     return updated

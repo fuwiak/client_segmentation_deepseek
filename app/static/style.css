@@ -1006,6 +1006,36 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   border-radius: var(--r-sm);
   font: inherit;
 }
+.tag-rule-card.tag-rule-custom { border-color: rgba(92, 107, 192, 0.35); }
+.tag-rule-card.tag-rule-new {
+  border-style: dashed;
+  background: var(--surface-soft);
+}
+.tag-rule-card legend { font-size: 0.95rem; margin-bottom: var(--sm); }
+.tag-rule-tag-input,
+.tag-rule-title-input {
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font: inherit;
+  max-width: 8rem;
+}
+.tag-rule-title-input { max-width: 10rem; }
+.tag-rule-delete {
+  display: flex;
+  align-items: center;
+  gap: var(--xs);
+  margin-top: var(--sm);
+  font-size: 0.82rem;
+  color: var(--warning);
+}
+.tag-rule-field select {
+  width: 100%;
+  padding: var(--xs) var(--sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font: inherit;
+}
 .tag-rule-type { margin: var(--xs) 0 0; font-size: 0.8rem; }
 .rules-drawer-actions {
   display: flex;

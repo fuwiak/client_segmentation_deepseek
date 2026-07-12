@@ -1,8 +1,24 @@
 from app.services.tag_rules import (
     DEFAULT_TAG_RULES,
+    TagRule,
     evaluate_tags_for_row,
+    get_tag_rules,
+    hydrate_tag_rules,
     rules_from_form,
+    save_tag_rules,
 )
+import pytest
+
+
+class _FakeCache:
+    def __init__(self) -> None:
+        self.payload: list[dict] | None = None
+
+    async def get_tag_rules(self) -> list[dict] | None:
+        return self.payload
+
+    async def save_tag_rules(self, payload: list[dict]) -> None:
+        self.payload = payload
 
 
 def test_evaluate_vip_from_avg_check() -> None:
@@ -30,3 +46,78 @@ def test_rules_from_form_updates_description() -> None:
     )
     assert rules[0].description == "Новое правило: 3+ заказа"
     assert rules[0].threshold == 3
+
+
+def test_rules_from_form_adds_custom_tag() -> None:
+    keys = ",".join(r.key for r in DEFAULT_TAG_RULES)
+    rules = rules_from_form(
+        {
+            "rule_keys": keys,
+            "new_tag": "#корпоратив",
+            "new_title": "Корпоратив",
+            "new_description": "Юрлица и ИП",
+            "new_rule_type": "text_keywords",
+            "new_keywords": "ооо, ип",
+            "new_enabled": "on",
+        }
+    )
+    custom = [r for r in rules if r.key.startswith("custom_")]
+    assert len(custom) == 1
+    assert custom[0].tag == "#корпоратив"
+    assert custom[0].keywords == ["ооо", "ип"]
+    assert custom[0].enabled is True
+
+
+def test_rules_from_form_deletes_custom_tag() -> None:
+    custom_rule = TagRule(
+        key="custom_test",
+        tag="#тест",
+        title="Тест",
+        description="Удаляем",
+        rule_type="text_keywords",
+        keywords=["тест"],
+    )
+    keys = "custom_test," + ",".join(r.key for r in DEFAULT_TAG_RULES)
+    import asyncio
+
+    async def _run() -> list:
+        cache = _FakeCache()
+        await save_tag_rules(cache, list(DEFAULT_TAG_RULES) + [custom_rule])  # type: ignore[arg-type]
+        return rules_from_form(
+            {
+                "rule_keys": keys,
+                "rule_custom_test_enabled": "on",
+                "rule_custom_test_tag": "#тест",
+                "rule_custom_test_title": "Тест",
+                "rule_custom_test_description": "Удаляем",
+                "rule_custom_test_rule_type": "text_keywords",
+                "rule_custom_test_keywords": "тест",
+                "rule_custom_test_delete": "on",
+            }
+        )
+
+    rules = asyncio.run(_run())
+    assert "custom_test" not in {r.key for r in rules}
+    asyncio.run(save_tag_rules(_FakeCache(), list(DEFAULT_TAG_RULES)))  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_hydrate_keeps_custom_rules() -> None:
+    cache = _FakeCache()
+    custom = {
+        "key": "custom_korp",
+        "tag": "#корпоратив",
+        "title": "Корпоратив",
+        "description": "Юрлица",
+        "rule_type": "text_keywords",
+        "enabled": True,
+        "threshold": None,
+        "keywords": ["ооо"],
+        "sources": ["orders", "messenger"],
+    }
+    cache.payload = [r.to_dict() for r in DEFAULT_TAG_RULES] + [custom]
+    await hydrate_tag_rules(cache)  # type: ignore[arg-type]
+    keys = {r.key for r in get_tag_rules()}
+    assert "custom_korp" in keys
+    assert len(get_tag_rules()) == len(DEFAULT_TAG_RULES) + 1
+    await save_tag_rules(cache, list(DEFAULT_TAG_RULES))  # type: ignore[arg-type]
