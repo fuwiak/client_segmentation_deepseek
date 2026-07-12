@@ -65,12 +65,21 @@ async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
 
 
 async def _ensure_moysklad_data() -> None:
-  """Подгрузить контрагентов Мой Склад из кэша или API, если hub пуст."""
-  if hub.has_data():
-    return
+  """Подгрузить контрагентов Мой Склад из кэша или API."""
   client = get_moysklad_client(settings)
   if not client.enabled:
     return
+
+  parsed_count = len(hub.parsed.rows) if hub.parsed and hub.parsed.rows else 0
+  is_moysklad = bool(hub.parsed and hub.parsed.meta.get("source") == "moysklad")
+  if is_moysklad and parsed_count > 0:
+    cached_ms = await cache.get_moysklad_sync()
+    api_total = (cached_ms or {}).get("api_cp_total")
+    if api_total is None:
+      api_total = await client.get_entity_count("/entity/counterparty")
+    if api_total and parsed_count >= api_total:
+      return
+
   await sync_moysklad_to_hub(
     client,
     hub,
@@ -83,12 +92,13 @@ async def _ensure_moysklad_data() -> None:
 
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
+  if settings.moysklad_auto_sync:
+    await _ensure_moysklad_data()
+  await _hydrate_hub_from_cache()
   await _hydrate_hub_from_cache()
   messenger = MessengerEnrichmentService(settings, cache)
   if messenger.telegram_enabled:
     await messenger.sync_telegram_inbox()
-  if settings.moysklad_auto_sync:
-    await _ensure_moysklad_data()
 
 
 def _workflow_ctx() -> dict[str, Any]:
@@ -171,7 +181,10 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
 async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
   _enrich_progress.update(status="running", done=0, total=len(rows), error="")
   service = MessengerEnrichmentService(settings, cache)
-  all_rows = hub.active_rows()
+  if hub.parsed and hub.parsed.rows:
+    all_rows = [enrich_row_computed(r) for r in hub.parsed.rows]
+  else:
+    all_rows = hub.active_rows()
 
   def _bump(n: int) -> None:
     _enrich_progress["done"] = min(_enrich_progress["total"], _enrich_progress["done"] + n)
@@ -809,7 +822,7 @@ async def moysklad_status(request: Request) -> HTMLResponse:
     api_cp_total = await client.get_entity_count("/entity/counterparty")
   if client.enabled and api_orders_total is None:
     api_orders_total = await client.get_entity_count("/entity/customerorder")
-  hub_rows = len(hub.parsed.rows) if hub.parsed and hub.parsed.rows else 0
+  hub_rows = len(hub.active_rows())
   hub_orders = (
     len(hub.orders_parsed.rows)
     if hub.orders_parsed and hub.orders_parsed.rows

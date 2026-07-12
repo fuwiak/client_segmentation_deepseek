@@ -33,6 +33,9 @@
             (из {{ api_orders_total }} в Мой Склад)
           {% endif %}
         {% endif %}
+        {% if api_cp_total is not none and hub_rows < api_cp_total %}
+          <span class="sync-msg warn">Загружено не все: нажмите «Синхронизировать» для полного обновления из API</span>
+        {% endif %}
         {% if from_cache %}
           <span class="cache-badge">кэш</span>
         {% endif %}

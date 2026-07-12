@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
+from app.services.export_format import merge_enriched_rows
 from app.services.fields import enrich_row_computed
+
+
+def _row_key(row: dict[str, Any]) -> str:
+  return str(row.get("UUID") or row.get("uuid") or row.get("Наименование") or "")
 
 
 class DataHub:
@@ -28,10 +33,13 @@ class DataHub:
       self.parsed = enrich_with_orders(contragents, orders)
 
   def active_rows(self) -> list[dict[str, Any]]:
+    if self.parsed and self.parsed.rows:
+      base = [enrich_row_computed(r) for r in self.parsed.rows]
+      if self.results:
+        return merge_enriched_rows(base, self.results, key_fn=_row_key)
+      return base
     if self.results:
       return self.results
-    if self.parsed:
-      return [enrich_row_computed(r) for r in self.parsed.rows]
     return []
 
   def set_results(self, results: list[dict[str, Any]], meta: dict[str, Any]) -> None:
@@ -57,8 +65,11 @@ class DataHub:
       return str(self.parsed.meta.get("source") or "excel")
     return "none"
 
+  def has_parsed_data(self) -> bool:
+    return self.parsed is not None and bool(self.parsed.rows)
+
   def has_data(self) -> bool:
-    return bool(self.results) or (self.parsed is not None and bool(self.parsed.rows))
+    return bool(self.results) or self.has_parsed_data()
 
   def get_client(self, client_id: str) -> dict[str, Any] | None:
     key = client_id.strip().lower()

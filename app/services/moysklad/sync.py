@@ -61,9 +61,6 @@ def _apply_rows_to_hub(
         meta={"source": "moysklad", "synced": True},
     )
     hub.set_workbook(contragents, orders_wb)
-    hub.results = []
-    hub.meta = {}
-    hub.results_from_cache = False
     hub.workbook_hash = f"moysklad:{len(counterparty_rows)}:{len(order_rows)}"
 
 
@@ -87,6 +84,9 @@ async def _load_from_cache(
     counterparty_rows = cached.get("counterparty_rows") or []
     order_rows = cached.get("order_rows") or []
     if not counterparty_rows:
+        return None
+    api_cp_total = cached.get("api_cp_total")
+    if api_cp_total and len(counterparty_rows) < api_cp_total:
         return None
     _apply_rows_to_hub(hub, counterparty_rows, order_rows)
     cp_count = len(counterparty_rows)
