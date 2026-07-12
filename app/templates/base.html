@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
   <header class="site-header">
@@ -110,9 +110,22 @@
       var root = document.getElementById('modal-root');
       if (root) root.innerHTML = '';
     }
+    function openTagRulesDrawer() {
+      var drawer = document.getElementById('tag-rules-drawer');
+      var overlay = document.getElementById('tag-rules-overlay');
+      if (drawer) drawer.hidden = false;
+      if (overlay) overlay.hidden = false;
+    }
+    function closeTagRulesDrawer() {
+      var drawer = document.getElementById('tag-rules-drawer');
+      var overlay = document.getElementById('tag-rules-overlay');
+      if (drawer) drawer.hidden = true;
+      if (overlay) overlay.hidden = true;
+    }
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeModal();
+        closeTagRulesDrawer();
         var drawer = document.getElementById('mobile-drawer');
         if (drawer && !drawer.hidden) toggleMobileNav();
       }

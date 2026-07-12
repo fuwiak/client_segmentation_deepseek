@@ -56,5 +56,13 @@
 </section>
 {% endif %}
 
+<div id="tag-rules-overlay" class="rules-drawer-overlay" hidden onclick="closeTagRulesDrawer()"></div>
+<aside id="tag-rules-drawer" class="rules-drawer" hidden aria-label="Правила AI-тегов">
+  <div id="tag-rules-panel"
+       hx-get="/clients/tag-rules/panel"
+       hx-trigger="load"
+       hx-swap="innerHTML"></div>
+</aside>
+
 {% endif %}
 {% endblock %}

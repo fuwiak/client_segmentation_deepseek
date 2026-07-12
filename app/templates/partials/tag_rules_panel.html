@@ -1,0 +1,52 @@
+<div class="rules-drawer-header">
+  <h3>Правила AI-тегов</h3>
+  <button type="button" class="modal-close" onclick="closeTagRulesDrawer()" aria-label="Закрыть">×</button>
+</div>
+
+{% if saved %}
+<p class="sync-msg ok">Правила сохранены</p>
+{% endif %}
+
+<p class="hint">Теги присваиваются по этим правилам при обогащении и сегментации. Изменения сохраняются в кэше (Redis).</p>
+
+<form
+  class="tag-rules-form"
+  hx-post="/clients/tag-rules"
+  hx-target="#tag-rules-panel"
+  hx-swap="innerHTML"
+>
+  {% for rule in tag_rules %}
+  <fieldset class="tag-rule-card">
+    <label class="tag-rule-enable">
+      <input type="checkbox" name="rule_{{ rule.key }}_enabled" {% if rule.enabled %}checked{% endif %}>
+      <strong>{{ rule.tag }}</strong> — {{ rule.title }}
+    </label>
+    <input type="hidden" name="rule_{{ rule.key }}_tag" value="{{ rule.tag }}">
+    <input type="hidden" name="rule_{{ rule.key }}_title" value="{{ rule.title }}">
+
+    <label class="tag-rule-field">
+      <span>Описание (видно в подсказке)</span>
+      <textarea name="rule_{{ rule.key }}_description" rows="2">{{ rule.description }}</textarea>
+    </label>
+
+    <p class="hint tag-rule-type">Тип: {{ rule_label(rule) }}</p>
+
+    {% if rule.rule_type in ['orders_min', 'avg_check_min', 'order_amount_min'] %}
+    <label class="tag-rule-field">
+      <span>Порог</span>
+      <input type="number" name="rule_{{ rule.key }}_threshold" value="{{ rule.threshold or '' }}" min="0" step="1">
+    </label>
+    {% else %}
+    <label class="tag-rule-field">
+      <span>Ключевые слова (через запятую)</span>
+      <input type="text" name="rule_{{ rule.key }}_keywords" value="{{ rule.keywords | join(', ') }}">
+    </label>
+    {% endif %}
+  </fieldset>
+  {% endfor %}
+
+  <div class="rules-drawer-actions">
+    <button type="submit" class="btn">Сохранить правила</button>
+    <button type="button" class="btn secondary" onclick="closeTagRulesDrawer()">Закрыть</button>
+  </div>
+</form>

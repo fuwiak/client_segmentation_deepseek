@@ -36,6 +36,13 @@ from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
 from app.services.segmentation import SegmentationService
+from app.services.tag_rules import (
+  get_tag_rules,
+  hydrate_tag_rules,
+  rule_label,
+  rules_from_form,
+  save_tag_rules,
+)
 from app.services.tag_explanations import explain_tags_for_row
 from app.services.telegram_bot import get_telegram_client
 
@@ -50,6 +57,7 @@ lead_svc = LeadService(repo)
 app = FastAPI(title=settings.app_title)
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["tag_reasons"] = explain_tags_for_row
+templates.env.globals["rule_label"] = rule_label
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
@@ -95,6 +103,7 @@ async def _ensure_moysklad_data() -> None:
 
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
+  await hydrate_tag_rules(cache)
   if settings.moysklad_auto_sync:
     await _ensure_moysklad_data()
   await _hydrate_hub_from_cache()
@@ -394,6 +403,25 @@ async def clients_table_partial(
   return templates.TemplateResponse(
     "partials/clients_table.html",
     _clients_ctx(request, sales_filter=filter, tag=tag, status=status, page=page),
+  )
+
+
+@app.get("/clients/tag-rules/panel", response_class=HTMLResponse)
+async def tag_rules_panel(request: Request) -> HTMLResponse:
+  return templates.TemplateResponse(
+    "partials/tag_rules_panel.html",
+    _ctx(request, tag_rules=get_tag_rules(), saved=False),
+  )
+
+
+@app.post("/clients/tag-rules", response_class=HTMLResponse)
+async def tag_rules_save(request: Request) -> HTMLResponse:
+  form = dict(await request.form())
+  rules = rules_from_form({k: str(v) for k, v in form.items()})
+  await save_tag_rules(cache, rules)
+  return templates.TemplateResponse(
+    "partials/tag_rules_panel.html",
+    _ctx(request, tag_rules=get_tag_rules(), saved=True),
   )
 
 

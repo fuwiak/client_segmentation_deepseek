@@ -183,6 +183,19 @@ class CacheService:
         except Exception:  # noqa: BLE001
             return None
 
+    async def save_tag_rules(self, payload: list[dict[str, Any]]) -> None:
+        try:
+            await self._backend.set("tag_rules:v1", payload, self._ttl)
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def get_tag_rules(self) -> list[dict[str, Any]] | None:
+        try:
+            hit = await self._backend.get("tag_rules:v1")
+            return hit if isinstance(hit, list) else None
+        except Exception:  # noqa: BLE001
+            return None
+
 
 _cache_service: CacheService | None = None
 

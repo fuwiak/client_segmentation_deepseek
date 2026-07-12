@@ -942,6 +942,90 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   margin-left: var(--sm);
 }
 
+/* ---- Tag rules drawer --------------------------------------------------- */
+
+.rules-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  background: rgba(20, 20, 19, 0.35);
+}
+.rules-drawer-overlay[hidden],
+.rules-drawer[hidden] { display: none !important; }
+
+.rules-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 250;
+  width: min(420px, 100vw);
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--surface-white);
+  border-left: 1px solid var(--hairline);
+  box-shadow: -8px 0 24px rgba(20, 20, 19, 0.12);
+  padding: var(--lg);
+}
+
+.rules-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md);
+  margin-bottom: var(--md);
+}
+.rules-drawer-header h3 { margin: 0; font-size: 1.15rem; }
+
+.tag-rules-form { display: flex; flex-direction: column; gap: var(--md); }
+.tag-rule-card {
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  padding: var(--md);
+  margin: 0;
+}
+.tag-rule-enable {
+  display: flex;
+  align-items: center;
+  gap: var(--sm);
+  margin-bottom: var(--sm);
+  font-size: 0.95rem;
+}
+.tag-rule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--sm);
+  font-size: 0.85rem;
+}
+.tag-rule-field textarea,
+.tag-rule-field input[type="text"],
+.tag-rule-field input[type="number"] {
+  width: 100%;
+  padding: var(--xs) var(--sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font: inherit;
+}
+.tag-rule-type { margin: var(--xs) 0 0; font-size: 0.8rem; }
+.rules-drawer-actions {
+  display: flex;
+  gap: var(--sm);
+  flex-wrap: wrap;
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-white);
+  padding-top: var(--md);
+}
+
+.tags-col-head { white-space: nowrap; }
+.tag-rules-btn {
+  display: inline-block;
+  margin-left: var(--xs);
+  font-size: 0.75rem;
+  color: var(--primary);
+  vertical-align: middle;
+}
+
 .moysklad-push-area { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sm); }
 .moysklad-push-area.inline-push { margin: 0; }
 .moysklad-push-area .hint { flex-basis: 100%; margin: 0; }

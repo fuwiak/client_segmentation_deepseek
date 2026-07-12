@@ -15,6 +15,7 @@ from app.config import Settings
 from app.services.cache import CacheService
 from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 from app.services.fields import apply_ai_field
+from app.services.tag_rules import evaluate_tags_for_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
 from app.services.segmentation import SegmentationService, guess_gender
@@ -356,7 +357,7 @@ class MessengerEnrichmentService:
         merged = dict(row)
         ai_fields: list[str] = list(merged.get("_ai_fields") or [])
         enrichment_fields: list[str] = list(merged.get("_enrichment_fields") or [])
-        all_text = " ".join(m.get("text", "") for m in messages).lower()
+        merged["_messenger_context"] = messages
 
         if not merged.get("ТГ ник"):
             for msg in messages:
@@ -367,19 +368,12 @@ class MessengerEnrichmentService:
                         enrichment_fields.append("ТГ ник")
                         break
 
-        tags: list[str] = []
-        if any(w in all_text for w in ("спасибо", "отлично", "супер", "класс")):
-            tags.append("#доволен")
-        if any(w in all_text for w in ("жалоб", "плох", "разочар", "верните")):
-            tags.append("#проблемный")
-        if any(w in all_text for w in ("день рождения", "др ", "birthday")):
-            tags.append("#деньрождения")
-        if any(w in all_text for w in ("8 марта", "8марта")):
-            tags.append("#8марта")
-
-        if tags and not merged.get("Теги"):
-            apply_ai_field(merged, "Теги", " ".join(dict.fromkeys(tags)), ai_fields)
-            enrichment_fields.append("Теги")
+        if not merged.get("Теги"):
+            tags, tag_reasons = evaluate_tags_for_row(merged)
+            if tags:
+                apply_ai_field(merged, "Теги", tags, ai_fields)
+                enrichment_fields.append("Теги")
+                merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
 
         if not merged.get("Саммари") and messages:
             channels = ", ".join(sorted({m.get("channel", "") for m in messages}))

@@ -11,6 +11,7 @@ import httpx
 from app.config import Settings
 from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 from app.services.fields import apply_ai_field
+from app.services.tag_rules import evaluate_tags_for_row
 
 SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочного бизнеса (продажа букетов, доставка).
 Твоя задача — по данным клиента и его заказов заполнить поля сегментации и профиль клиента.
@@ -294,9 +295,10 @@ class SegmentationService:
                 apply_ai_field(merged, "ТГ ник", tg, ai_fields)
 
         if not merged.get("Теги"):
-            tags = self._heuristic_tags(row)
+            tags, tag_reasons = evaluate_tags_for_row(merged)
             if tags:
                 apply_ai_field(merged, "Теги", tags, ai_fields)
+                merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
 
         if not merged.get("Саммари") and row.get("_messenger_context"):
             msgs = row["_messenger_context"]
