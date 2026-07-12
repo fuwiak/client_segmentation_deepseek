@@ -12,14 +12,11 @@
     </div>
 
     <div class="tags-row">
-      {% if client.get('Метки') or client.get('_moysklad_tags_display') %}
-      <span class="chip muted">МС: {{ client.get('Метки') or client.get('_moysklad_tags_display') }}</span>
-      {% endif %}
-      {% for tag in (client.get('Теги') or '').split() %}
-      <span class="tag-chip">{{ tag }}</span>
+      {% for g in (client.get('Группы') or '').split(',') %}
+      {% if g.strip() %}<span class="tag-chip">{{ g.strip() }}</span>{% endif %}
       {% endfor %}
-      {% for g in (client.get('Группы') or '').split('/') %}
-      {% if g.strip() %}<span class="tag-chip ai-chip">{{ g.strip() }}</span>{% endif %}
+      {% for tag in (client.get('Теги') or '').split() %}
+      <span class="tag-chip ai-chip">{{ tag }}</span>
       {% endfor %}
     </div>
 
@@ -27,7 +24,8 @@
       <h4>Контакты</h4>
       <p>Телефон: {{ client.get('Телефон') or '—' }}</p>
       <p>Email: {{ client.get('E-mail') or '—' }}</p>
-      <p>Telegram: {{ client.get('ТГ ник') or '—' }}</p>
+      <p>Telegram: {{ client.get('ТГ ник') or client.get('Ник в тг/вк') or '—' }}</p>
+      <p>Тип: {{ client.get('Тип контрагента') or '—' }} · Статус: {{ client.get('Статус') or '—' }}</p>
       <p class="hint">Основной канал: {% if client.get('ТГ ник') %}Telegram{% elif client.get('Телефон') %}WhatsApp{% else %}—{% endif %}</p>
     </section>
 

@@ -8,6 +8,17 @@ from typing import Any
 
 from app.domain import Customer, Order, SourceType, normalize_phone
 
+COMPANY_TYPE_LABELS = {
+    "legal": "Юридическое лицо",
+    "individual": "Физическое лицо",
+    "entrepreneur": "Индивидуальный предприниматель",
+}
+
+SEX_LABELS = {
+    "MALE": "Мужской",
+    "FEMALE": "Женский",
+}
+
 
 def href_id(href: str | None) -> str:
     if not href:
@@ -24,23 +35,80 @@ def _minor_to_rub(value: Any) -> float | None:
         return None
 
 
-def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
+def _tags_list(counterparty: dict[str, Any]) -> list[str]:
     tags = counterparty.get("tags") or []
-    labels = ", ".join(str(t) for t in tags) if isinstance(tags, list) else str(tags)
+    if isinstance(tags, list):
+        return [str(t) for t in tags if t]
+    if tags:
+        return [str(tags)]
+    return []
+
+
+def _tags_to_groups(tags: list[str]) -> str:
+    return ", ".join(tags)
+
+
+def _archived_label(value: Any) -> str:
+    return "да" if value else "нет"
+
+
+def _company_type_label(value: Any) -> str | None:
+    if not value:
+        return None
+    key = str(value).strip().lower()
+    return COMPANY_TYPE_LABELS.get(key, str(value))
+
+
+def _sex_label(value: Any) -> str | None:
+    if not value:
+        return None
+    key = str(value).strip().upper()
+    return SEX_LABELS.get(key, str(value))
+
+
+def _counterparty_status(tags: list[str]) -> str | None:
+    joined = " ".join(tags).lower()
+    if any(w in joined for w in ("постоянный", "vip", "премиум")):
+        return "Постоянный"
+    if tags:
+        return "Новый"
+    return None
+
+
+def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
+    """Маппинг API Remap 1.2 → строка как в Excel-выгрузке контрагентов."""
+    tags = _tags_list(counterparty)
+    groups = _tags_to_groups(tags)
 
     return {
         "UUID": counterparty.get("id"),
+        "Группы": groups,
+        "Код": counterparty.get("code") or counterparty.get("externalCode"),
         "Наименование": counterparty.get("name"),
-        "Телефон": counterparty.get("phone"),
-        "E-mail": counterparty.get("email"),
-        "Метки": labels,
-        "Код": counterparty.get("externalCode"),
-        "Архивный": "да" if counterparty.get("archived") else "нет",
-        "Фактический адрес": counterparty.get("actualAddress"),
+        "Внешний код": counterparty.get("externalCode"),
+        "Полное наименование": counterparty.get("legalTitle") or counterparty.get("name"),
+        "Фамилия": counterparty.get("legalLastName"),
+        "Имя": counterparty.get("legalFirstName"),
+        "Отчество": counterparty.get("legalMiddleName"),
         "Юридический адрес": counterparty.get("legalAddress"),
+        "Фактический адрес": counterparty.get("actualAddress"),
+        "ИНН": counterparty.get("inn"),
+        "КПП": counterparty.get("kpp"),
+        "ОКПО": counterparty.get("okpo"),
+        "ОГРН": counterparty.get("ogrn"),
+        "ОГРНИП": counterparty.get("ogrnip"),
+        "Телефон": counterparty.get("phone"),
+        "Факс": counterparty.get("fax"),
+        "E-mail": counterparty.get("email"),
+        "Тип контрагента": _company_type_label(counterparty.get("companyType")),
+        "Статус": _counterparty_status(tags),
+        "Архивный": _archived_label(counterparty.get("archived")),
+        "Комментарий": counterparty.get("description"),
+        "Пол": _sex_label(counterparty.get("sex")),
+        "Дата рождения": counterparty.get("birthDate"),
         "_moysklad_id": counterparty.get("id"),
-        "_moysklad_tags": list(tags) if isinstance(tags, list) else [],
-        "_moysklad_tags_display": labels,
+        "_moysklad_tags": tags,
+        "_moysklad_tags_display": groups,
         "_source": SourceType.MOYSKLAD.value,
     }
 
@@ -107,7 +175,7 @@ def apply_order_stats(
 def customer_from_counterparty(counterparty: dict[str, Any]) -> Customer:
     ext_id = str(counterparty.get("id") or uuid.uuid4())
     phone = normalize_phone(counterparty.get("phone"))
-    tags = counterparty.get("tags") or []
+    tags = _tags_list(counterparty)
     addresses = [
         a
         for a in [counterparty.get("actualAddress"), counterparty.get("legalAddress")]
@@ -123,7 +191,7 @@ def customer_from_counterparty(counterparty: dict[str, Any]) -> Customer:
         source=SourceType.MOYSKLAD,
         archived=bool(counterparty.get("archived")),
         raw=counterparty,
-        preferences=[str(t) for t in tags] if isinstance(tags, list) else [],
+        preferences=tags,
     )
 
 

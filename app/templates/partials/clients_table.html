@@ -4,12 +4,12 @@
       <tr>
         <th></th>
         <th>Клиент</th>
-        <th>Метки</th>
         <th>Группы</th>
         <th>Заказчик / получатель</th>
         <th>Пол</th>
         <th>ТГ ник</th>
         <th>Теги AI</th>
+        <th>Тип</th>
         <th>AI</th>
         <th></th>
       </tr>
@@ -30,12 +30,12 @@
           <span class="mini-badge" title="Есть переписка">{{ row.get('_messenger_sources')|join(', ') }}</span>
           {% endif %}
         </td>
-        <td class="tags-cell muted-cell">{{ row.get('Метки') or row.get('_moysklad_tags_display') or '—' }}</td>
-        <td>{{ row.get('Группы') or '—' }}</td>
+        <td class="tags-cell">{{ row.get('Группы') or '—' }}</td>
         <td>{{ row.get('Заказчик или получатель') or '—' }}</td>
         <td>{{ row.get('Пол') or '—' }}</td>
         <td>{{ row.get('ТГ ник') or row.get('Ник в тг/вк') or '—' }}</td>
         <td class="tags-cell">{{ row.get('Теги') or '—' }}</td>
+        <td>{{ row.get('Тип контрагента') or row.get('Тип продаж') or '—' }}</td>
         <td>
           {% if row.get('_ai_processed') or row.get('_enrichment_fields') %}
           <span class="ai-badge" title="{{ row.get('_enrichment_fields')|join(', ') if row.get('_enrichment_fields') else 'AI' }}">AI</span>

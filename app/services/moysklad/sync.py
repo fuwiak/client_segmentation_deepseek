@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.services.data_hub import DataHub
-from app.services.export_format import MOYSKLAD_EXPORT_COLUMNS
+from app.services.export_format import MOYSKLAD_EXCEL_COLUMNS
 from app.services.excel_parser import ParsedWorkbook, SEGMENT_COLUMNS
 from app.services.moysklad.client import MoySkladClientBase
 from app.services.moysklad.mapper import (
@@ -65,16 +65,7 @@ async def sync_moysklad_to_hub(
     contragents = ParsedWorkbook(
         source_type="contragents",
         rows=counterparty_rows,
-        context_columns=[
-            c
-            for c in (
-                *MOYSKLAD_EXPORT_COLUMNS,
-                "UUID",
-                "Код",
-                "Архивный",
-            )
-            if c not in SEGMENT_COLUMNS
-        ],
+        context_columns=[c for c in MOYSKLAD_EXCEL_COLUMNS if c not in SEGMENT_COLUMNS],
         segment_columns=[],
         total_rows=len(counterparty_rows),
         meta={"source": "moysklad", "synced": True},

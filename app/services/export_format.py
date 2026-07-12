@@ -10,32 +10,68 @@ from app.services.excel_parser import (
     ParsedWorkbook,
 )
 
-# Базовый шаблон (как в Excel заказчика) для источника Мой Склад
-MOYSKLAD_EXPORT_COLUMNS = [
-    "Наименование",
-    "Заказчик или получатель",
-    "Телефон",
-    "E-mail",
-    "Метки",
+# Колонки как в Excel-выгрузке контрагентов из Мой Склад (online.moysklad.ru)
+MOYSKLAD_EXCEL_COLUMNS = [
+    "UUID",
     "Группы",
+    "Код",
+    "Наименование",
+    "Внешний код",
+    "Полное наименование",
+    "Фамилия",
+    "Имя",
+    "Отчество",
+    "Юридический адрес",
+    "Фактический адрес",
+    "ИНН",
+    "КПП",
+    "ОКПО",
+    "Телефон",
+    "Факс",
+    "E-mail",
+    "Тип контрагента",
+    "Статус",
+    "Архивный",
+    "Комментарий",
     "Пол",
-    "Ник в тг/вк",
-    "Теги",
-    "Саммари",
-    "История переписки",
+    "Дата рождения",
     "Средний чек",
     "Всего заказов",
+]
+
+# AI-поля, которые дополняются при экспорте
+MOYSKLAD_AI_EXPORT_COLUMNS = [
+    "Заказчик или получатель",
+    "ТГ ник",
+    "Ник в тг/вк",
+    *AI_EXTRA_COLUMNS,
+    "История переписки",
     "Тип продаж",
     "Статус последнего заказа",
     "ВИП",
     "Постоянный клиент",
 ]
 
+MOYSKLAD_EXPORT_COLUMNS = MOYSKLAD_EXCEL_COLUMNS + MOYSKLAD_AI_EXPORT_COLUMNS
+
 TG_NICK_COLUMNS = {"ТГ ник", "Ник в тг/вк", "Ник в тг", "Telegram"}
 
 
 def export_columns(parsed: ParsedWorkbook | None = None) -> list[str]:
-    """Порядок колонок: как во входном Excel + AI-поля + история переписки."""
+    """Порядок колонок: как во входном Excel + AI-поля."""
+    if parsed and parsed.meta.get("source") == "moysklad":
+        cols: list[str] = []
+        seen: set[str] = set()
+        for col in MOYSKLAD_EXCEL_COLUMNS:
+            if col not in seen:
+                cols.append(col)
+                seen.add(col)
+        for col in SEGMENT_COLUMNS + MOYSKLAD_AI_EXPORT_COLUMNS:
+            if col not in seen:
+                cols.append(col)
+                seen.add(col)
+        return cols
+
     if parsed and parsed.context_columns:
         cols: list[str] = []
         seen: set[str] = set()
@@ -77,8 +113,8 @@ def _cell_value(row: dict[str, Any], col: str) -> Any:
         return row.get("ТГ ник")
     if col == "История переписки":
         return format_messenger_history(row.get("_messenger_context") or [])
-    if col == "Метки":
-        return row.get("Метки") or row.get("_moysklad_tags_display")
+    if col == "Группы":
+        return row.get("Группы") or row.get("_moysklad_tags_display")
     return row.get(col)
 
 

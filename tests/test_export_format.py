@@ -10,13 +10,12 @@ def test_export_columns_preserves_excel_order_and_adds_ai_fields() -> None:
     parsed = ParsedWorkbook(
         source_type="contragents",
         rows=[],
-        context_columns=["Наименование", "Телефон", "Метки"],
+        context_columns=["UUID", "Наименование", "Группы", "Телефон"],
         segment_columns=[],
         total_rows=0,
     )
     cols = export_columns(parsed)
-    assert cols[:3] == ["Наименование", "Телефон", "Метки"]
-    assert "Группы" in cols
+    assert cols[:4] == ["UUID", "Наименование", "Группы", "Телефон"]
     assert "Пол" in cols
     assert "Ник в тг/вк" in cols
     assert "История переписки" in cols
