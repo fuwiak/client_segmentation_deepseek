@@ -15,8 +15,8 @@
       </select>
     </label>
     {% if period == 'custom' %}
-    <label>С <input type="date" name="date_from" value="{{ date_from or '' }}"></label>
-    <label>По <input type="date" name="date_to" value="{{ date_to or '' }}"></label>
+    <label>С <input type="date" name="date_from" value="{{ date_from.isoformat() if date_from else '' }}"></label>
+    <label>По <input type="date" name="date_to" value="{{ date_to.isoformat() if date_to else '' }}"></label>
     <button type="submit" class="btn secondary small">Применить</button>
     {% endif %}
   </form>

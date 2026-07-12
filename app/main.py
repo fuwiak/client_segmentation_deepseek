@@ -102,6 +102,12 @@ def _mask_secret(value: str) -> str:
   return f"{value[:4]}…{value[-4:]}"
 
 
+def _optional_query_date(value: str | None) -> date | None:
+  if value is None or not str(value).strip():
+    return None
+  return date.fromisoformat(str(value).strip())
+
+
 def _moysklad_config_ctx() -> dict[str, Any]:
   client = get_moysklad_client(settings)
   return {
@@ -272,12 +278,16 @@ async def home(request: Request) -> HTMLResponse:
 async def dashboard_page(
   request: Request,
   period: str = Query("month"),
-  date_from: date | None = Query(None),
-  date_to: date | None = Query(None),
+  date_from: str = Query(""),
+  date_to: str = Query(""),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   rows = hub.active_rows()
-  dash = dashboard_svc.compute(rows, period=period, date_from=date_from, date_to=date_to)
+  parsed_from = _optional_query_date(date_from)
+  parsed_to = _optional_query_date(date_to)
+  dash = dashboard_svc.compute(
+    rows, period=period, date_from=parsed_from, date_to=parsed_to
+  )
   return templates.TemplateResponse(
     "dashboard.html",
     _ctx(
@@ -288,8 +298,8 @@ async def dashboard_page(
       dashboard=dash,
       periods=PERIOD_LABELS,
       period=period,
-      date_from=date_from,
-      date_to=date_to,
+      date_from=parsed_from,
+      date_to=parsed_to,
     ),
   )
 
