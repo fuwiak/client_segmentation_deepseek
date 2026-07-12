@@ -244,7 +244,7 @@ def _pagination_pages(page: int, total_pages: int, *, radius: int = 2) -> list[i
 def _clients_ctx(
   request: Request,
   *,
-  sales_filter: str = "all",
+  sales_filter: str = "direct",
   tag: str = "",
   status: str = "",
   page: int = 1,
@@ -363,7 +363,7 @@ async def dashboard_page(
 @app.get("/clients", response_class=HTMLResponse)
 async def clients_page(
   request: Request,
-  filter: str = Query("all"),
+  filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
   page: int = Query(1, ge=1),
@@ -384,7 +384,7 @@ async def clients_page(
 @app.get("/clients/table", response_class=HTMLResponse)
 async def clients_table_partial(
   request: Request,
-  filter: str = Query("all"),
+  filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
   page: int = Query(1, ge=1),
@@ -760,7 +760,7 @@ async def download_clients_xlsx() -> StreamingResponse:
 async def enrich_start(
   request: Request,
   limit: int = Form(500),
-  filter: str = Query("all"),
+  filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
 ) -> HTMLResponse:
@@ -804,7 +804,7 @@ async def enrich_start(
 @app.get("/enrich/progress", response_class=HTMLResponse)
 async def enrich_progress(
   request: Request,
-  filter: str = Query("all"),
+  filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
 ) -> HTMLResponse:
