@@ -66,6 +66,26 @@ class TelegramBotClient:
         return []
       return data.get("result") or []
 
+  async def fetch_all_updates(
+    self,
+    *,
+    offset: int | None = None,
+    max_pages: int = 20,
+  ) -> list[dict]:
+    if not self.enabled:
+      return []
+    collected: list[dict] = []
+    next_offset = offset
+    for _ in range(max(1, max_pages)):
+      batch = await self.get_updates(offset=next_offset, limit=100)
+      if not batch:
+        break
+      collected.extend(batch)
+      next_offset = int(batch[-1]["update_id"]) + 1
+      if len(batch) < 100:
+        break
+    return collected
+
 
 def get_telegram_client(settings: Settings) -> TelegramBotClient:
   return TelegramBotClient(settings)

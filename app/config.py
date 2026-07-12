@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # --- Telegram Bot API ---
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
+    telegram_bot_username: str = "my_veresk_bot"
 
     # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
     repository_backend: str = "memory"
@@ -56,6 +57,7 @@ class Settings(BaseSettings):
     enrichment_chat_limit: int = 50
     enrichment_batch_size: int = 5
     enrichment_concurrency: int = 3
+    messenger_cache_limit: int = 5000
 
 
 @lru_cache

@@ -156,6 +156,19 @@ class CacheService:
                 return hit
         return await self.get_results(LATEST_RESULTS_KEY)
 
+    async def save_messenger_index(self, payload: dict[str, Any]) -> None:
+        try:
+            await self._backend.set("messenger:telegram", payload, self._ttl)
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def get_messenger_index(self) -> dict[str, Any] | None:
+        try:
+            hit = await self._backend.get("messenger:telegram")
+            return hit if isinstance(hit, dict) else None
+        except Exception:  # noqa: BLE001
+            return None
+
 
 _cache_service: CacheService | None = None
 

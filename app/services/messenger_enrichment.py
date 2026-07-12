@@ -12,8 +12,10 @@ from typing import Any
 import httpx
 
 from app.config import Settings
+from app.services.cache import CacheService
 from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 from app.services.green_api import get_green_api_client
+from app.services.messenger_store import MessengerMessageStore
 from app.services.segmentation import SegmentationService, guess_gender
 from app.services.telegram_bot import get_telegram_client
 
@@ -56,15 +58,58 @@ def _normalize_tg(value: str | None) -> str:
 
 
 class MessengerEnrichmentService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        cache: CacheService | None = None,
+    ) -> None:
+        from app.services.cache import get_cache
+
         self._settings = settings
+        self._cache = cache or get_cache(settings)
         self._wa = get_green_api_client(settings)
         self._tg = get_telegram_client(settings)
         self._segmentation = SegmentationService(settings)
+        self._store = MessengerMessageStore(settings, self._cache)
 
     @property
     def available(self) -> bool:
+        if not self._settings.messenger_enabled:
+            return False
         return self._wa.enabled or self._tg.enabled
+
+    @property
+    def telegram_enabled(self) -> bool:
+        return self._tg.enabled
+
+    @property
+    def stats(self) -> dict[str, Any]:
+        return self._store.stats
+
+    async def sync_telegram_inbox(self) -> int:
+        return await self._store.sync_telegram()
+
+    async def attach_messages(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not self.available:
+            return rows
+
+        await self._store.load()
+        if self._tg.enabled:
+            await self.sync_telegram_inbox()
+
+        semaphore = asyncio.Semaphore(self._settings.enrichment_concurrency)
+
+        async def _attach(row: dict[str, Any]) -> dict[str, Any]:
+            async with semaphore:
+                copy = dict(row)
+                messages = await self.fetch_client_messages(copy)
+                copy["_messenger_context"] = messages
+                copy["_messenger_sources"] = sorted(
+                    {m.get("channel") for m in messages if m.get("channel")}
+                )
+                return copy
+
+        return list(await asyncio.gather(*(_attach(row) for row in rows)))
 
     async def fetch_whatsapp_history(
         self, phone: str, *, count: int | None = None
@@ -116,64 +161,50 @@ class MessengerEnrichmentService:
     ) -> list[dict[str, Any]]:
         if not self._tg.enabled:
             return []
-        limit = count or self._settings.enrichment_chat_limit
-        try:
-            updates = await self._tg.get_updates(limit=limit * 2)
-        except httpx.HTTPError:
-            return []
 
+        await self._store.load()
+        limit = count or self._settings.enrichment_chat_limit
         nick = _normalize_tg(tg_nick)
-        messages: list[dict[str, Any]] = []
-        for upd in updates:
-            msg = upd.get("message") or upd.get("edited_message")
-            if not msg:
-                continue
-            chat = msg.get("chat") or {}
-            username = _normalize_tg(chat.get("username"))
-            if nick and username and username != nick:
-                continue
-            text = msg.get("text") or msg.get("caption") or ""
-            if not str(text).strip():
-                continue
-            from_user = msg.get("from") or {}
-            direction = "in"
-            if from_user.get("is_bot"):
-                direction = "out"
-            ts = msg.get("date")
-            date_val: str | None = None
-            if ts:
-                try:
-                    date_val = datetime.fromtimestamp(int(ts)).isoformat()
-                except (TypeError, ValueError, OSError):
-                    date_val = str(ts)
-            messages.append(
-                {
-                    "channel": "telegram",
-                    "direction": direction,
-                    "text": str(text).strip(),
-                    "sender": from_user.get("username") or from_user.get("first_name") or "",
-                    "date": date_val,
-                    "chat_id": chat.get("id"),
-                }
-            )
-        return messages[:limit]
+
+        if nick:
+            row = {"ТГ ник": f"@{nick}"}
+            matched = self._store.messages_for_row(row)
+            if matched:
+                return matched[-limit:]
+
+        # Без ника — вернуть все сообщения из кэша бота (для ручной привязки/AI)
+        all_messages = list(self._store._index.get("messages") or [])
+        all_messages.sort(key=lambda m: m.get("date") or "")
+        return all_messages[-limit:]
 
     async def fetch_client_messages(self, row: dict[str, Any]) -> list[dict[str, Any]]:
+        await self._store.load()
+        combined: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def _add(items: list[dict[str, Any]]) -> None:
+            for item in items:
+                key = f"{item.get('channel')}:{item.get('date')}:{item.get('text')}"
+                if key not in seen:
+                    seen.add(key)
+                    combined.append(item)
+
+        _add(self._store.messages_for_row(row))
+
         phone = row.get("Телефон")
         tg = row.get("ТГ ник")
         tasks: list[Any] = []
         if phone and self._wa.enabled:
             tasks.append(self.fetch_whatsapp_history(str(phone)))
-        if self._tg.enabled and tg:
+        if self._tg.enabled and tg and not combined:
             tasks.append(self.fetch_telegram_history(str(tg)))
-        if not tasks:
-            return []
-        parts = await asyncio.gather(*tasks)
-        combined: list[dict[str, Any]] = []
-        for part in parts:
-            combined.extend(part)
+        if tasks:
+            parts = await asyncio.gather(*tasks)
+            for part in parts:
+                _add(list(part))
+
         combined.sort(key=lambda m: m.get("date") or "")
-        return combined
+        return combined[-self._settings.enrichment_chat_limit :]
 
     async def enrich_all(
         self,

@@ -1,10 +1,18 @@
 <div class="messenger-status-block">
-  <p class="hint">WhatsApp (Green API): 
+  <p class="hint">WhatsApp (Green API):
     {% if health.whatsapp %}<span class="ok">подключён</span>{% else %}<span class="warn">не подключён</span>{% endif %}
   </p>
-  <p class="hint">Telegram Bot: 
-    {% if health.telegram %}<span class="ok">@{{ tg_me.username or 'ok' }}</span>{% else %}<span class="warn">не подключён</span>{% endif %}
+  <p class="hint">Telegram Bot:
+    {% if health.telegram %}
+      <span class="ok">@{{ tg_me.username or telegram_bot_username or 'ok' }}</span>
+      {% if tg_stats.messages_total %} — {{ tg_stats.messages_total }} сообщ. в кэше{% endif %}
+    {% else %}
+      <span class="warn">не подключён</span>
+    {% endif %}
   </p>
+  {% if health.telegram %}
+  <p class="hint">Бот для переписки: <a href="https://t.me/{{ tg_me.username or telegram_bot_username }}" target="_blank" rel="noopener">@{{ tg_me.username or telegram_bot_username }}</a></p>
+  {% endif %}
   {% if wa_state.stateInstance %}
   <p class="hint">WA статус: {{ wa_state.stateInstance }}</p>
   {% endif %}

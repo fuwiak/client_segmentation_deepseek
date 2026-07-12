@@ -22,7 +22,12 @@ SAMPLE_ROW = {
 
 @pytest.mark.asyncio
 async def test_fetch_client_messages_combines_channels() -> None:
-    settings = Settings(green_api_enabled=True, green_api_id_instance="1", green_api_token="tok")
+    settings = Settings(
+        messenger_enabled=True,
+        green_api_enabled=True,
+        green_api_id_instance="1",
+        green_api_token="tok",
+    )
     service = MessengerEnrichmentService(settings)
 
     with patch.object(

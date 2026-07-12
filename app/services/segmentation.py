@@ -43,7 +43,10 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
 
 6. "Саммари" — 1-2 предложения на русском: кто клиент, для кого заказывает, постоянный ли, есть ли проблемы.
 
-Дополнительно в reasoning укажи источник данных (какое поле/заказ).
+7. Если есть messages_sample (WhatsApp/Telegram) — учитывай тон переписки, поводы, жалобы,
+   благодарности, имена получателей. Указывай в references канал (whatsapp/telegram).
+
+Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
 
 ВАЖНО:
 - Опирайся ТОЛЬКО на данные. Если сигнала нет — ставь null, не фантазируй.
@@ -88,7 +91,13 @@ def guess_gender(name: str | None) -> str | None:
 
 
 def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
-    skip = {"_orders_context", "_orders_count", "_reasoning", "_ai_processed"}
+    skip = {
+        "_orders_context",
+        "_orders_count",
+        "_reasoning",
+        "_ai_processed",
+        "_messenger_context",
+    }
     compact = {
         k: v
         for k, v in row.items()
@@ -98,6 +107,9 @@ def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
         compact["orders_sample"] = row["_orders_context"][:3]
     if row.get("_orders_count"):
         compact["orders_count_matched"] = row["_orders_count"]
+    if row.get("_messenger_context"):
+        compact["messages_sample"] = row["_messenger_context"][:8]
+        compact["messages_count"] = len(row["_messenger_context"])
     return compact
 
 
@@ -293,6 +305,15 @@ class SegmentationService:
                 merged["Теги"] = tags
                 ai_fields.append("Теги")
 
+        if not merged.get("Саммари") and row.get("_messenger_context"):
+            msgs = row["_messenger_context"]
+            channels = ", ".join(sorted({m.get("channel", "") for m in msgs if m.get("channel")}))
+            merged["Саммари"] = (
+                f"Есть переписка ({channels}, {len(msgs)} сообщ.). "
+                f"Последнее: {msgs[-1].get('text', '')[:100]}"
+            )
+            ai_fields.append("Саммари")
+
         merged["_reasoning"] = "Эвристика без AI (ключ API не задан)"
         merged["_confidence"] = None
         merged["_ai_refs"] = {}
@@ -321,6 +342,16 @@ class SegmentationService:
                 tags.append("#деньрождения")
             if any(w in comment for w in ("8 марта", "8марта")):
                 tags.append("#8марта")
+        all_text = " ".join(
+            str(m.get("text") or "")
+            for m in row.get("_messenger_context") or []
+        ).lower()
+        if any(w in all_text for w in ("спасибо", "отлично", "супер")):
+            tags.append("#доволен")
+        if any(w in all_text for w in ("жалоб", "плох", "разочар")):
+            tags.append("#проблемный")
+        if any(w in all_text for w in ("день рождения", "др ", "birthday")):
+            tags.append("#деньрождения")
         return " ".join(dict.fromkeys(tags)) if tags else None
 
     @staticmethod

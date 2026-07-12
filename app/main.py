@@ -66,6 +66,9 @@ async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
   await _hydrate_hub_from_cache()
+  messenger = MessengerEnrichmentService(settings, cache)
+  if messenger.telegram_enabled:
+    await messenger.sync_telegram_inbox()
   if settings.moysklad_auto_sync and not hub.has_data():
     client = get_moysklad_client(settings)
     if client.enabled:
@@ -139,6 +142,8 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "has_api_key": bool(settings.openrouter_api_key),
     "wa_enabled": get_green_api_client(settings).enabled,
     "tg_enabled": get_telegram_client(settings).enabled,
+    "telegram_bot_username": settings.telegram_bot_username,
+    "messenger_enabled": settings.messenger_enabled,
     "cache_backend": cache.backend_kind,
     "results_from_cache": hub.results_from_cache,
     **_workflow_ctx(),
@@ -148,7 +153,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
 
 async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
   _enrich_progress.update(status="running", done=0, total=len(rows), error="")
-  service = MessengerEnrichmentService(settings)
+  service = MessengerEnrichmentService(settings, cache)
 
   def _bump(n: int) -> None:
     _enrich_progress["done"] = min(_enrich_progress["total"], _enrich_progress["done"] + n)
@@ -192,6 +197,9 @@ def _export_rows() -> list[dict[str, Any]]:
 
 async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
   _progress.update(status="running", done=0, total=len(rows), error="")
+  messenger = MessengerEnrichmentService(settings, cache)
+  if messenger.available:
+    rows = await messenger.attach_messages(rows)
   service = SegmentationService(settings)
 
   def _bump(n: int) -> None:
@@ -200,10 +208,12 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
   try:
     results = await service.segment_all(rows, progress_cb=_bump)
     enriched = [enrich_row_computed(r) for r in results]
+    with_messages = sum(1 for r in enriched if r.get("_messenger_context"))
     meta = {
       "processed": len(enriched),
       "source_type": parsed.source_type,
       "total": parsed.total_rows,
+      "messenger_context_clients": with_messages,
     }
     hub.set_results(enriched, meta)
     if hub.workbook_hash:
@@ -287,7 +297,9 @@ async def clients_page(
       tag_filter=tag,
       status_filter=status,
       data_source=hub.data_source_label(),
-      messenger_available=get_green_api_client(settings).enabled or get_telegram_client(settings).enabled,
+      messenger_available=settings.messenger_enabled and (
+        get_green_api_client(settings).enabled or get_telegram_client(settings).enabled
+      ),
     ),
   )
 
@@ -462,9 +474,11 @@ async def messenger_status(request: Request) -> HTMLResponse:
   tg = get_telegram_client(settings)
   wa_state = await wa.get_state() if wa.enabled else {"enabled": False}
   tg_me = await tg.get_me() if tg.enabled else {"enabled": False}
+  enrichment = MessengerEnrichmentService(settings, cache)
+  tg_stats = enrichment.stats if tg.enabled else {}
   return templates.TemplateResponse(
     "partials/messenger_status.html",
-    _ctx(request, health=health, wa_state=wa_state, tg_me=tg_me),
+    _ctx(request, health=health, wa_state=wa_state, tg_me=tg_me, tg_stats=tg_stats),
   )
 
 
