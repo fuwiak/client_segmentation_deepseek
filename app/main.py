@@ -6,6 +6,7 @@ import uuid
 from datetime import date
 from typing import Any
 
+import httpx
 import pandas as pd
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -48,7 +49,7 @@ lead_svc = LeadService(repo)
 
 app = FastAPI(title=settings.app_title)
 templates = Jinja2Templates(directory="app/templates")
-templates.env.filters["tag_reasons"] = explain_tags_for_row
+templates.env.globals["tag_reasons"] = explain_tags_for_row
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
@@ -566,8 +567,24 @@ async def messenger_status(request: Request) -> HTMLResponse:
   health = await messenger.health()
   wa = get_green_api_client(settings)
   tg = get_telegram_client(settings)
-  wa_state = await wa.get_state() if wa.enabled else {"enabled": False}
-  tg_me = await tg.get_me() if tg.enabled else {"enabled": False}
+  if wa.enabled:
+    try:
+      wa_state = await wa.get_state()
+    except httpx.HTTPError as exc:
+      wa_state = {
+        "enabled": True,
+        "stateInstance": "rate_limited",
+        "error": str(exc),
+      }
+  else:
+    wa_state = {"enabled": False}
+  if tg.enabled:
+    try:
+      tg_me = await tg.get_me()
+    except httpx.HTTPError:
+      tg_me = {"enabled": True, "username": settings.telegram_bot_username}
+  else:
+    tg_me = {"enabled": False}
   enrichment = MessengerEnrichmentService(settings, cache)
   tg_stats = enrichment.stats if tg.enabled else {}
   return templates.TemplateResponse(
