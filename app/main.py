@@ -35,7 +35,7 @@ from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
 from app.services.segmentation import SegmentationService
-from app.services.telegram_bot import get_telegram_client
+from app.services.tag_explanations import explain_tags_for_row
 
 settings = get_settings()
 cache = get_cache(settings)
@@ -47,6 +47,7 @@ lead_svc = LeadService(repo)
 
 app = FastAPI(title=settings.app_title)
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["tag_reasons"] = explain_tags_for_row
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}

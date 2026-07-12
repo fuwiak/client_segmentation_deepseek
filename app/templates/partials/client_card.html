@@ -16,7 +16,9 @@
       {% if g.strip() %}<span class="tag-chip">{{ g.strip() }}</span>{% endif %}
       {% endfor %}
       {% for tag in (client.get('Теги') or '').split() %}
-      <span class="tag-chip ai-chip">{{ tag }}</span>
+      {% if tag.strip() %}
+      <span class="tag-chip ai-chip ai-tag-chip" title="{{ tag_reasons(client).get(tag, 'Тег AI') }}">{{ tag }}</span>
+      {% endif %}
       {% endfor %}
     </div>
 

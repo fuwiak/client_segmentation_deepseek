@@ -1,4 +1,5 @@
 {% from 'partials/ai_cell.html' import render as ai_cell %}
+{% from 'partials/ai_tags.html' import render as ai_tags %}
 <div class="table-wrap">
   <table class="clients-table clients-table-wide">
     <thead>
@@ -35,7 +36,7 @@
         <td>{{ ai_cell(row, 'Заказчик или получатель', row.get('Заказчик или получатель')) }}</td>
         <td>{{ ai_cell(row, 'Пол', row.get('Пол')) }}</td>
         <td>{{ ai_cell(row, 'ТГ ник', row.get('ТГ ник') or row.get('Ник в тг/вк')) }}</td>
-        <td class="tags-cell">{{ ai_cell(row, 'Теги', row.get('Теги')) }}</td>
+        <td class="tags-cell">{{ ai_tags(row) }}</td>
         <td>{{ row.get('Тип контрагента') or row.get('Тип продаж') or '—' }}</td>
         <td>
           {% if row.get('_ai_processed') or row.get('_enrichment_fields') %}

@@ -1,0 +1,18 @@
+{% macro render(row) %}
+{% set tags_raw = row.get('Теги') or '' %}
+{% set reasons = tag_reasons(row) %}
+{% set is_ai = 'Теги' in (row.get('_ai_fields') or []) or 'Теги' in (row.get('_enrichment_fields') or []) %}
+{% if tags_raw %}
+<span class="ai-tags-list">
+  {% for tag in tags_raw.split() %}
+  {% if tag %}
+  <span class="ai-tag-chip {% if is_ai %}ai-tag-ai{% endif %}"
+        title="{{ reasons.get(tag, 'Тег AI') }}"
+        aria-label="{{ tag }}: {{ reasons.get(tag, 'Тег AI') }}">{{ tag }}</span>
+  {% endif %}
+  {% endfor %}
+</span>
+{% else %}
+—
+{% endif %}
+{% endmacro %}
