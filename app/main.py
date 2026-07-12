@@ -36,6 +36,7 @@ from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
 from app.services.segmentation import SegmentationService
 from app.services.tag_explanations import explain_tags_for_row
+from app.services.telegram_bot import get_telegram_client
 
 settings = get_settings()
 cache = get_cache(settings)
@@ -95,7 +96,6 @@ async def _ensure_moysklad_data() -> None:
 async def startup_hydrate_cache() -> None:
   if settings.moysklad_auto_sync:
     await _ensure_moysklad_data()
-  await _hydrate_hub_from_cache()
   await _hydrate_hub_from_cache()
   messenger = MessengerEnrichmentService(settings, cache)
   if messenger.telegram_enabled:
