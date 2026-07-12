@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     moysklad_enabled: bool = False
     moysklad_sync_limit: int = 0  # 0 = все контрагенты
     moysklad_sync_orders_limit: int = 0  # 0 = все заказы
-    clients_page_size: int = 100
+    clients_page_size: int = 25
     moysklad_auto_sync: bool = True
 
     # --- Интеграции-источники (feature-flags; placeholder-коннекторы) ---

@@ -35,20 +35,12 @@
   </div>
   <p class="result-count">
     {{ total }} клиентов{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}
-    {% if total > per_page %}
+    {% if total > 0 %}
       · показано {{ page_start }}–{{ page_end }}
     {% endif %}
   </p>
-  {% if total_pages > 1 %}
-  <nav class="pagination" aria-label="Страницы клиентов">
-    {% if page > 1 %}
-    <a href="/clients?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}&page={{ page - 1 }}" class="btn secondary small">← Назад</a>
-    {% endif %}
-    <span class="pagination-info">Стр. {{ page }} / {{ total_pages }}</span>
-    {% if page < total_pages %}
-    <a href="/clients?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}&page={{ page + 1 }}" class="btn secondary small">Вперёд →</a>
-    {% endif %}
-  </nav>
+  {% if total > 0 %}
+  {% include 'partials/clients_pagination.html' %}
   {% endif %}
   <div id="clients-sync-status"></div>
   {% include 'partials/enrich_progress.html' %}
@@ -57,6 +49,12 @@
 <section class="card" id="clients-table-block">
   {% include 'partials/clients_table.html' %}
 </section>
+
+{% if total > 0 %}
+<section class="card pagination-card">
+  {% include 'partials/clients_pagination.html' %}
+</section>
+{% endif %}
 
 {% endif %}
 {% endblock %}

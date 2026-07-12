@@ -208,6 +208,24 @@ def _export_rows() -> list[dict[str, Any]]:
   return [row_for_export(row, columns) for row in rows]
 
 
+def _pagination_pages(page: int, total_pages: int, *, radius: int = 2) -> list[int | None]:
+  """Номера страниц для UI; None — многоточие."""
+  if total_pages <= 1:
+    return [1]
+  pages: set[int] = {1, total_pages}
+  for p in range(max(1, page - radius), min(total_pages, page + radius) + 1):
+    pages.add(p)
+  ordered = sorted(pages)
+  result: list[int | None] = []
+  prev = 0
+  for p in ordered:
+    if prev and p - prev > 1:
+      result.append(None)
+    result.append(p)
+    prev = p
+  return result
+
+
 def _clients_ctx(
   request: Request,
   *,
@@ -232,6 +250,7 @@ def _clients_ctx(
     total_pages=total_pages,
     page_start=start + 1 if total else 0,
     page_end=min(end, total),
+    pagination_pages=_pagination_pages(page, total_pages),
     sales_filter=sales_filter,
     tag_filter=tag,
     status_filter=status,
