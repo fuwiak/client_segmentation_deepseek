@@ -1,21 +1,14 @@
 {% from 'partials/ai_cell.html' import render as ai_cell %}
-{% from 'partials/ai_tags.html' import render as ai_tags %}
+{% set ai_cols = ['Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
+{% set col_count = 2 + (client_columns|length) %}
 <div class="table-wrap">
   <table class="clients-table clients-table-wide">
     <thead>
       <tr>
         <th></th>
-        <th>Клиент</th>
-        <th>Группы</th>
-        <th>Заказчик / получатель</th>
-        <th>Пол</th>
-        <th>ТГ ник</th>
-        <th class="tags-col-head">
-          Теги AI
-          <button type="button" class="btn-text tag-rules-btn" onclick="openTagRulesDrawer()" title="Правила присвоения тегов">ⓘ Правила</button>
-        </th>
-        <th>Тип</th>
-        <th>AI</th>
+        {% for col in client_columns %}
+        <th>{{ col }}</th>
+        {% endfor %}
         <th></th>
       </tr>
     </thead>
@@ -29,23 +22,16 @@
                   hx-target="#orders-{{ loop.index }}"
                   hx-swap="innerHTML">▾</button>
         </td>
-        <td>
-          <strong>{{ row.get('Наименование') or '—' }}</strong>
-          {% if row.get('_messenger_sources') %}
-          <span class="mini-badge" title="Есть переписка">{{ row.get('_messenger_sources')|join(', ') }}</span>
+        {% for col in client_columns %}
+        <td{% if col == 'Группы' %} class="tags-cell"{% endif %}>
+          {% set value = client_cell_value(row, col) %}
+          {% if col in ai_cols %}
+            {{ ai_cell(row, col, value) }}
+          {% else %}
+            {{ value or '—' }}
           {% endif %}
         </td>
-        <td class="tags-cell">{{ ai_cell(row, 'Группы', row.get('Группы')) }}</td>
-        <td>{{ ai_cell(row, 'Заказчик или получатель', row.get('Заказчик или получатель')) }}</td>
-        <td>{{ ai_cell(row, 'Пол', row.get('Пол')) }}</td>
-        <td>{{ ai_cell(row, 'ТГ ник', row.get('ТГ ник') or row.get('Ник в тг/вк')) }}</td>
-        <td class="tags-cell">{{ ai_tags(row) }}</td>
-        <td>{{ row.get('Тип контрагента') or row.get('Тип продаж') or '—' }}</td>
-        <td>
-          {% if row.get('_ai_processed') or row.get('_enrichment_fields') %}
-          <span class="ai-badge" title="{{ row.get('_enrichment_fields')|join(', ') if row.get('_enrichment_fields') else 'AI' }}">AI</span>
-          {% else %}—{% endif %}
-        </td>
+        {% endfor %}
         <td>
           <button class="btn-text"
                   hx-get="/clients/{{ cid }}"
@@ -54,7 +40,7 @@
         </td>
       </tr>
       <tr class="orders-expand-row">
-        <td colspan="10" id="orders-{{ loop.index }}"></td>
+        <td colspan="{{ col_count }}" id="orders-{{ loop.index }}"></td>
       </tr>
       {% endfor %}
     </tbody>

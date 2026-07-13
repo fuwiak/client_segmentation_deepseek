@@ -6,38 +6,13 @@ from typing import Any
 
 from app.services.excel_parser import (
     AI_EXTRA_COLUMNS,
+    CLIENT_TABLE_COLUMNS,
     SEGMENT_COLUMNS,
     ParsedWorkbook,
 )
 
 # Колонки как в Excel-выгрузке контрагентов из Мой Склад (online.moysklad.ru)
-MOYSKLAD_EXCEL_COLUMNS = [
-    "UUID",
-    "Группы",
-    "Код",
-    "Наименование",
-    "Внешний код",
-    "Полное наименование",
-    "Фамилия",
-    "Имя",
-    "Отчество",
-    "Юридический адрес",
-    "Фактический адрес",
-    "ИНН",
-    "КПП",
-    "ОКПО",
-    "Телефон",
-    "Факс",
-    "E-mail",
-    "Тип контрагента",
-    "Статус",
-    "Архивный",
-    "Комментарий",
-    "Пол",
-    "Дата рождения",
-    "Средний чек",
-    "Всего заказов",
-]
+MOYSKLAD_EXCEL_COLUMNS = list(CLIENT_TABLE_COLUMNS)
 
 # AI-поля, которые дополняются при экспорте
 MOYSKLAD_AI_EXPORT_COLUMNS = [
@@ -55,6 +30,14 @@ MOYSKLAD_AI_EXPORT_COLUMNS = [
 MOYSKLAD_EXPORT_COLUMNS = MOYSKLAD_EXCEL_COLUMNS + MOYSKLAD_AI_EXPORT_COLUMNS
 
 TG_NICK_COLUMNS = {"ТГ ник", "Ник в тг/вк", "Ник в тг", "Telegram"}
+
+COLUMN_ALIASES: dict[str, list[str]] = {
+    "Фамилия (для ИП и физ. лиц)": ["Фамилия (для ИП и физ. лиц)", "Фамилия"],
+    "Имя (для ИП и физ. лиц)": ["Имя (для ИП и физ. лиц)", "Имя"],
+    "Отчество (для ИП и физ. лиц)": ["Отчество (для ИП и физ. лиц)", "Отчество"],
+    "Тип карала продаж": ["Тип карала продаж", "Тип канала продаж", "Канал продаж"],
+    "ТГ ник": list(TG_NICK_COLUMNS),
+}
 
 
 def export_columns(parsed: ParsedWorkbook | None = None) -> list[str]:
@@ -104,18 +87,29 @@ def format_messenger_history(messages: list[dict[str, Any]], *, limit: int = 10)
     return "\n".join(lines)
 
 
+def _resolve_aliases(row: dict[str, Any], col: str) -> Any:
+    for key in COLUMN_ALIASES.get(col, [col]):
+        val = row.get(key)
+        if val not in (None, ""):
+            return val
+    return row.get(col)
+
+
 def _cell_value(row: dict[str, Any], col: str) -> Any:
     if col in TG_NICK_COLUMNS:
-        for key in TG_NICK_COLUMNS:
-            val = row.get(key)
-            if val not in (None, ""):
-                return val
-        return row.get("ТГ ник")
+        return _resolve_aliases(row, "ТГ ник")
     if col == "История переписки":
         return format_messenger_history(row.get("_messenger_context") or [])
     if col == "Группы":
         return row.get("Группы") or row.get("_moysklad_tags_display")
+    if col in COLUMN_ALIASES:
+        return _resolve_aliases(row, col)
     return row.get(col)
+
+
+def client_cell_value(row: dict[str, Any], col: str) -> Any:
+    """Значение ячейки для таблицы клиентов и экспорта."""
+    return _cell_value(row, col)
 
 
 def row_for_export(row: dict[str, Any], columns: list[str]) -> dict[str, Any]:

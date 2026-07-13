@@ -75,37 +75,77 @@ def _counterparty_status(tags: list[str]) -> str | None:
     return None
 
 
+def _address_full(counterparty: dict[str, Any], key: str) -> dict[str, Any]:
+    value = counterparty.get(key) or {}
+    return value if isinstance(value, dict) else {}
+
+
+def _location_label(addr_full: dict[str, Any]) -> str | None:
+    if not addr_full:
+        return None
+    parts = [
+        str(addr_full.get("city") or "").strip(),
+        str(addr_full.get("region") or addr_full.get("state") or "").strip(),
+    ]
+    joined = ", ".join(p for p in parts if p)
+    return joined or None
+
+
+def _bank_fields(counterparty: dict[str, Any]) -> dict[str, Any]:
+    accounts = counterparty.get("accounts") or []
+    account = accounts[0] if accounts and isinstance(accounts[0], dict) else {}
+    return {
+        "БИК": account.get("bic"),
+        "Банк": account.get("bankName"),
+        "К/с": account.get("correspondentAccount"),
+        "Р/с": account.get("accountNumber"),
+    }
+
+
 def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
     """Маппинг API Remap 1.2 → строка как в Excel-выгрузке контрагентов."""
     tags = _tags_list(counterparty)
     groups = _tags_to_groups(tags)
+    legal_full = _address_full(counterparty, "legalAddressFull")
+    actual_full = _address_full(counterparty, "actualAddressFull")
+    bank = _bank_fields(counterparty)
 
     return {
         "UUID": counterparty.get("id"),
-        "Группы": groups,
-        "Код": counterparty.get("code") or counterparty.get("externalCode"),
         "Наименование": counterparty.get("name"),
+        "Телефон": counterparty.get("phone"),
+        "Статус": _counterparty_status(tags),
+        "Группы": groups,
+        "Фактический адрес": counterparty.get("actualAddress"),
+        "Фактический адрес (Комментарий)": actual_full.get("comment"),
+        "Тип контрагента": _company_type_label(counterparty.get("companyType")),
+        "Пол": _sex_label(counterparty.get("sex")),
+        "E-mail": counterparty.get("email"),
+        "Код": counterparty.get("code") or counterparty.get("externalCode"),
         "Внешний код": counterparty.get("externalCode"),
         "Полное наименование": counterparty.get("legalTitle") or counterparty.get("name"),
-        "Фамилия": counterparty.get("legalLastName"),
-        "Имя": counterparty.get("legalFirstName"),
-        "Отчество": counterparty.get("legalMiddleName"),
+        "Фамилия (для ИП и физ. лиц)": counterparty.get("legalLastName"),
+        "Имя (для ИП и физ. лиц)": counterparty.get("legalFirstName"),
+        "Отчество (для ИП и физ. лиц)": counterparty.get("legalMiddleName"),
         "Юридический адрес": counterparty.get("legalAddress"),
-        "Фактический адрес": counterparty.get("actualAddress"),
+        "Юридический адрес (Комментарий)": legal_full.get("comment"),
         "ИНН": counterparty.get("inn"),
         "КПП": counterparty.get("kpp"),
         "ОКПО": counterparty.get("okpo"),
+        "Факс": counterparty.get("fax"),
+        "Местонахождение": _location_label(actual_full) or _location_label(legal_full),
+        "Номер дисконтной карты": counterparty.get("discountCardNumber"),
         "ОГРН": counterparty.get("ogrn"),
         "ОГРНИП": counterparty.get("ogrnip"),
-        "Телефон": counterparty.get("phone"),
-        "Факс": counterparty.get("fax"),
-        "E-mail": counterparty.get("email"),
-        "Тип контрагента": _company_type_label(counterparty.get("companyType")),
-        "Статус": _counterparty_status(tags),
+        "Номер свидетельства": counterparty.get("certificateNumber"),
+        "Дата свидетельства": counterparty.get("certificateDate"),
         "Архивный": _archived_label(counterparty.get("archived")),
         "Комментарий": counterparty.get("description"),
-        "Пол": _sex_label(counterparty.get("sex")),
         "Дата рождения": counterparty.get("birthDate"),
+        "Юридический адрес (Код ФИАС)": legal_full.get("fiasCode") or legal_full.get("code"),
+        "Фактический адрес (Код ФИАС)": actual_full.get("fiasCode") or actual_full.get("code"),
+        "Баллы начисленные": counterparty.get("bonusPoints"),
+        **bank,
         "_moysklad_id": counterparty.get("id"),
         "_moysklad_tags": tags,
         "_moysklad_tags_display": groups,

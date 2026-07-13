@@ -93,6 +93,36 @@ def is_permanent(row: dict[str, Any]) -> bool:
     return False
 
 
+def last_order_date(row: dict[str, Any]) -> str | None:
+  orders = row.get("_orders_context") or []
+  if not orders:
+    return None
+  best: tuple[datetime | None, dict[str, Any]] | None = None
+  for order in orders:
+    dt = _parse_date(order.get("Дата") or order.get("Момент времени"))
+    if best is None or (dt and (best[0] is None or dt > best[0])):
+      best = (dt, order)
+  if best is None or best[0] is None:
+    return None
+  return best[0].strftime("%d.%m.%Y %H:%M:%S")
+
+
+def sales_channel_for_row(row: dict[str, Any]) -> str | None:
+  channel = row.get("Канал продаж") or row.get("Тип канала продаж") or row.get("Тип карала продаж")
+  if channel:
+    return str(channel)
+  orders = row.get("_orders_context") or []
+  best: tuple[datetime | None, dict[str, Any]] | None = None
+  for order in orders:
+    dt = _parse_date(order.get("Дата") or order.get("Момент времени"))
+    if best is None or (dt and (best[0] is None or dt > best[0])):
+      best = (dt, order)
+  if best is None:
+    return None
+  order = best[1]
+  return str(order.get("Канал продаж") or order.get("Тип канала продаж") or order.get("Тип карала продаж") or "")
+
+
 def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   """Добавляет вычисляемые поля к строке клиента."""
   enriched = dict(row)
@@ -100,6 +130,16 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   enriched["Статус последнего заказа"] = last_order_status(row)
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
+  if not enriched.get("Дата последнего заказа"):
+    enriched["Дата последнего заказа"] = last_order_date(row)
+  if not enriched.get("Канал продаж"):
+    channel = sales_channel_for_row(row)
+    if channel:
+      enriched["Канал продаж"] = channel
+  if not enriched.get("Тип карала продаж"):
+    channel = enriched.get("Канал продаж") or row.get("Тип канала продаж")
+    if channel:
+      enriched["Тип карала продаж"] = channel
   return enriched
 
 

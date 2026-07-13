@@ -30,7 +30,7 @@ from app.services.excel_parser import (
   enrich_with_orders,
   parse_workbook,
 )
-from app.services.export_format import export_columns, merge_enriched_rows, row_for_export
+from app.services.export_format import client_cell_value, export_columns, merge_enriched_rows, row_for_export
 from app.services.fields import enrich_row_computed
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
@@ -59,6 +59,7 @@ app = FastAPI(title=settings.app_title)
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["tag_reasons"] = explain_tags_for_row
 templates.env.globals["rule_label"] = rule_label
+templates.env.globals["client_cell_value"] = client_cell_value
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}

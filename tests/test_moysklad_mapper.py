@@ -37,7 +37,8 @@ def test_export_columns_for_moysklad_matches_excel_plus_ai() -> None:
     )
     cols = export_columns(parsed)
     assert cols[0] == "UUID"
-    assert cols[1] == "Группы"
+    assert cols[1] == "Наименование"
+    assert "Группы" in cols
     assert "Заказчик или получатель" in cols
     assert "Пол" in cols
     assert "Ник в тг/вк" in cols
