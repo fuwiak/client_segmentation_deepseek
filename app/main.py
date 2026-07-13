@@ -25,6 +25,7 @@ from app.services.cache import get_cache, file_hash
 from app.services.data_hub import get_data_hub
 from app.services.excel_parser import (
   AI_EXTRA_COLUMNS,
+  AI_COLUMNS,
   CLIENT_DISPLAY_COLUMNS,
   SEGMENT_COLUMNS,
   enrich_with_orders,
@@ -176,6 +177,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "title": settings.app_title,
     "segment_columns": SEGMENT_COLUMNS,
     "ai_extra_columns": AI_EXTRA_COLUMNS,
+    "ai_columns": AI_COLUMNS,
     "client_columns": CLIENT_DISPLAY_COLUMNS,
     "moysklad_enabled": get_moysklad_client(settings).enabled,
     "model": settings.openrouter_model,

@@ -1,5 +1,4 @@
 {% from 'partials/ai_cell.html' import render as ai_cell %}
-{% set ai_cols = ['Группы', 'Заказчик или получатель', 'Пол', 'ТГ ник'] %}
 {% set col_count = 2 + (client_columns|length) %}
 <div class="table-wrap">
   <table class="clients-table clients-table-wide">
@@ -25,7 +24,7 @@
         {% for col in client_columns %}
         <td{% if col == 'Группы' %} class="tags-cell"{% endif %}>
           {% set value = client_cell_value(row, col) %}
-          {% if col in ai_cols %}
+          {% if col in ai_columns %}
             {{ ai_cell(row, col, value) }}
           {% else %}
             {{ value or '—' }}

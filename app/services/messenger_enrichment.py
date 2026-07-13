@@ -13,28 +13,32 @@ import httpx
 
 from app.config import Settings
 from app.services.cache import CacheService
-from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
-from app.services.fields import apply_ai_field
+from app.services.excel_parser import AI_COLUMNS, AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
+from app.services.fields import apply_ai_field, collect_client_comments
 from app.services.tag_rules import evaluate_tags_for_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
 from app.services.segmentation import SegmentationService, guess_gender
 from app.services.telegram_bot import get_telegram_client
 
-ENRICHMENT_COLUMNS = SEGMENT_COLUMNS + AI_EXTRA_COLUMNS
+ENRICHMENT_COLUMNS = AI_COLUMNS
 
 SYSTEM_PROMPT = """Ты — CRM-аналитик цветочного бизнеса.
-По переписке клиента в WhatsApp/Telegram и данным заказов заполни поля профиля.
+По переписке клиента в WhatsApp/Telegram, комментариям контрагента и заказов заполни поля профиля.
 
 ПРАВИЛА:
 1. "Группы" — сегмент (премиум, постоянный клиент, новый, маркетплейс и т.д.)
-2. "Заказчик или получатель" — кто заказывает; ФИО получателя если есть в переписке
+2. "Заказчик или получатель" — кто заказывает; ФИО получателя если есть в переписке или комментариях
 3. "Пол" — "Мужской" или "Женский" по имени; если неоднозначно → null
-4. "ТГ ник" — @username только если явно есть в переписке или профиле
+4. "ТГ ник" — @username только если явно есть в переписке, комментариях или профиле
 5. "Теги" — хэштеги: #деньрождения #vip #доволен #проблемный и т.д.
 6. "Саммари" — 1-2 предложения: кто клиент, для кого заказывает, настроение
+7. "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)" — из ФИО в данных
+8. "E-mail" — только если явно указан
+9. "Дата рождения" — только если явно указана (ДД.ММ.ГГГГ)
 
 ВАЖНО:
+- Учитывай all_comments: комментарий контрагента и комментарии к заказам.
 - Опирайся ТОЛЬКО на переписку и данные клиента. Нет сигнала → null.
 - reasoning — откуда взяты ключевые поля (канал, цитата).
 - references — объект поле → источник.
@@ -249,6 +253,10 @@ class MessengerEnrichmentService:
         )
 
         if not messages:
+            if self._settings.openrouter_api_key and self._has_profile_context(row):
+                ai_row = await self._enrich_with_ai(row, [])
+                if ai_row:
+                    return ai_row
             return self._heuristic_from_orders(row)
 
         if self._settings.openrouter_api_key:
@@ -274,6 +282,9 @@ class MessengerEnrichmentService:
             "messages": messages[-30:],
             "orders_sample": (row.get("_orders_context") or [])[:3],
         }
+        comments = collect_client_comments(row)
+        if comments:
+            payload["all_comments"] = comments[:2000]
         user_prompt = (
             "Проанализируй переписку и заполни поля профиля клиента. "
             'Ответ — JSON {"results": [...]}.\n\n'
@@ -354,7 +365,7 @@ class MessengerEnrichmentService:
         row: dict[str, Any],
         messages: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        merged = dict(row)
+        merged = self._segmentation._heuristic_row(dict(row))
         ai_fields: list[str] = list(merged.get("_ai_fields") or [])
         enrichment_fields: list[str] = list(merged.get("_enrichment_fields") or [])
         merged["_messenger_context"] = messages
@@ -368,12 +379,13 @@ class MessengerEnrichmentService:
                         enrichment_fields.append("ТГ ник")
                         break
 
-        if not merged.get("Теги"):
-            tags, tag_reasons = evaluate_tags_for_row(merged)
-            if tags:
-                apply_ai_field(merged, "Теги", tags, ai_fields)
-                enrichment_fields.append("Теги")
-                merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
+        tags, tag_reasons = evaluate_tags_for_row(merged)
+        if tags:
+            existing = [t for t in str(merged.get("Теги") or "").split() if t]
+            combined = " ".join(dict.fromkeys([*existing, *tags.split()]))
+            apply_ai_field(merged, "Теги", combined, ai_fields)
+            enrichment_fields.append("Теги")
+            merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
 
         if not merged.get("Саммари") and messages:
             channels = ", ".join(sorted({m.get("channel", "") for m in messages}))
@@ -404,6 +416,12 @@ class MessengerEnrichmentService:
             base["_enrichment_fields"] = list(base.get("_ai_fields") or [])
             base["_ai_processed"] = True
         return base
+
+    @staticmethod
+    def _has_profile_context(row: dict[str, Any]) -> bool:
+        if row.get("_orders_context"):
+            return True
+        return bool(collect_client_comments(row).strip())
 
     @staticmethod
     def _row_key(row: dict[str, Any]) -> str:

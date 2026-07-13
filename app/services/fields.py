@@ -2,8 +2,64 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
+
+COUNTERPARTY_COMMENT_KEYS = (
+  "Комментарий",
+  "Фактический адрес (Комментарий)",
+  "Юридический адрес (Комментарий)",
+)
+
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
+
+def collect_client_comments(row: dict[str, Any]) -> str:
+  """Комментарии контрагента и его заказов — единый текст для AI и эвристик."""
+  parts: list[str] = []
+  for key in COUNTERPARTY_COMMENT_KEYS:
+    val = str(row.get(key) or "").strip()
+    if val:
+      parts.append(val)
+  for order in row.get("_orders_context") or []:
+    for key in ("Комментарий", "Описание"):
+      val = str(order.get(key) or "").strip()
+      if val:
+        parts.append(val)
+  return " ".join(parts)
+
+
+def extract_email_from_row(row: dict[str, Any]) -> str | None:
+  if row.get("E-mail"):
+    return None
+  text = " ".join(
+    str(row.get(key) or "")
+    for key in ("E-mail", "Наименование", *COUNTERPARTY_COMMENT_KEYS)
+  )
+  text = f"{text} {collect_client_comments(row)}"
+  match = _EMAIL_RE.search(text)
+  return match.group(0) if match else None
+
+
+def apply_name_parts(merged: dict[str, Any], full_name: str, ai_fields: list[str]) -> None:
+  """Разбить ФИО на части, если поля ещё пустые."""
+  name = full_name.strip()
+  if not name:
+    return
+  parts = name.split()
+  if len(parts) >= 3:
+    if not merged.get("Фамилия (для ИП и физ. лиц)"):
+      apply_ai_field(merged, "Фамилия (для ИП и физ. лиц)", parts[0], ai_fields)
+    if not merged.get("Имя (для ИП и физ. лиц)"):
+      apply_ai_field(merged, "Имя (для ИП и физ. лиц)", parts[1], ai_fields)
+    if not merged.get("Отчество (для ИП и физ. лиц)"):
+      apply_ai_field(merged, "Отчество (для ИП и физ. лиц)", parts[2], ai_fields)
+  elif len(parts) == 2:
+    if not merged.get("Имя (для ИП и физ. лиц)"):
+      apply_ai_field(merged, "Имя (для ИП и физ. лиц)", parts[0], ai_fields)
+    if not merged.get("Фамилия (для ИП и физ. лиц)"):
+      apply_ai_field(merged, "Фамилия (для ИП и физ. лиц)", parts[1], ai_fields)
+
 
 MARKETPLACE_KEYWORDS = (
   "маркетплейс",

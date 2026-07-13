@@ -18,6 +18,16 @@ AI_EXTRA_COLUMNS = [
     "Саммари",
 ]
 
+AI_PROFILE_COLUMNS = [
+    "Фамилия (для ИП и физ. лиц)",
+    "Имя (для ИП и физ. лиц)",
+    "Отчество (для ИП и физ. лиц)",
+    "E-mail",
+    "Дата рождения",
+]
+
+AI_COLUMNS = SEGMENT_COLUMNS + AI_EXTRA_COLUMNS + AI_PROFILE_COLUMNS
+
 COMPUTED_COLUMNS = [
     "Тип продаж",
     "Статус последнего заказа",

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.services.cache import CacheService
+from app.services.fields import collect_client_comments
 
 
 @dataclass
@@ -158,13 +159,8 @@ def _avg_check(row: dict[str, Any]) -> float:
         return 0.0
 
 
-def _order_comments(row: dict[str, Any]) -> str:
-    parts: list[str] = []
-    for order in row.get("_orders_context") or []:
-        comment = str(order.get("Комментарий") or order.get("Описание") or "").strip()
-        if comment:
-            parts.append(comment)
-    return " ".join(parts).lower()
+def _client_comments(row: dict[str, Any]) -> str:
+    return collect_client_comments(row).lower()
 
 
 def _messenger_text(row: dict[str, Any]) -> str:
@@ -186,7 +182,7 @@ def _snippet(text: str, needle: str, *, width: int = 50) -> str | None:
 
 
 def _match_rule(rule: TagRule, row: dict[str, Any]) -> str | None:
-    comments = _order_comments(row)
+    comments = _client_comments(row)
     messages = _messenger_text(row)
     orders = _orders_count(row)
     avg = _avg_check(row)
@@ -234,7 +230,7 @@ def _match_rule(rule: TagRule, row: dict[str, Any]) -> str | None:
             if "orders" in rule.sources:
                 hit = _snippet(comments, word)
                 if hit:
-                    return f"в заказе: «{hit}»"
+                    return f"в комментарии: «{hit}»"
             if "messenger" in rule.sources:
                 hit = _snippet(messages, word)
                 if hit:
