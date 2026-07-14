@@ -7,12 +7,14 @@
 
 <section class="card toolbar-card">
   <div class="filter-tabs" role="tablist">
-    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
-    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
-    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
   </div>
+  {% include 'partials/group_filter_cloud.html' %}
   <form class="filter-form" method="get">
     <input type="hidden" name="filter" value="{{ sales_filter }}">
+    {% if group_filter %}<input type="hidden" name="group" value="{{ group_filter }}">{% endif %}
     {% if sort_col %}<input type="hidden" name="sort" value="{{ sort_col }}">{% endif %}
     {% if sort_order %}<input type="hidden" name="order" value="{{ sort_order }}">{% endif %}
     <label class="filter-field">
@@ -24,8 +26,8 @@
       <input type="search" name="phone" placeholder="+7…" value="{{ phone_filter|default('') }}">
     </label>
     <label class="filter-field">
-      <span class="filter-label">Тег / группа</span>
-      <input type="search" name="tag" placeholder="Тег или группа…" value="{{ tag_filter }}">
+      <span class="filter-label">Тег</span>
+      <input type="search" name="tag" placeholder="Тег AI…" value="{{ tag_filter }}">
     </label>
     <label class="filter-field">
       <span class="filter-label">Статус заказа</span>
@@ -41,7 +43,7 @@
             hx-swap="innerHTML">↻ Мой Склад</button>
     {% endif %}
     <button type="button" class="btn secondary small"
-            hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+            hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
             hx-target="#enrich-progress-block"
             hx-swap="outerHTML"
             {% if not messenger_available %}title="Задайте GREEN_API_* или TELEGRAM_BOT_TOKEN"{% endif %}>
@@ -53,7 +55,7 @@
     </button>
   </div>
   <p class="result-count">
-    {{ total }} клиентов{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}
+    {{ total }} клиентов{% if group_filter %} · группа: <strong>{{ group_filter }}</strong>{% endif %}{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}
     {% if total > 0 %}
       · показано {{ page_start }}–{{ page_end }}
     {% endif %}

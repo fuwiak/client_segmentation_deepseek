@@ -38,6 +38,7 @@ from app.services.export_format import (
   build_clients_query,
   client_cell_state,
   client_cell_value,
+  collect_group_counts,
   compact_orders_for_display,
   display_cell_value,
   export_columns,
@@ -453,6 +454,7 @@ def _clients_ctx(
   *,
   sales_filter: str = "direct",
   tag: str = "",
+  group: str = "",
   status: str = "",
   q: str = "",
   phone: str = "",
@@ -461,9 +463,21 @@ def _clients_ctx(
   page: int = 1,
   clients: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+  base_rows = hub.filter_rows(
+    sales_filter=sales_filter,
+    tag=tag,
+    group="",
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+  )
+  group_options = collect_group_counts(base_rows)
   rows = hub.filter_rows(
     sales_filter=sales_filter,
     tag=tag,
+    group=group,
     status=status,
     q=q,
     phone=phone,
@@ -490,6 +504,9 @@ def _clients_ctx(
     pagination_pages=_pagination_pages(page, total_pages),
     sales_filter=sales_filter,
     tag_filter=tag,
+    group_filter=group,
+    group_options=group_options,
+    groups_total=len(base_rows),
     status_filter=status,
     q_filter=q,
     phone_filter=phone,
@@ -509,6 +526,7 @@ async def _clients_ctx_with_tg(
   *,
   sales_filter: str = "direct",
   tag: str = "",
+  group: str = "",
   status: str = "",
   q: str = "",
   phone: str = "",
@@ -521,6 +539,7 @@ async def _clients_ctx_with_tg(
   rows = hub.filter_rows(
     sales_filter=sales_filter,
     tag=tag,
+    group=group,
     status=status,
     q=q,
     phone=phone,
@@ -528,8 +547,7 @@ async def _clients_ctx_with_tg(
     order=order,
   )
   per_page = max(1, settings.clients_page_size)
-  total = len(rows)
-  total_pages = max(1, (total + per_page - 1) // per_page)
+  total_pages = max(1, (len(rows) + per_page - 1) // per_page)
   page = max(1, min(page, total_pages))
   start = (page - 1) * per_page
   end = start + per_page
@@ -540,6 +558,7 @@ async def _clients_ctx_with_tg(
     request,
     sales_filter=sales_filter,
     tag=tag,
+    group=group,
     status=status,
     q=q,
     phone=phone,
@@ -642,6 +661,7 @@ async def clients_page(
   request: Request,
   filter: str = Query("direct"),
   tag: str = Query(""),
+  group: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -658,6 +678,7 @@ async def clients_page(
         request,
         sales_filter=filter,
         tag=tag,
+        group=group,
         status=status,
         q=q,
         phone=phone,
@@ -677,6 +698,7 @@ async def clients_table_partial(
   request: Request,
   filter: str = Query("direct"),
   tag: str = Query(""),
+  group: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -692,6 +714,7 @@ async def clients_table_partial(
       request,
       sales_filter=filter,
       tag=tag,
+      group=group,
       status=status,
       q=q,
       phone=phone,
@@ -1115,6 +1138,7 @@ async def enrich_start(
   limit: int = Form(500),
   filter: str = Query("direct"),
   tag: str = Query(""),
+  group: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -1134,6 +1158,7 @@ async def enrich_start(
         error="Нет данных клиентов. Сначала синхронизируйте Мой Склад или загрузите Excel.",
         sales_filter=filter,
         tag_filter=tag,
+        group_filter=group,
         status_filter=status,
         q_filter=q,
         phone_filter=phone,
@@ -1157,6 +1182,7 @@ async def enrich_start(
       error="",
       sales_filter=filter,
       tag_filter=tag,
+      group_filter=group,
       status_filter=status,
       q_filter=q,
       phone_filter=phone,
@@ -1203,6 +1229,7 @@ async def enrich_progress(
   request: Request,
   filter: str = Query("direct"),
   tag: str = Query(""),
+  group: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -1224,6 +1251,7 @@ async def enrich_progress(
       error=_enrich_progress["error"],
       sales_filter=filter,
       tag_filter=tag,
+      group_filter=group,
       status_filter=status,
       q_filter=q,
       phone_filter=phone,

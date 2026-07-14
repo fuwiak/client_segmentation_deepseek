@@ -11,6 +11,7 @@
           <a href="/clients?{{ build_clients_query(
             sales_filter=sales_filter,
             tag=tag_filter,
+            group=group_filter|default(''),
             status=status_filter,
             q=q_filter|default(''),
             phone=phone_filter|default(''),

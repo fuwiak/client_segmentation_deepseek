@@ -6,9 +6,11 @@ from app.services.excel_parser import ParsedWorkbook
 from app.services.export_format import (
     build_clients_query,
     client_cell_value,
+    collect_group_counts,
     export_columns,
     format_messenger_history,
     row_for_export,
+    row_groups,
     sort_client_rows,
 )
 
@@ -51,11 +53,30 @@ def test_format_messenger_history_limits_lines() -> None:
 
 
 def test_build_clients_query_skips_empty_params() -> None:
-    query = build_clients_query(sales_filter="direct", tag="vip", q="", phone="7999")
+    query = build_clients_query(sales_filter="direct", tag="vip", group="премиум", q="", phone="7999")
     assert "filter=direct" in query
     assert "tag=vip" in query
+    assert "group=" in query
     assert "phone=7999" in query
     assert "q=" not in query
+
+
+def test_row_groups_splits_composite_values() -> None:
+    row = {"Группы": "премиум, постоянный клиент/маркетплейс"}
+    assert row_groups(row) == ["премиум", "постоянный клиент", "маркетплейс"]
+
+
+def test_collect_group_counts() -> None:
+    rows = [
+        {"Группы": "VIP, постоянный"},
+        {"Группы": "VIP"},
+        {"Группы": "новый"},
+    ]
+    counts = collect_group_counts(rows)
+    assert counts[0]["name"] == "VIP"
+    assert counts[0]["count"] == 2
+    names = {item["name"] for item in counts}
+    assert names == {"VIP", "постоянный", "новый"}
 
 
 def test_sort_client_rows_numeric() -> None:

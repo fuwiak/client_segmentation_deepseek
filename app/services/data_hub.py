@@ -6,7 +6,7 @@ from typing import Any
 
 from app.domain import normalize_phone
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
-from app.services.export_format import merge_enriched_rows, row_keyword_text, row_matches_phone, sort_client_rows
+from app.services.export_format import merge_enriched_rows, row_has_group, row_keyword_text, row_matches_phone, sort_client_rows
 from app.services.fields import enrich_row_computed, refresh_row_for_display
 
 
@@ -118,6 +118,7 @@ class DataHub:
     self,
     sales_filter: str = "all",
     tag: str = "",
+    group: str = "",
     status: str = "",
     q: str = "",
     phone: str = "",
@@ -129,6 +130,8 @@ class DataHub:
       rows = [r for r in rows if r.get("Тип продаж") == "маркетплейс"]
     elif sales_filter == "direct":
       rows = [r for r in rows if r.get("Тип продаж") == "прямые продажи"]
+    if group:
+      rows = [r for r in rows if row_has_group(r, group)]
     if tag:
       tag_l = tag.lower().lstrip("#")
       rows = [

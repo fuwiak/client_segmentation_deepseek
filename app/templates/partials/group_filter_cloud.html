@@ -1,0 +1,28 @@
+{% if group_options %}
+<section class="group-filter-cloud" aria-label="Фильтр по группам">
+  <div class="group-cloud-head">
+    <span class="group-cloud-title">Группы</span>
+    <span class="group-cloud-hint">{{ group_options|length }} сегментов</span>
+    {% if group_filter %}
+    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       class="group-cloud-clear">Сбросить фильтр</a>
+    {% endif %}
+  </div>
+  <div class="group-cloud-chips">
+    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       class="group-chip group-chip-all{% if not group_filter %} is-active{% endif %}">
+      Все
+      <span class="group-chip-count">{{ groups_total|default(total) }}</span>
+    </a>
+    {% for item in group_options %}
+    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=item.name, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       class="group-chip{% if group_filter|lower == item.name|lower %} is-active{% endif %}"
+       style="--chip-hue: {{ item.hue }}"
+       title="{{ item.count }} клиентов">
+      {{ item.name }}
+      <span class="group-chip-count">{{ item.count }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

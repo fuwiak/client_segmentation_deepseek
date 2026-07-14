@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
@@ -227,10 +228,56 @@ def sort_client_rows(
     return sorted(rows, key=sort_key, reverse=descending)
 
 
+def row_groups(row: dict[str, Any]) -> list[str]:
+    """Отдельные группы клиента из поля «Группы» (МойСклад / AI)."""
+    raw = str(row.get("Группы") or row.get("_moysklad_tags_display") or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"[,/|;]", raw)
+    seen: set[str] = set()
+    groups: list[str] = []
+    for part in parts:
+        name = part.strip()
+        key = name.lower()
+        if name and key not in seen:
+            seen.add(key)
+            groups.append(name)
+    return groups
+
+
+def row_has_group(row: dict[str, Any], group: str) -> bool:
+    target = group.strip().lower()
+    if not target:
+        return True
+    return any(g.lower() == target for g in row_groups(row))
+
+
+def collect_group_counts(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Уникальные группы с числом клиентов, по убыванию."""
+    counter: Counter[str] = Counter()
+    display: dict[str, str] = {}
+    for row in rows:
+        for name in row_groups(row):
+            key = name.lower()
+            counter[key] += 1
+            display.setdefault(key, name)
+    items = [
+        {"name": display[key], "count": counter[key], "hue": group_chip_hue(display[key])}
+        for key in counter
+    ]
+    items.sort(key=lambda item: (-int(item["count"]), str(item["name"]).lower()))
+    return items
+
+
+def group_chip_hue(name: str) -> int:
+    return sum(ord(c) for c in name) % 360
+
+
 def build_clients_query(
     *,
     sales_filter: str = "direct",
     tag: str = "",
+    group: str = "",
     status: str = "",
     q: str = "",
     phone: str = "",
@@ -242,6 +289,7 @@ def build_clients_query(
     params: dict[str, str] = {
         "filter": sales_filter,
         "tag": tag,
+        "group": group,
         "status": status,
         "q": q,
         "phone": phone,

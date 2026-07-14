@@ -86,6 +86,17 @@ def test_filter_rows_sort_by_name() -> None:
     assert names == sorted(names, key=str.lower)
 
 
+def test_filter_rows_by_group_exact_match() -> None:
+    hub = _sample_hub()
+    rows = hub.filter_rows(sales_filter="all", group="VIP")
+    assert len(rows) == 1
+    assert rows[0]["UUID"] == "1"
+
+    rows_new = hub.filter_rows(sales_filter="all", group="новый")
+    assert len(rows_new) == 1
+    assert rows_new[0]["UUID"] == "2"
+
+
 def test_get_client_matches_normalized_phone() -> None:
     hub = DataHub()
     hub.parsed = ParsedWorkbook(

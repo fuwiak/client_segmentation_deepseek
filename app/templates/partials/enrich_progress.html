@@ -5,7 +5,7 @@
   {% set percent = percent|default(0) %}
   {% set error = error|default('') %}
   {% set sales_filter = sales_filter|default('direct') %}
-  {% set tag_filter = tag_filter|default('') %}
+  {% set group_filter = group_filter|default('') %}
   {% set status_filter = status_filter|default('') %}
   {% set q_filter = q_filter|default('') %}
   {% set phone_filter = phone_filter|default('') %}
@@ -14,11 +14,11 @@
   {% if status == 'running' %}
     <p class="hint">Обогащение из WhatsApp/Telegram… {{ done }}/{{ total }} ({{ percent }}%)</p>
     <div class="progress-bar"><div class="progress-fill" style="width: {{ percent }}%"></div></div>
-    <div hx-get="/enrich/progress?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, status=status_filter, q=q_filter, phone=phone_filter, sort=sort_col, order=sort_order) }}" hx-trigger="every 2s" hx-target="#enrich-progress-block" hx-swap="outerHTML"></div>
+    <div hx-get="/enrich/progress?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter, status=status_filter, q=q_filter, phone=phone_filter, sort=sort_col, order=sort_order) }}" hx-trigger="every 2s" hx-target="#enrich-progress-block" hx-swap="outerHTML"></div>
   {% elif status == 'done' %}
     <p class="hint ok">Обогащение завершено: {{ total }} клиентов. Таблица обновлена.</p>
     <a href="/download/clients/xlsx" class="btn secondary small">Скачать таблицу (.xlsx)</a>
-    <div hx-get="/clients/table?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, status=status_filter, q=q_filter, phone=phone_filter, sort=sort_col, order=sort_order, page=page|default(1)) }}"
+    <div hx-get="/clients/table?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter, status=status_filter, q=q_filter, phone=phone_filter, sort=sort_col, order=sort_order, page=page|default(1)) }}"
          hx-trigger="load"
          hx-target="#clients-table-block"
          hx-swap="innerHTML"></div>
