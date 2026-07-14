@@ -85,6 +85,20 @@ def test_home_page_shows_title_and_active_nav() -> None:
   assert 'data-nav-path="/" preload="mouseover" class="bottom-nav-item active"' in response.text
 
 
+def test_home_page_shows_diag_panel_for_import_and_settings() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get("/")
+  assert response.status_code == 200
+  assert 'id="diag-panel"' in response.text
+  assert "Импорт Excel" in response.text
+  assert "Настройки" in response.text
+  assert 'data-nav-path="/segment"' in response.text
+  assert 'class="nav-item active"' in response.text
+  assert "Импорт</a>" not in response.text.split("diag-panel-nav")[0]
+
+
 def test_home_recent_clients_open_uses_drawer() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook

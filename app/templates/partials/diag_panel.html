@@ -1,0 +1,85 @@
+<div class="diag-panel" id="diag-panel">
+  <button type="button"
+          class="diag-panel-toggle"
+          id="diag-panel-toggle"
+          onclick="toggleDiagPanel()"
+          aria-expanded="false"
+          aria-controls="diag-panel-body"
+          aria-label="Сервис и диагностика">
+    <span class="diag-panel-toggle-icon" aria-hidden="true">⚙</span>
+  </button>
+
+  <div class="diag-panel-body" id="diag-panel-body" hidden>
+    <div class="diag-panel-header">
+      <h3>Сервис</h3>
+      <button type="button" class="diag-panel-close" onclick="toggleDiagPanel(false)" aria-label="Закрыть">×</button>
+    </div>
+
+    <div class="diag-panel-section">
+      <p class="diag-panel-label">Статус интеграций</p>
+      <div class="status-strip diag-status-strip"
+           hx-get="/messenger/sidebar"
+           hx-trigger="load"
+           hx-boost="false"
+           hx-push-url="false"
+           hx-swap="innerHTML">
+        <span class="status-pill muted">…</span>
+      </div>
+    </div>
+
+    <nav class="diag-panel-nav" aria-label="Сервис и настройки">
+      <a href="/segment"
+         data-nav-path="/segment"
+         preload="mouseover"
+         class="diag-panel-link {% if active_page|default('') == 'segment' %}active{% endif %}">
+        <span class="diag-panel-link-icon" aria-hidden="true">↑</span>
+        <span>
+          <span class="diag-panel-link-title">Импорт Excel</span>
+          <span class="diag-panel-link-desc">Загрузка и сегментация</span>
+        </span>
+      </a>
+      <a href="/settings"
+         data-nav-path="/settings"
+         preload="mouseover"
+         class="diag-panel-link {% if active_page|default('') == 'settings' %}active{% endif %}">
+        <span class="diag-panel-link-icon" aria-hidden="true">⚙</span>
+        <span>
+          <span class="diag-panel-link-title">Настройки</span>
+          <span class="diag-panel-link-desc">Интеграции и API</span>
+        </span>
+      </a>
+      <a href="/settings/communications"
+         data-nav-path="/settings/communications"
+         preload="mouseover"
+         class="diag-panel-link {% if active_page|default('') == 'communications' %}active{% endif %}">
+        <span class="diag-panel-link-icon" aria-hidden="true">✉</span>
+        <span>
+          <span class="diag-panel-link-title">Автокоммуникация</span>
+          <span class="diag-panel-link-desc">Правила и каналы</span>
+        </span>
+      </a>
+      <a href="/settings/moysklad"
+         data-nav-path="/settings/moysklad"
+         preload="mouseover"
+         class="diag-panel-link {% if active_page|default('') == 'moysklad' %}active{% endif %}">
+        <span class="diag-panel-link-icon" aria-hidden="true">▦</span>
+        <span>
+          <span class="diag-panel-link-title">Мой Склад</span>
+          <span class="diag-panel-link-desc">Синхронизация и кэш</span>
+        </span>
+      </a>
+      <a href="/campaigns"
+         data-nav-path="/campaigns"
+         preload="mouseover"
+         class="diag-panel-link {% if active_page|default('') == 'campaigns' %}active{% endif %}">
+        <span class="diag-panel-link-icon" aria-hidden="true">◎</span>
+        <span>
+          <span class="diag-panel-link-title">Кампании</span>
+          <span class="diag-panel-link-desc">Рассылки и сценарии</span>
+        </span>
+      </a>
+    </nav>
+
+    <p class="diag-panel-meta">{{ model }} · {% if has_api_key %}AI активен{% else %}Нужен API-ключ{% endif %}</p>
+  </div>
+</div>

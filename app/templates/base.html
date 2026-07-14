@@ -26,33 +26,12 @@
         {% include 'partials/nav_items.html' %}
       </nav>
 
-      <div class="header-actions">
-        <div class="status-strip"
-             hx-get="/messenger/sidebar"
-             hx-trigger="load"
-             hx-boost="false"
-             hx-push-url="false"
-             hx-swap="innerHTML">
-          <span class="status-pill muted">…</span>
-        </div>
-        <a href="/segment" class="btn btn-nav">Импорт Excel</a>
-      </div>
-
       <button type="button" class="nav-toggle" onclick="toggleMobileNav()" aria-label="Меню" aria-expanded="false" id="nav-toggle-btn">☰</button>
     </div>
 
     <div class="mobile-drawer" id="mobile-drawer" hidden>
       <nav class="mobile-drawer-nav" aria-label="Мобильное меню">
         {% include 'partials/nav_items.html' %}
-        <div class="status-strip mobile-status-strip"
-             hx-get="/messenger/sidebar"
-             hx-trigger="load"
-             hx-boost="false"
-             hx-push-url="false"
-             hx-swap="innerHTML">
-          <span class="status-pill muted">…</span>
-        </div>
-        <a href="/segment" class="btn mobile-drawer-cta">Импорт Excel</a>
       </nav>
     </div>
   </header>
@@ -88,19 +67,13 @@
       <span class="bottom-nav-icon">👥</span>
       <span>Клиенты</span>
     </a>
-    <a href="/segment" data-nav-path="/segment" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'segment' %}active{% endif %}">
-      <span class="bottom-nav-icon">↑</span>
-      <span>Импорт</span>
-    </a>
     <a href="/dashboard" data-nav-path="/dashboard" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
       <span class="bottom-nav-icon">▦</span>
       <span>Дашборд</span>
     </a>
-    <a href="/settings" data-nav-path="/settings" preload="mouseover" class="bottom-nav-item {% if active_page in ['settings', 'communications', 'moysklad'] %}active{% endif %}">
-      <span class="bottom-nav-icon">⚙</span>
-      <span>Ещё</span>
-    </a>
   </nav>
+
+  {% include 'partials/diag_panel.html' %}
 
   <div id="orders-modal-loading" class="modal-overlay orders-modal-loading-overlay" hidden aria-hidden="true">
     <div class="modal-card orders-modal">

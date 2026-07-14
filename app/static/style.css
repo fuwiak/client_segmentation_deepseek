@@ -218,6 +218,7 @@ code {
   font-size: 18px;
   cursor: pointer;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .mobile-drawer {
@@ -257,6 +258,181 @@ code {
   padding: var(--xs) var(--xxs) calc(var(--xs) + env(safe-area-inset-bottom));
   justify-content: space-around;
   box-shadow: 0 -2px 8px rgba(20, 20, 19, 0.06);
+}
+
+/* ---- Diagnostic panel (bottom-right) ------------------------------------ */
+
+.diag-panel {
+  position: fixed;
+  right: var(--lg);
+  bottom: var(--lg);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sm);
+  pointer-events: none;
+}
+
+.diag-panel > * { pointer-events: auto; }
+
+.diag-panel-toggle {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--surface-white);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.diag-panel-toggle:hover {
+  box-shadow: 0 4px 14px rgba(20, 20, 19, 0.12);
+  transform: translateY(-1px);
+}
+
+.diag-panel.is-open .diag-panel-toggle {
+  background: var(--primary-soft);
+  border-color: rgba(92, 107, 192, 0.35);
+  color: var(--primary);
+}
+
+.diag-panel-body {
+  width: min(320px, calc(100vw - 2 * var(--lg)));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--surface-white);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: 0 12px 32px rgba(20, 20, 19, 0.14);
+  padding: var(--md);
+  transform-origin: bottom right;
+  animation: diag-panel-in 0.22s ease;
+}
+
+.diag-panel-body[hidden] { display: none !important; }
+
+@keyframes diag-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.diag-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm);
+  margin-bottom: var(--md);
+}
+
+.diag-panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.diag-panel-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.diag-panel-section { margin-bottom: var(--md); }
+
+.diag-panel-label {
+  margin: 0 0 var(--xs);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.diag-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--xs);
+}
+
+.diag-panel-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xs);
+  margin-bottom: var(--md);
+}
+
+.diag-panel-link {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sm);
+  padding: var(--sm) var(--md);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--canvas);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.diag-panel-link:hover {
+  border-color: var(--hairline);
+  background: var(--surface-white);
+}
+
+.diag-panel-link.active {
+  border-color: rgba(92, 107, 192, 0.35);
+  background: var(--primary-soft);
+}
+
+.diag-panel-link-icon {
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.diag-panel-link-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.diag-panel-link-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.diag-panel-meta {
+  margin: 0;
+  padding-top: var(--sm);
+  border-top: 1px solid var(--hairline-soft);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .bottom-nav-item {
@@ -1630,11 +1806,13 @@ th.col-drag-over { box-shadow: inset 3px 0 0 var(--primary); }
 
 @media (max-width: 900px) {
   .desktop-nav { display: none; }
-  .header-actions .status-strip { display: none; }
-  .header-actions .btn-nav { display: none; }
   .nav-toggle { display: block; margin-left: auto; }
   .bottom-nav { display: flex; }
   .main-content { padding-bottom: 72px; }
+  .diag-panel {
+    right: var(--md);
+    bottom: calc(72px + var(--sm));
+  }
   .split-grid, .settings-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
 }

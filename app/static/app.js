@@ -9,6 +9,21 @@
     btn.textContent = open ? "✕" : "☰";
   }
 
+  function toggleDiagPanel(forceOpen) {
+    var panel = document.getElementById("diag-panel");
+    var body = document.getElementById("diag-panel-body");
+    var btn = document.getElementById("diag-panel-toggle");
+    if (!panel || !body || !btn) return;
+    var open = typeof forceOpen === "boolean" ? forceOpen : body.hidden;
+    body.hidden = !open;
+    panel.classList.toggle("is-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function closeDiagPanel() {
+    toggleDiagPanel(false);
+  }
+
   function isOrdersModalRequest(elt) {
     return elt && elt.classList && elt.classList.contains("orders-modal-btn");
   }
@@ -133,6 +148,8 @@
   }
 
   window.toggleMobileNav = toggleMobileNav;
+  window.toggleDiagPanel = toggleDiagPanel;
+  window.closeDiagPanel = closeDiagPanel;
   window.closeModal = closeModal;
   window.prepareOrdersModal = prepareOrdersModal;
   window.openTagRulesDrawer = openTagRulesDrawer;
@@ -153,7 +170,7 @@
   }
 
   function navPathMatches(navPath, path) {
-    if (navPath === "/settings") return settingsNavActive(path);
+    if (navPath === "/settings") return path === "/settings";
     if (navPath === "/") return path === "/";
     return navPath === path;
   }
@@ -223,6 +240,11 @@
       var header = document.querySelector(".site-header");
       if (header) activateLazyWidgets(header);
     }
+    if (!document.body.dataset.diagWidgetsInit) {
+      document.body.dataset.diagWidgetsInit = "1";
+      var diag = document.getElementById("diag-panel");
+      if (diag) activateLazyWidgets(diag);
+    }
   }
 
   function isLiveSwapTarget(target) {
@@ -249,6 +271,7 @@
     closeModal();
     closeTagRulesDrawer();
     closeClientDrawer();
+    closeDiagPanel();
     var drawer = document.getElementById("mobile-drawer");
     if (drawer && !drawer.hidden) toggleMobileNav();
   });
@@ -257,6 +280,18 @@
     var exportBtn = e.target.closest && e.target.closest(".export-xlsx-btn");
     if (exportBtn) {
       flashToolbarBtn(exportBtn, 2200);
+    }
+    var diagLink = e.target.closest && e.target.closest(".diag-panel-nav a[href]");
+    if (diagLink) closeDiagPanel();
+    var diagPanel = document.getElementById("diag-panel");
+    var diagBody = document.getElementById("diag-panel-body");
+    if (
+      diagPanel &&
+      diagBody &&
+      !diagBody.hidden &&
+      !e.target.closest("#diag-panel")
+    ) {
+      closeDiagPanel();
     }
   });
 
@@ -275,6 +310,7 @@
     if (target && target.id === "page-content") {
       closeTagRulesDrawer();
       closeClientDrawer();
+      closeDiagPanel();
       closeModal();
     }
     if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest(".upload-form")) {
