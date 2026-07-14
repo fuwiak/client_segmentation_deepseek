@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import pandas as pd
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -110,6 +110,41 @@ async def _import_telegram_export_from_path(path: Path) -> dict[str, Any]:
   except Exception as exc:  # noqa: BLE001
     _tg_export_progress.update(status="error", error=str(exc))
     raise
+
+
+async def _save_upload_stream(upload: UploadFile, dest: Path, *, max_bytes: int) -> int:
+  dest.parent.mkdir(parents=True, exist_ok=True)
+  size = 0
+  with dest.open("wb") as out:
+    while True:
+      chunk = await upload.read(1024 * 1024)
+      if not chunk:
+        break
+      size += len(chunk)
+      if size > max_bytes:
+        dest.unlink(missing_ok=True)
+        raise ValueError(f"Файл больше {settings.telegram_export_max_mb} МБ")
+      out.write(chunk)
+  return size
+
+
+async def _telegram_export_import_handler(file: UploadFile) -> dict[str, Any]:
+  max_bytes = settings.telegram_export_max_mb * 1024 * 1024
+  filename = (file.filename or "telegram_export.json").lower()
+  suffix = ".json.gz" if filename.endswith(".gz") else ".json"
+  path = Path(settings.telegram_export_path).with_suffix(suffix)
+  try:
+    size = await _save_upload_stream(file, path, max_bytes=max_bytes)
+  except ValueError as exc:
+    return {"ok": False, "error": str(exc)}
+  asyncio.create_task(_import_telegram_export_from_path(path))
+  return {
+    "ok": True,
+    "status": "accepted",
+    "bytes": size,
+    "path": str(path),
+    "message": "Импорт запущен в фоне. Обновите /clients через ~1 мин.",
+  }
 
 
 async def _bootstrap_telegram_export() -> None:
@@ -944,25 +979,35 @@ async def enrich_start(
   )
 
 
-@app.post("/telegram/export/import", response_class=HTMLResponse)
-async def telegram_export_import(request: Request, file: UploadFile = File(...)) -> HTMLResponse:
-  max_bytes = settings.telegram_export_max_mb * 1024 * 1024
-  content = await file.read()
-  if len(content) > max_bytes:
+@app.post("/telegram/export/import")
+@app.post("/clients/telegram-import")
+async def telegram_export_import(request: Request, file: UploadFile = File(...)):
+  result = await _telegram_export_import_handler(file)
+  if not result.get("ok"):
+    if request.headers.get("accept", "").startswith("application/json"):
+      return JSONResponse(result, status_code=413)
     return templates.TemplateResponse(
       "partials/error.html",
-      _ctx(request, message=f"Файл больше {settings.telegram_export_max_mb} МБ"),
+      _ctx(request, message=result.get("error", "Ошибка загрузки")),
+      status_code=413,
     )
-  path = Path(settings.telegram_export_path)
-  path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_bytes(content)
-  asyncio.create_task(_import_telegram_export_from_path(path))
+  if request.headers.get("accept", "").startswith("application/json"):
+    return JSONResponse(result, status_code=202)
   return templates.TemplateResponse(
     "partials/error.html",
-    _ctx(
-      request,
-      message="Telegram export загружен, импорт запущен в фоне. Обновите страницу клиентов через минуту.",
-    ),
+    _ctx(request, message=result.get("message", "Импорт запущен")),
+    status_code=202,
+  )
+
+
+@app.get("/telegram/export/status")
+async def telegram_export_status() -> JSONResponse:
+  return JSONResponse(
+    {
+      "status": _tg_export_progress.get("status"),
+      "meta": _tg_export_progress.get("meta") or {},
+      "error": _tg_export_progress.get("error") or "",
+    }
   )
 
 

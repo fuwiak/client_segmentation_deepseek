@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import re
@@ -213,14 +214,29 @@ def build_export_index(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _decode_export_bytes(raw: bytes) -> str:
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    return raw.decode("utf-8")
+
+
+def parse_telegram_export_bytes(raw: bytes) -> dict[str, Any]:
+    compressed = raw[:2] == b"\x1f\x8b"
+    payload = gzip.decompress(raw) if compressed else raw
+    text = payload.decode("utf-8")
+    data = _parse_export_json(text)
+    index = build_export_index(data)
+    index["meta"]["file_size"] = len(raw)
+    index["meta"]["file_hash"] = hashlib.sha256(raw).hexdigest()[:16]
+    index["meta"]["compressed"] = compressed
+    return index
+
+
 def parse_telegram_export_file(path: str | Path) -> dict[str, Any]:
     file_path = Path(path)
-    raw_text = file_path.read_text(encoding="utf-8")
-    data = _parse_export_json(raw_text)
-    index = build_export_index(data)
+    raw_bytes = file_path.read_bytes()
+    index = parse_telegram_export_bytes(raw_bytes)
     index["meta"]["source_path"] = str(file_path)
-    index["meta"]["file_size"] = file_path.stat().st_size
-    index["meta"]["file_hash"] = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()[:16]
     return index
 
 

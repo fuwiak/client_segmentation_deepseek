@@ -1,3 +1,4 @@
+import gzip
 import json
 from pathlib import Path
 
@@ -5,6 +6,7 @@ from app.services.telegram_export import (
     build_export_index,
     messages_for_row,
     normalize_export_phone,
+    parse_telegram_export_bytes,
     parse_telegram_export_file,
     tg_conversation_label,
 )
@@ -51,4 +53,13 @@ def test_parse_telegram_export_file(tmp_path: Path) -> None:
     target = tmp_path / "export.json"
     target.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
     index = parse_telegram_export_file(target)
+    assert index["meta"]["phones_indexed"] == 1
+
+
+def test_parse_telegram_export_gzip(tmp_path: Path) -> None:
+    raw = FIXTURE.read_bytes()
+    gz_path = tmp_path / "export.json.gz"
+    gz_path.write_bytes(gzip.compress(raw))
+    index = parse_telegram_export_bytes(gz_path.read_bytes())
+    assert index["meta"]["compressed"] is True
     assert index["meta"]["phones_indexed"] == 1
