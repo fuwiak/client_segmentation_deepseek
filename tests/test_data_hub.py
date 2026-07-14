@@ -125,6 +125,43 @@ def test_lookup_client_row_is_o1_indexed() -> None:
     assert hub.lookup_client_row("missing-id") is None
 
 
+def test_get_client_orders_resolves_full_order_entity() -> None:
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[{
+                "UUID": "cp-orders",
+                "Наименование": "Клиент",
+                "_orders_context": [{"№": "100", "Дата": "2026-03-01", "Сумма": 5000}],
+                "_orders_count": 1,
+            }],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=1,
+            meta={"source": "moysklad"},
+        ),
+        ParsedWorkbook(
+            source_type="orders",
+            rows=[{
+                "№": "100",
+                "Дата": "2026-03-01",
+                "Сумма": 5000,
+                "Канал продаж": "Витрина",
+                "Позиции": "Розы ×10",
+                "Статус": "Отгружен",
+            }],
+            context_columns=[],
+            segment_columns=[],
+            total_rows=1,
+            meta={},
+        ),
+    )
+    _, orders, _ = hub.get_client_orders("cp-orders")
+    assert orders[0]["Канал продаж"] == "Витрина"
+    assert orders[0]["Позиции"] == "Розы ×10"
+
+
 def test_get_client_orders_returns_context_without_active_rows_scan() -> None:
     hub = DataHub()
     hub.set_workbook(

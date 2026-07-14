@@ -193,9 +193,9 @@ def last_order_date(row: dict[str, Any]) -> str | None:
 
 
 def sales_channel_for_row(row: dict[str, Any]) -> str | None:
-  channel = row.get("Канал продаж") or row.get("Тип канала продаж") or row.get("Тип карала продаж")
-  if channel:
-    return str(channel)
+  channel = row.get("Канал продаж") or row.get("Тип канала продаж")
+  if channel and not _looks_like_sales_type_label(str(channel)):
+    return str(channel).strip()
   orders = row.get("_orders_context") or []
   best: tuple[datetime | None, dict[str, Any]] | None = None
   for order in orders:
@@ -205,26 +205,78 @@ def sales_channel_for_row(row: dict[str, Any]) -> str | None:
   if best is None:
     return None
   order = best[1]
-  return str(order.get("Канал продаж") or order.get("Тип канала продаж") or order.get("Тип карала продаж") or "")
+  raw = str(
+    order.get("Канал продаж") or order.get("Тип канала продаж") or ""
+  ).strip()
+  if raw and not _looks_like_sales_type_label(raw):
+    return raw
+  return None
+
+
+def _looks_like_sales_type_label(value: str) -> bool:
+  text = value.strip().lower().replace("ё", "е")
+  return text in {"маркетплейс", "прямые продажи", "прямые", "marketplace", "direct"}
+
+
+def sales_type_label_for_row(row: dict[str, Any]) -> str:
+  explicit = row.get("Тип карала продаж") or row.get("Тип канала продаж")
+  if explicit and _looks_like_sales_type_label(str(explicit)):
+    text = str(explicit).strip().lower().replace("ё", "е")
+    return "маркетплейс" if "маркет" in text else "прямые продажи"
+  channel = sales_channel_for_row(row) or row.get("Канал продаж")
+  if channel:
+    return sales_type_from_channel(str(channel))
+  return sales_type_for_row(row)
+
+
+def row_sales_type_filter_value(row: dict[str, Any]) -> str:
+  return str(
+    row.get("Тип продаж")
+    or row.get("Тип карала продаж")
+    or row.get("Тип канала продаж")
+    or ""
+  ).strip().lower()
+
+
+_TG_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
+
+
+def extract_tg_nick_from_messages(messages: list[dict[str, Any]]) -> str | None:
+  for msg in messages:
+    if msg.get("channel") != "telegram":
+      continue
+    for raw in (msg.get("username"), msg.get("sender")):
+      if not raw:
+        continue
+      text = str(raw).strip()
+      if text.startswith("@"):
+        text = text[1:]
+      if _TG_USERNAME_RE.match(text):
+        return f"@{text}"
+  return None
 
 
 def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   """Добавляет вычисляемые поля к строке клиента."""
   enriched = dict(row)
-  enriched["Тип продаж"] = sales_type_for_row(row)
+  channel = sales_channel_for_row(row)
+  if channel:
+    enriched["Канал продаж"] = channel
+  sales_type = sales_type_label_for_row(enriched)
+  enriched["Тип продаж"] = sales_type
+  enriched["Тип карала продаж"] = sales_type
   enriched["Статус последнего заказа"] = last_order_status(row)
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
   if not enriched.get("Дата последнего заказа"):
     enriched["Дата последнего заказа"] = last_order_date(row)
-  if not enriched.get("Канал продаж"):
-    channel = sales_channel_for_row(row)
-    if channel:
-      enriched["Канал продаж"] = channel
-  if not enriched.get("Тип карала продаж"):
-    channel = enriched.get("Канал продаж") or row.get("Тип канала продаж")
-    if channel:
-      enriched["Тип карала продаж"] = channel
+  if not enriched.get("ТГ ник"):
+    tg = extract_tg_nick_from_messages(
+      list(enriched.get("_messenger_context") or [])
+      + list(enriched.get("_tg_export_context") or [])
+    )
+    if tg:
+      enriched["ТГ ник"] = tg
   return enriched
 
 

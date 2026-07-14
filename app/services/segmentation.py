@@ -16,6 +16,7 @@ from app.services.fields import (
   collect_client_comments,
   empty_fillable_columns,
   extract_email_from_row,
+  extract_tg_nick_from_messages,
   sales_type_from_channel,
   COUNTERPARTY_COMMENT_KEYS,
 )
@@ -76,6 +77,10 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
     полное наименование, местонахождение, комментарии, статус, канал продаж — ТОЛЬКО при явном
     указании в данных. Не выдумывай юридические и банковские реквизиты.
 
+12. "Рекомендация" — 1–2 предложения: что предложить клиенту сейчас (оффер, тайминг, канал связи).
+    Это действие для оператора, а не описание клиента. Опирайся на Саммари, теги, историю заказов.
+    Если данных мало — предложи нейтральный follow-up (например, напоминание о сезонном букете).
+
 Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
 
 ВАЖНО:
@@ -83,7 +88,7 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
 - reasoning — 1 короткое предложение на русском с указанием источника.
 - references — объект: поле → откуда взято (например {"Пол": "имя в комментарии заказа №123"}).
 - Верни СТРОГО JSON-объект вида {"results": [...]}, где каждый элемент содержит ключи:
-  uuid, "Группы", "Заказчик или получатель", "Пол", "ТГ ник", "Теги", "Саммари",
+  uuid, "Группы", "Заказчик или получатель", "Пол", "ТГ ник", "Теги", "Саммари", "Рекомендация",
   "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)",
   "E-mail", "Дата рождения",
   а также любые поля из empty_fields клиента, если удалось определить значение,
@@ -284,6 +289,13 @@ class SegmentationService:
             merged["_reasoning"] = ai.get("reasoning", "")
             merged["_confidence"] = ai.get("confidence")
             merged["_ai_refs"] = ai.get("references") or {}
+            recommendation = ai.get("Рекомендация") or ai.get("recommendation")
+            if recommendation not in (None, "", "null"):
+                merged["_ai_recommendation"] = str(recommendation).strip()
+            elif not merged.get("_ai_recommendation"):
+                rec = self._heuristic_recommendation(merged)
+                if rec:
+                    merged["_ai_recommendation"] = rec
             merged["_ai_processed"] = True
             merged["_ai_fields"] = ai_fields
             results.append(merged)
@@ -332,6 +344,11 @@ class SegmentationService:
 
         if not merged.get("ТГ ник"):
             tg = self._extract_tg(row)
+            if not tg:
+                tg = extract_tg_nick_from_messages(
+                    list(row.get("_messenger_context") or [])
+                    + list(row.get("_tg_export_context") or [])
+                )
             if tg:
                 apply_ai_field(merged, "ТГ ник", tg, ai_fields)
 
@@ -354,6 +371,10 @@ class SegmentationService:
             summary = self._heuristic_intent_summary(row)
             if summary:
                 apply_ai_field(merged, "Саммари", summary, ai_fields)
+
+        rec = self._heuristic_recommendation(merged)
+        if rec:
+            merged["_ai_recommendation"] = rec
 
         merged["_reasoning"] = "Эвристика без AI (ключ API не задан)"
         merged["_confidence"] = None
@@ -460,6 +481,46 @@ class SegmentationService:
         if row.get("_orders_context") or row.get("_messenger_context"):
             return "Повод покупки не определён из доступных комментариев и переписки."
         return None
+
+    @classmethod
+    def _heuristic_recommendation(cls, row: dict[str, Any]) -> str | None:
+        """Практическая рекомендация оператору: оффер и тайминг."""
+        tags = str(row.get("Теги") or "").lower()
+        summary = str(row.get("Саммари") or "").lower()
+        text = f"{tags} {summary} {cls._collect_intent_text(row)}"
+        hints: list[str] = []
+
+        if any(k in text for k in ("день рождения", "др ", "birthday", "#деньрождения")):
+            hints.append("Напомнить о букете ко дню рождения за 3–5 дней и предложить готовый вариант с доставкой.")
+        if any(k in text for k in ("8 марта", "8марта", "#8марта")):
+            hints.append("За 7–10 дней до 8 марта отправить персональное предложение с акцентом на любимые цветы.")
+        if any(k in text for k in ("14 февраля", "валентин")):
+            hints.append("Предложить романтический букет с доставкой к точному времени.")
+        if "#vip" in tags or row.get("ВИП") == "да":
+            hints.append("Сделать персональное VIP-предложение с премиум-составом и приоритетной доставкой.")
+        if "#проблемный" in tags:
+            hints.append("Связаться лично, уточнить прошлый опыт и предложить компенсационный букет.")
+        if "#доволен" in tags:
+            hints.append("Поблагодарить и предложить бонус на следующий заказ в любимом стиле.")
+
+        channel = row.get("Канал продаж") or ""
+        contact = "Telegram" if row.get("ТГ ник") else ("WhatsApp" if row.get("Телефон") else "телефон")
+        if not hints:
+            try:
+                orders = int(row.get("Всего заказов") or row.get("_orders_count") or 0)
+            except (TypeError, ValueError):
+                orders = 0
+            if orders > 2:
+                hints.append(
+                    f"Напомнить о регулярном заказе через {contact}"
+                    + (f" (канал: {channel})." if channel else ".")
+                )
+            elif orders == 1:
+                hints.append("Предложить повторный заказ со скидкой на доставку в течение 2 недель.")
+            else:
+                return None
+
+        return " ".join(dict.fromkeys(hints))
 
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:

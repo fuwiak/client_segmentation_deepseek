@@ -14,7 +14,7 @@ from app.services.export_format import (
   row_matches_phone,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -210,6 +210,39 @@ class DataHub:
     merged = merge_enriched_rows([display], [overlay], key_fn=_row_key)
     return merged[0] if merged else display
 
+  def _order_lookup(self) -> dict[str, dict[str, Any]]:
+    order_by_key: dict[str, dict[str, Any]] = {}
+    if not self.orders_parsed or not self.orders_parsed.rows:
+      return order_by_key
+    for order in self.orders_parsed.rows:
+      for key in (order.get("_moysklad_id"), order.get("№"), order.get("Номер")):
+        text = str(key or "").strip()
+        if text:
+          order_by_key[text] = order
+    return order_by_key
+
+  def resolve_order_entities(self, orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Подтянуть полные строки заказов из orders_parsed (позиции, канал, статус)."""
+    order_by_key = self._order_lookup()
+    if not order_by_key:
+      return orders
+    resolved: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for order in orders:
+      lookup_key = str(
+        order.get("_moysklad_id") or order.get("№") or order.get("Номер") or ""
+      ).strip()
+      item = order_by_key.get(lookup_key) if lookup_key else None
+      item = item or order
+      item_key = str(
+        item.get("_moysklad_id") or item.get("№") or item.get("Номер") or id(item)
+      )
+      if item_key in seen:
+        continue
+      seen.add(item_key)
+      resolved.append(item)
+    return resolved
+
   def get_client_orders(
     self,
     client_id: str,
@@ -218,7 +251,7 @@ class DataHub:
     row = self.lookup_client_row(client_id)
     if not row:
       return None, [], 0
-    orders = row.get("_orders_context") or []
+    orders = self.resolve_order_entities(row.get("_orders_context") or [])
     total = int(row.get("_orders_count") or len(orders))
     return row, orders, total
 
@@ -226,34 +259,11 @@ class DataHub:
     """Обновить _orders_context у клиентов после догрузки позиций без enrich_with_orders."""
     if not self.parsed or not self.parsed.rows or not self.orders_parsed:
       return
-    order_rows = self.orders_parsed.rows or []
-    order_by_key: dict[str, dict[str, Any]] = {}
-    for order in order_rows:
-      for key in (order.get("_moysklad_id"), order.get("№"), order.get("Номер")):
-        text = str(key or "").strip()
-        if text:
-          order_by_key[text] = order
-
     for cp_row in self.parsed.rows:
       ctx = cp_row.get("_orders_context")
       if not ctx:
         continue
-      updated: list[dict[str, Any]] = []
-      seen: set[str] = set()
-      for order in ctx:
-        lookup_key = str(
-          order.get("_moysklad_id") or order.get("№") or order.get("Номер") or ""
-        ).strip()
-        source = order_by_key.get(lookup_key) if lookup_key else None
-        item = source or order
-        item_key = str(
-          item.get("_moysklad_id") or item.get("№") or item.get("Номер") or id(item)
-        )
-        if item_key in seen:
-          continue
-        seen.add(item_key)
-        updated.append(item)
-      cp_row["_orders_context"] = updated[:20]
+      cp_row["_orders_context"] = self.resolve_order_entities(ctx)[:20]
     self.touch()
 
   def filter_rows(
@@ -276,9 +286,12 @@ class DataHub:
 
     rows = self.active_rows()
     if sales_filter == "marketplace":
-      rows = [r for r in rows if r.get("Тип продаж") == "маркетплейс"]
+      rows = [r for r in rows if "маркетплейс" in row_sales_type_filter_value(r)]
     elif sales_filter == "direct":
-      rows = [r for r in rows if r.get("Тип продаж") == "прямые продажи"]
+      rows = [
+        r for r in rows
+        if "прямы" in row_sales_type_filter_value(r)
+      ]
     if group:
       rows = [r for r in rows if row_has_group(r, group)]
     if tag:

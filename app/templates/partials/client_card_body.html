@@ -5,7 +5,10 @@
   <span class="chip warn">Открытый заказ: {{ client.get('Статус последнего заказа') }}</span>
   {% endif %}
   <span class="chip">{{ client.get('Заказчик или получатель') or '—' }} / {{ client.get('Пол') or '—' }}</span>
-  <span class="chip">{{ client.get('Тип продаж') or '—' }}</span>
+  <span class="chip">{{ client.get('Тип карала продаж') or client.get('Тип продаж') or '—' }}</span>
+  {% if client.get('Канал продаж') %}
+  <span class="chip">{{ client.get('Канал продаж') }}</span>
+  {% endif %}
 </div>
 
 <div class="tags-row">
@@ -29,7 +32,7 @@
 </section>
 
 <section class="client-section kpi-inline">
-  <div><span class="kpi-label">Средний чек</span><span class="kpi-value sm">{{ client.get('Средний чек') or '—' }}</span></div>
+  <div><span class="kpi-label">Средний чек</span><span class="kpi-value sm">{{ format_money_rub(client.get('Средний чек')) }}</span></div>
   <div><span class="kpi-label">Заказов</span><span class="kpi-value sm">{{ client.get('Всего заказов') or client.get('_orders_count') or 0 }}</span></div>
   <div><span class="kpi-label">ВИП</span><span class="kpi-value sm">{{ client.get('ВИП') or 'нет' }}</span></div>
   <div><span class="kpi-label">Лояльность</span><span class="kpi-value sm">{{ display_cell_value(client.get('Баллы начисленные')) }}{% if client.get('Баллы начисленные') is not none and client.get('Баллы начисленные') != '' %} б.{% endif %}</span></div>
@@ -39,7 +42,10 @@
 <section class="client-section">
   <h4>Последний заказ</h4>
   {% set last = orders[-1] %}
-  <p>№ {{ last.get('№') or last.get('Номер') or '—' }} — {{ last.get('Сумма') or '—' }} руб., {{ last.get('Статус') or last.get('Отгружено') or '—' }}</p>
+  <p>№ {{ last.get('№') or last.get('Номер') or '—' }} — {{ format_money_rub(last.get('Сумма')) }}, {{ last.get('Статус') or last.get('Отгружено') or '—' }}</p>
+  {% if last.get('Канал продаж') %}
+  <p class="hint">Канал: {{ last.get('Канал продаж') }}</p>
+  {% endif %}
   {% if last.get('Позиции') %}
   <p class="hint">Позиции: {{ last.get('Позиции') }}</p>
   {% endif %}
@@ -58,11 +64,18 @@
 </section>
 {% endif %}
 
-{% if client.get('Саммари') or client.get('_reasoning') %}
+{% if client.get('_ai_recommendation') or client.get('Саммари') or client.get('_reasoning') %}
 <section class="client-section ai-block">
   <h4>Рекомендация AI</h4>
-  <p class="hint">Повод и intent покупки — зачем клиент заказывает.</p>
-  <p class="ai-summary">{{ client.get('Саммари') or client.get('_reasoning') }}</p>
+  {% if client.get('_ai_recommendation') %}
+  <p class="ai-recommendation">{{ client.get('_ai_recommendation') }}</p>
+  {% endif %}
+  {% if client.get('Саммари') %}
+  <p class="hint">Повод и intent покупки</p>
+  <p class="ai-summary">{{ client.get('Саммари') }}</p>
+  {% elif client.get('_reasoning') and not client.get('_ai_recommendation') %}
+  <p class="ai-summary">{{ client.get('_reasoning') }}</p>
+  {% endif %}
   {% if client.get('_enrichment_fields') %}
   <p class="hint">Обогащено: {{ client.get('_enrichment_fields')|join(', ') }}</p>
   {% endif %}

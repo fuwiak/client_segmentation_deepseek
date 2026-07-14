@@ -125,12 +125,15 @@ def build_export_index(data: dict[str, Any]) -> dict[str, Any]:
 
     by_phone: dict[str, list[dict[str, Any]]] = {}
     by_name: dict[str, list[dict[str, Any]]] = {}
+    by_username: dict[str, list[dict[str, Any]]] = {}
+    phone_username: dict[str, str] = {}
     chats_with_phone = 0
     messages_total = 0
 
     for chat in chats:
         chat_id = chat.get("id")
         chat_name = str(chat.get("name") or "").strip()
+        chat_username = _normalize_tg(chat.get("username"))
         phones: set[str] = set()
         if chat_name:
             phones |= _phones_in_text(chat_name)
@@ -153,7 +156,8 @@ def build_export_index(data: dict[str, Any]) -> dict[str, Any]:
                         business_names=business_names,
                     ),
                     "text": text,
-                    "sender": str(msg.get("from") or chat_name or ""),
+                    "sender": chat_username or str(msg.get("from") or chat_name or ""),
+                    "username": chat_username,
                     "date": str(msg.get("date") or ""),
                     "chat_id": chat_id,
                     "chat_name": chat_name,
@@ -175,6 +179,12 @@ def build_export_index(data: dict[str, Any]) -> dict[str, Any]:
             for phone in phones:
                 bucket = by_phone.setdefault(phone, [])
                 bucket.extend(parsed_messages)
+                if chat_username:
+                    phone_username[phone] = chat_username
+
+        if chat_username:
+            bucket = by_username.setdefault(chat_username, [])
+            bucket.extend(parsed_messages)
 
     for phone, messages in by_phone.items():
         messages.sort(key=lambda m: m.get("date") or "")
@@ -208,9 +218,12 @@ def build_export_index(data: dict[str, Any]) -> dict[str, Any]:
             "messages_total": messages_total,
             "phones_indexed": len(by_phone),
             "names_indexed": len(by_name),
+            "usernames_indexed": len(by_username),
         },
         "by_phone": by_phone,
         "by_name": by_name,
+        "by_username": by_username,
+        "phone_username": phone_username,
     }
 
 
@@ -233,6 +246,20 @@ def parse_telegram_export_file(path: str | Path) -> dict[str, Any]:
     index = parse_telegram_export_bytes(raw_bytes)
     index["meta"]["source_path"] = str(file_path)
     return index
+
+
+def tg_nick_for_row(index: dict[str, Any], row: dict[str, Any]) -> str | None:
+    tg = _normalize_tg(row.get("ТГ ник"))
+    if tg:
+        return f"@{tg}"
+    phone = normalize_export_phone(str(row.get("Телефон") or ""))
+    if not phone:
+        phone = _normalize_phone(str(row.get("Телефон") or ""))
+    if phone:
+        username = (index.get("phone_username") or {}).get(phone)
+        if username:
+            return f"@{username}"
+    return None
 
 
 def messages_for_row(index: dict[str, Any], row: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
@@ -258,6 +285,7 @@ def messages_for_row(index: dict[str, Any], row: dict[str, Any], *, limit: int =
 
     tg = _normalize_tg(row.get("ТГ ник"))
     if tg:
+        _add((index.get("by_username") or {}).get(tg))
         _add((index.get("by_name") or {}).get(tg))
 
     matched.sort(key=lambda m: m.get("date") or "")

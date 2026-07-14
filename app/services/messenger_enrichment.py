@@ -19,11 +19,15 @@ from app.services.fields import (
   apply_ai_field,
   collect_client_comments,
   empty_fillable_columns,
+  extract_tg_nick_from_messages,
 )
 from app.services.tag_rules import evaluate_tags_for_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
-from app.services.telegram_export import messages_for_row as export_messages_for_row
+from app.services.telegram_export import (
+  messages_for_row as export_messages_for_row,
+  tg_nick_for_row,
+)
 from app.services.segmentation import SegmentationService, guess_gender
 from app.services.telegram_bot import get_telegram_client
 
@@ -225,6 +229,12 @@ class MessengerEnrichmentService:
             sources = set(copy.get("_messenger_sources") or [])
             sources.add("telegram")
             copy["_messenger_sources"] = sorted(sources)
+            if not copy.get("ТГ ник"):
+                nick = tg_nick_for_row(self._export_index, copy)
+                if not nick:
+                    nick = extract_tg_nick_from_messages(export_msgs)
+                if nick:
+                    copy["ТГ ник"] = nick
             updated.append(copy)
         return updated
 
@@ -531,13 +541,10 @@ class MessengerEnrichmentService:
         merged["_messenger_context"] = messages
 
         if not merged.get("ТГ ник"):
-            for msg in messages:
-                if msg.get("channel") == "telegram" and msg.get("sender"):
-                    nick = _normalize_tg(str(msg["sender"]))
-                    if nick:
-                        apply_ai_field(merged, "ТГ ник", f"@{nick}", ai_fields)
-                        enrichment_fields.append("ТГ ник")
-                        break
+            nick = extract_tg_nick_from_messages(messages)
+            if nick:
+                apply_ai_field(merged, "ТГ ник", nick, ai_fields)
+                enrichment_fields.append("ТГ ник")
 
         tags, tag_reasons = evaluate_tags_for_row(merged)
         if tags:
@@ -552,6 +559,10 @@ class MessengerEnrichmentService:
             if summary:
                 apply_ai_field(merged, "Саммари", summary, ai_fields)
                 enrichment_fields.append("Саммари")
+
+        rec = self._segmentation._heuristic_recommendation(merged)
+        if rec:
+            merged["_ai_recommendation"] = rec
 
         merged["_reasoning"] = "Эвристика по переписке (без AI или API недоступен)"
         merged["_ai_processed"] = True

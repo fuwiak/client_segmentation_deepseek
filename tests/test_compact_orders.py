@@ -10,7 +10,7 @@ def test_compact_orders_sorted_newest_first():
     ]
     compact = compact_orders_for_display(orders)
     assert compact[0]["number"] == "002"
-    assert compact[0]["amount"] == "50\u202f000 ₽"
+    assert compact[0]["amount"] == "50 000 р."
     assert compact[0]["positions"] == "Розы ×10"
     assert compact[1]["number"] == "001"
 

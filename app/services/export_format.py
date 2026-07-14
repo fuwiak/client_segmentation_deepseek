@@ -124,6 +124,23 @@ def _cell_value(row: dict[str, Any], col: str) -> Any:
     return row.get(col)
 
 
+def format_money_rub(value: Any) -> str:
+    """Формат суммы: «5 760 р.»"""
+    if value in (None, ""):
+        return "—"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        text = str(value).strip()
+        return text or "—"
+    if num.is_integer():
+        amount = int(num)
+    else:
+        amount = int(round(num))
+    formatted = f"{amount:,}".replace(",", " ")
+    return f"{formatted} р."
+
+
 def display_cell_value(value: Any) -> Any:
     """Отображение ячейки: 0 и другие falsy-значения не превращать в «—»."""
     if value is None or value == "":
@@ -395,18 +412,7 @@ def merge_enriched_rows(
 
 
 def _format_order_amount(value: Any) -> str:
-    if value in (None, ""):
-        return "—"
-    try:
-        num = float(value)
-    except (TypeError, ValueError):
-        return str(value)
-    if num >= 1000:
-        formatted = f"{num:,.0f}".replace(",", "\u202f")
-        return f"{formatted} ₽"
-    if num.is_integer():
-        return f"{int(num)} ₽"
-    return f"{num:.2f} ₽"
+    return format_money_rub(value)
 
 
 def _format_order_date(value: Any) -> str:

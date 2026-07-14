@@ -56,7 +56,7 @@ def test_enrich_row_computed_uses_order_sales_channel() -> None:
     }
     enriched = enrich_row_computed(row)
     assert enriched["Канал продаж"] == "Ozon"
-    assert enriched["Тип карала продаж"] == "Ozon"
+    assert enriched["Тип карала продаж"] == "маркетплейс"
     assert enriched["Тип продаж"] == "маркетплейс"
 
 

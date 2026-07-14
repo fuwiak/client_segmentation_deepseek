@@ -97,7 +97,7 @@ def test_merge_enriched_rows_preserves_moysklad_sales_channel() -> None:
         "Наименование": "Клиент",
         "_orders_context": [{"Дата": "2026-06-23T19:04:00", "Канал продаж": "Ozon"}],
         "Канал продаж": "Ozon",
-        "Тип карала продаж": "Ozon",
+        "Тип карала продаж": "маркетплейс",
     }]
     enriched = [{
         "UUID": "1",
@@ -108,6 +108,6 @@ def test_merge_enriched_rows_preserves_moysklad_sales_channel() -> None:
     }]
     merged = merge_enriched_rows(base, enriched, key_fn=lambda r: r["UUID"])
     assert merged[0]["Канал продаж"] == "Ozon"
-    assert merged[0]["Тип карала продаж"] == "Ozon"
+    assert merged[0]["Тип карала продаж"] == "маркетплейс"
     assert "Канал продаж" not in (merged[0].get("_ai_unknown_fields") or [])
     assert client_cell_value(merged[0], "Канал продаж") == "Ozon"

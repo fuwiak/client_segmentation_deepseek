@@ -43,6 +43,7 @@ from app.services.export_format import (
   compact_orders_for_display,
   display_cell_value,
   export_columns,
+  format_money_rub,
   merge_enriched_rows,
   row_for_export,
 )
@@ -93,6 +94,7 @@ templates.env.globals["rule_label"] = rule_label
 templates.env.globals["client_cell_value"] = client_cell_value
 templates.env.globals["client_cell_state"] = client_cell_state
 templates.env.globals["display_cell_value"] = display_cell_value
+templates.env.globals["format_money_rub"] = format_money_rub
 templates.env.globals["build_clients_query"] = build_clients_query
 templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -1000,7 +1002,7 @@ async def client_card(
       "partials/error.html",
       _ctx(request, message="Клиент не найден"),
     )
-  orders = client.get("_orders_context") or []
+  orders = hub.resolve_order_entities(client.get("_orders_context") or [])
   template = "partials/client_card_drawer.html" if drawer else "partials/client_card.html"
   return templates.TemplateResponse(
     template,

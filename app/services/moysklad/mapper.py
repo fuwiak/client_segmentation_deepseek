@@ -398,13 +398,15 @@ def order_from_customerorder(
         for p in (positions or [])
     ]
 
+    sales_channel = _sales_channel_from_order(order)
+
     return Order(
         id=str(order.get("id") or order.get("name") or uuid.uuid4()),
         customer_id=agent_id or None,
         date=parsed_date,
         amount=_minor_to_rub(order.get("sum")),
         payment_status=state.get("name"),
-        sales_channel="Мой Склад",
+        sales_channel=sales_channel,
         comment=order.get("description"),
         recipient=agent_name or None,
         items=items,
