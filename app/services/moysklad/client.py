@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 import httpx
 
 from app.config import Settings
+from app.services.http_retry import request_with_retry
+
+logger = logging.getLogger(__name__)
 
 
 class MoySkladClientBase(ABC):
@@ -63,6 +67,9 @@ class MoySkladClient(MoySkladClientBase):
         self._token = settings.moysklad_api_token
         self._base_url = settings.moysklad_api_url.rstrip("/")
         self._enabled = settings.moysklad_enabled and bool(self._token)
+        self._positions_concurrency = max(1, settings.moysklad_positions_concurrency)
+        self._request_delay = max(0.0, settings.moysklad_request_delay_ms / 1000.0)
+        self._max_retries = max(0, settings.moysklad_api_retry_max)
 
     @property
     def enabled(self) -> bool:
@@ -88,12 +95,14 @@ class MoySkladClient(MoySkladClientBase):
         if extra_params:
             params.update(extra_params)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(
+            resp = await request_with_retry(
+                client,
+                "GET",
                 f"{self._base_url}{path}",
+                max_retries=self._max_retries,
                 headers=self._headers(),
                 params=params,
             )
-            resp.raise_for_status()
             payload = resp.json()
             total = payload.get("meta", {}).get("size")
             return payload.get("rows", []), total
@@ -166,17 +175,21 @@ class MoySkladClient(MoySkladClientBase):
     async def get_customer_order_positions(self, order_id: str) -> list[dict[str, Any]]:
         if not self._enabled or not order_id:
             return []
-        rows, _ = await self._get_page(
-            f"/entity/customerorder/{order_id}/positions",
-            limit=1000,
-            offset=0,
-            extra_params={"expand": "assortment"},
-            timeout=30,
-        )
-        return rows
+        try:
+            rows, _ = await self._get_page(
+                f"/entity/customerorder/{order_id}/positions",
+                limit=1000,
+                offset=0,
+                extra_params={"expand": "assortment"},
+                timeout=30,
+            )
+            return rows
+        except httpx.HTTPError as exc:
+            logger.warning("MoySklad positions failed for order %s: %s", order_id, exc)
+            return []
 
     async def fetch_positions_for_orders(
-        self, orders: list[dict[str, Any]], *, concurrency: int = 10
+        self, orders: list[dict[str, Any]], *, concurrency: int | None = None
     ) -> dict[str, list[dict[str, Any]]]:
         if not self._enabled:
             return {}
@@ -184,10 +197,13 @@ class MoySkladClient(MoySkladClientBase):
         if not order_ids:
             return {}
 
-        sem = asyncio.Semaphore(max(1, concurrency))
+        limit = max(1, concurrency or self._positions_concurrency)
+        sem = asyncio.Semaphore(limit)
 
         async def _fetch(order_id: str) -> tuple[str, list[dict[str, Any]]]:
             async with sem:
+                if self._request_delay:
+                    await asyncio.sleep(self._request_delay)
                 return order_id, await self.get_customer_order_positions(order_id)
 
         pairs = await asyncio.gather(*(_fetch(oid) for oid in order_ids))

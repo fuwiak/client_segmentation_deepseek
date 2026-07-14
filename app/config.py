@@ -63,7 +63,15 @@ class Settings(BaseSettings):
     enrichment_chat_limit: int = 50
     enrichment_batch_size: int = 5
     enrichment_concurrency: int = 3
+    messenger_live_fetch: bool = False
     messenger_cache_limit: int = 5000
+
+    moysklad_positions_concurrency: int = 2
+    moysklad_api_retry_max: int = 4
+    moysklad_request_delay_ms: int = 250
+
+    green_api_concurrency: int = 1
+    green_api_retry_max: int = 4
 
     telegram_export_path: str = "data/telegram_export.json"
     telegram_export_auto_import: bool = True

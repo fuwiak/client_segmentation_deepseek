@@ -289,7 +289,7 @@ async def test_moysklad_client_pagination() -> None:
     ]
     call_idx = {"n": 0}
 
-    async def fake_get(url: str, **kwargs):  # noqa: ANN003
+    async def fake_request(method: str, url: str, **kwargs):  # noqa: ANN003
         payload = responses[call_idx["n"]]
         call_idx["n"] += 1
         mock_resp = MagicMock(spec=Response)
@@ -302,7 +302,7 @@ async def test_moysklad_client_pagination() -> None:
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
-        mock_client.get = fake_get
+        mock_client.request = fake_request
         mock_client_cls.return_value = mock_client
 
         rows = await client.fetch_all_counterparties(max_rows=200)

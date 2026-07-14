@@ -593,7 +593,7 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
     )
 
   try:
-    enriched = await service.enrich_all(rows, progress_cb=_bump)
+    enriched = await service.enrich_all(rows, progress_cb=_bump, live=False)
     enriched = [
       finalize_ai_coverage_row(enrich_row_computed(r)) for r in enriched
     ]

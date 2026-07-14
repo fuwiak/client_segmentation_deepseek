@@ -323,10 +323,17 @@ class MessengerEnrichmentService:
         self,
         rows: list[dict[str, Any]],
         progress_cb: Callable[[int], None] | None = None,
+        *,
+        live: bool | None = None,
     ) -> list[dict[str, Any]]:
         if not rows:
             return []
 
+        use_live = (
+            self._settings.messenger_live_fetch
+            if live is None
+            else live
+        )
         batch_size = max(1, self._settings.enrichment_batch_size)
         batches = [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
         semaphore = asyncio.Semaphore(self._settings.enrichment_concurrency)
@@ -335,7 +342,7 @@ class MessengerEnrichmentService:
             async with semaphore:
                 enriched_batch: list[dict[str, Any]] = []
                 for row in batch:
-                    messages = await self.fetch_client_messages(row)
+                    messages = await self.fetch_client_messages(row, live=use_live)
                     enriched_batch.append(
                         await self._enrich_single(dict(row), messages)
                     )
