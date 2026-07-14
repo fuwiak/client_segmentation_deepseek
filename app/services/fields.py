@@ -370,6 +370,20 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   return enriched
 
 
+def ensure_ai_recommendation(row: dict[str, Any]) -> dict[str, Any]:
+  """Подставить рекомендацию AI для карточки клиента, если её ещё нет."""
+  if row.get("_ai_recommendation"):
+    return row
+  from app.services.segmentation import SegmentationService
+
+  rec = SegmentationService._heuristic_recommendation(row)
+  if not rec:
+    return row
+  updated = dict(row)
+  updated["_ai_recommendation"] = rec
+  return updated
+
+
 AI_NO_DATA_LABEL = "no data"
 
 

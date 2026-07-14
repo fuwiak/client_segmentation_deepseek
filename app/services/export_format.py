@@ -449,6 +449,8 @@ def merge_enriched_rows(
         "_enrichment_fields",
         "_ai_processed",
         "_ai_original",
+        "_ai_recommendation",
+        "_reasoning",
         "_messenger_context",
         "_tg_export_context",
         "_tg_export_meta",

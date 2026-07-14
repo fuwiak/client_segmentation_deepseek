@@ -518,7 +518,10 @@ class SegmentationService:
             elif orders == 1:
                 hints.append("Предложить повторный заказ со скидкой на доставку в течение 2 недель.")
             else:
-                return None
+                hints.append(
+                    f"Связаться через {contact} с предложением сезонного букета"
+                    " или welcome-скидки на первый заказ."
+                )
 
         return " ".join(dict.fromkeys(hints))
 

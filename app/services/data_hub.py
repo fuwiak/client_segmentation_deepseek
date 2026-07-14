@@ -16,7 +16,7 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -210,13 +210,30 @@ class DataHub:
     if not row:
       return None
     display = refresh_row_for_display(dict(row))
-    if not self.results:
-      return display
-    overlay = self._ensure_results_index().get(_row_key(row))
-    if not overlay:
-      return display
-    merged = merge_enriched_rows([display], [overlay], key_fn=_row_key)
-    return merged[0] if merged else display
+    client = display
+    if self.results:
+      overlay = self._ensure_results_index().get(_row_key(row))
+      if overlay:
+        merged = merge_enriched_rows([display], [overlay], key_fn=_row_key)
+        client = merged[0] if merged else display
+    client = self._ensure_client_orders_context(client)
+    return ensure_ai_recommendation(client)
+
+  def _ensure_client_orders_context(self, row: dict[str, Any]) -> dict[str, Any]:
+    orders = self.resolve_order_entities(row.get("_orders_context") or [])
+    if not orders and self.orders_parsed and self.orders_parsed.rows:
+      found = orders_for_client_row(
+        row,
+        self.orders_parsed.rows,
+        contragent_rows=self.parsed.rows if self.parsed else None,
+      )
+      orders = self.resolve_order_entities(found)
+    if not orders:
+      return row
+    updated = dict(row)
+    updated["_orders_context"] = orders[:20]
+    updated["_orders_count"] = max(order_count_for_row(updated), len(orders))
+    return updated
 
   def _order_lookup(self) -> dict[str, dict[str, Any]]:
     if self._order_lookup_cache is not None and self._order_lookup_version == self.version:

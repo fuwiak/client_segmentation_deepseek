@@ -12,3 +12,15 @@ def test_heuristic_recommendation_for_birthday_tag() -> None:
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
     assert "рождения" in rec.lower()
+
+
+def test_heuristic_recommendation_for_new_client_without_orders() -> None:
+    row = {
+        "Наименование": "Аренда",
+        "Тип контрагента": "Юридическое лицо",
+        "Телефон": "+79001234567",
+        "Всего заказов": 0,
+    }
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "WhatsApp" in rec

@@ -109,6 +109,38 @@ def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
   assert "rules-drawer-header" in response.text
 
 
+def test_client_card_drawer_shows_ai_recommendation() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "UUID": "cp-rec",
+        "Наименование": "Аренда",
+        "Тип контрагента": "Юридическое лицо",
+        "Телефон": "+79001234567",
+        "Всего заказов": 0,
+      }],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock):
+    client = TestClient(m.app)
+    response = client.get(
+      "/clients/cp-rec?drawer=1",
+      headers={"HX-Request": "true"},
+    )
+  assert response.status_code == 200
+  assert "Рекомендация AI" in response.text
+  assert "ai-recommendation" in response.text
+
+
 def test_client_orders_modal_returns_all_orders_from_cache() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook
