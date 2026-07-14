@@ -94,15 +94,19 @@ class MessengerMessageStore:
             "by_name": {},
             "last_update_id": 0,
         }
+        self._loaded = False
 
     @property
     def enabled(self) -> bool:
         return self._settings.messenger_enabled and self._tg.enabled
 
     async def load(self) -> None:
+        if self._loaded:
+            return
         cached = await self._cache.get_messenger_index()
         if isinstance(cached, dict) and cached.get("messages") is not None:
             self._index = cached
+        self._loaded = True
 
     async def save(self) -> None:
         await self._cache.save_messenger_index(self._index)
@@ -138,6 +142,7 @@ class MessengerMessageStore:
 
         if added:
             await self.save()
+            self._loaded = True
         return added
 
     def _append_message(self, message: dict[str, Any]) -> None:

@@ -240,6 +240,10 @@ class SegmentationService:
                 )
                 resp.raise_for_status()
                 return resp.json()["choices"][0]["message"]["content"]
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                if exc.response.status_code in (401, 403):
+                    return None
             except (httpx.HTTPError, KeyError, IndexError) as exc:
                 last_exc = exc
                 if attempt < self._settings.ai_max_retries:

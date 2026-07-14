@@ -5,11 +5,33 @@
   {% include 'partials/empty_state.html' %}
 {% else %}
 
+<div id="clients-live-region">
 <section class="card toolbar-card">
   <div class="filter-tabs" role="tablist">
-    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
-    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
-    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-boost="false"
+       hx-get="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-target="#clients-live-region"
+       hx-select="#clients-live-region"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-boost="false"
+       hx-get="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-target="#clients-live-region"
+       hx-select="#clients-live-region"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-boost="false"
+       hx-get="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-target="#clients-live-region"
+       hx-select="#clients-live-region"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
   </div>
   {% include 'partials/group_filter_cloud.html' %}
   <form class="filter-form" method="get">
@@ -81,6 +103,7 @@
   {% include 'partials/clients_pagination.html' %}
 </section>
 {% endif %}
+</div>
 
 <div id="tag-rules-overlay" class="rules-drawer-overlay" hidden onclick="closeTagRulesDrawer()"></div>
 <aside id="tag-rules-drawer" class="rules-drawer" hidden aria-label="Правила AI-тегов">

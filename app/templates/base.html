@@ -10,8 +10,9 @@
 <body hx-boost="true"
       hx-target="#page-content"
       hx-select="#page-content"
-      hx-swap="outerHTML transition:true"
-      hx-push-url="true">
+      hx-swap="innerHTML show:top"
+      hx-push-url="true"
+      hx-timeout="120000">
   <div id="nav-progress" class="nav-progress" aria-hidden="true"></div>
 
   <header class="site-header">
@@ -100,7 +101,7 @@
   </div>
 
   <script src="/static/clients_ws.js?v=2"></script>
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

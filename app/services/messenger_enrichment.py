@@ -90,6 +90,7 @@ class MessengerEnrichmentService:
         self._segmentation = SegmentationService(settings)
         self._store = MessengerMessageStore(settings, self._cache)
         self._export_index: dict[str, Any] | None = None
+        self._export_hydrated = False
 
     @property
     def export_loaded(self) -> bool:
@@ -115,6 +116,9 @@ class MessengerEnrichmentService:
         return await self._store.sync_telegram()
 
     async def load_telegram_export(self) -> dict[str, Any] | None:
+        if self._export_hydrated:
+            return self._export_index
+        self._export_hydrated = True
         cached = await self._cache.get_telegram_export_index()
         if isinstance(cached, dict) and cached.get("by_phone") is not None:
             self._export_index = cached
@@ -169,12 +173,18 @@ class MessengerEnrichmentService:
                 )
 
         use_live_fetch = fetch_live if fetch_live is not None else should_sync
+        if not should_sync and not use_live_fetch:
+            has_store = bool(self._store.stats.get("messages_total"))
+            if not self.export_loaded and not has_store:
+                return rows
+
         semaphore = asyncio.Semaphore(self._settings.enrichment_concurrency)
+        batch_size = max(50, self._settings.enrichment_batch_size * 20)
 
         async def _attach(row: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
                 copy = dict(row)
-                messages = await self.fetch_client_messages(copy, live=use_live_fetch)
+                messages = self._cached_messages_for_row(copy, live=use_live_fetch)
                 export_msgs = self._export_messages_for_row(copy)
                 if export_msgs:
                     copy["_tg_export_context"] = export_msgs
@@ -184,7 +194,12 @@ class MessengerEnrichmentService:
                 )
                 return copy
 
-        return list(await asyncio.gather(*(_attach(row) for row in rows)))
+        attached: list[dict[str, Any]] = []
+        for offset in range(0, len(rows), batch_size):
+            chunk = rows[offset : offset + batch_size]
+            attached.extend(await asyncio.gather(*(_attach(row) for row in chunk)))
+            await asyncio.sleep(0)
+        return attached
 
     async def attach_tg_export_only(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         await self.load_telegram_export()
@@ -279,15 +294,12 @@ class MessengerEnrichmentService:
         all_messages.sort(key=lambda m: m.get("date") or "")
         return all_messages[-limit:]
 
-    async def fetch_client_messages(
+    def _cached_messages_for_row(
         self,
         row: dict[str, Any],
         *,
-        live: bool = True,
+        live: bool,
     ) -> list[dict[str, Any]]:
-        await self._store.load()
-        if self._export_index is None:
-            await self.load_telegram_export()
         combined: list[dict[str, Any]] = []
         seen: set[str] = set()
 
@@ -302,19 +314,49 @@ class MessengerEnrichmentService:
         _add(self._store.messages_for_row(row))
 
         if live:
-            phone = row.get("Телефон")
-            tg = row.get("ТГ ник")
-            tasks: list[Any] = []
-            if phone and self._wa.enabled:
-                tasks.append(self.fetch_whatsapp_history(str(phone)))
-            if self._tg.enabled and tg and not combined:
-                tasks.append(self.fetch_telegram_history(str(tg)))
-            if tasks:
-                parts = await asyncio.gather(*tasks, return_exceptions=True)
-                for part in parts:
-                    if isinstance(part, Exception):
-                        continue
-                    _add(list(part))
+            return combined
+
+        combined.sort(key=lambda m: m.get("date") or "")
+        return combined[-self._settings.enrichment_chat_limit :]
+
+    async def fetch_client_messages(
+        self,
+        row: dict[str, Any],
+        *,
+        live: bool = True,
+    ) -> list[dict[str, Any]]:
+        await self._store.load()
+        if not self._export_hydrated:
+            await self.load_telegram_export()
+        if not live:
+            return self._cached_messages_for_row(row, live=False)
+
+        combined: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def _add(items: list[dict[str, Any]]) -> None:
+            for item in items:
+                key = f"{item.get('channel')}:{item.get('date')}:{item.get('text')}"
+                if key not in seen:
+                    seen.add(key)
+                    combined.append(item)
+
+        _add(self._export_messages_for_row(row))
+        _add(self._store.messages_for_row(row))
+
+        phone = row.get("Телефон")
+        tg = row.get("ТГ ник")
+        tasks: list[Any] = []
+        if phone and self._wa.enabled:
+            tasks.append(self.fetch_whatsapp_history(str(phone)))
+        if self._tg.enabled and tg and not combined:
+            tasks.append(self.fetch_telegram_history(str(tg)))
+        if tasks:
+            parts = await asyncio.gather(*tasks, return_exceptions=True)
+            for part in parts:
+                if isinstance(part, Exception):
+                    continue
+                _add(list(part))
 
         combined.sort(key=lambda m: m.get("date") or "")
         return combined[-self._settings.enrichment_chat_limit :]

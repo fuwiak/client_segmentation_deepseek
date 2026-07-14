@@ -356,6 +356,10 @@ async def _fetch_moysklad_positions_background() -> None:
   cached_ms = await cache.get_moysklad_sync()
   if (cached_ms or {}).get("positions_loaded"):
     return
+  # Не конкурировать с первыми HTMX-переходами и lazy AI attach.
+  await asyncio.sleep(15)
+  if (await cache.get_moysklad_sync() or {}).get("positions_loaded"):
+    return
   await refresh_moysklad_positions(client, hub, cache=cache)
 
 
@@ -363,12 +367,12 @@ async def _attach_messenger_for_ai(rows: list[dict[str, Any]]) -> list[dict[str,
   messenger = MessengerEnrichmentService(settings, cache)
   await messenger.load_telegram_export()
   try:
-    if messenger.available:
-      return await messenger.attach_messages(rows, sync_live=False, fetch_live=False)
-    return await messenger.attach_tg_export_only(rows)
+    if messenger.export_loaded:
+      return await messenger.attach_tg_export_only(rows)
+    return await messenger.attach_messages(rows, sync_live=False, fetch_live=False)
   except httpx.HTTPError as exc:
     pipeline_log("AI", "messenger attach skipped: %s", exc, level=logging.WARNING)
-    return await messenger.attach_tg_export_only(rows)
+    return rows
 
 
 async def _schedule_lazy_ai(*, force: bool = False) -> None:
@@ -428,6 +432,7 @@ async def _startup_all() -> None:
       await db_persist.init_schema()
     await hydrate_tag_rules(cache)
     await _hydrate_hub_from_cache()
+    await _hydrate_moysklad_from_cache()
     await _backfill_postgres_from_redis()
     await _startup_background()
   except Exception:  # noqa: BLE001

@@ -109,7 +109,7 @@
 
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     var target = e.detail.target;
-    if (target && target.id === "page-content") {
+    if (target && (target.id === "page-content" || target.id === "clients-live-region")) {
       document.documentElement.classList.add("is-navigating");
     }
     if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest(".upload-form")) {
@@ -143,7 +143,7 @@
   document.body.addEventListener("htmx:responseError", fallbackNavigateFromHtmxEvent);
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
-    if (e.detail.target && e.detail.target.id === "page-content") {
+    if (e.detail.target && (e.detail.target.id === "page-content" || e.detail.target.id === "clients-live-region")) {
       updateActiveNav();
       updateDocumentTitle();
       initPageScripts();
