@@ -110,6 +110,62 @@ async def _load_from_cache(
     )
 
 
+async def refresh_moysklad_positions(
+    client: MoySkladClientBase,
+    hub: DataHub,
+    cache: CacheService | None = None,
+) -> bool:
+    """Догрузить позиции заказов в фоне после быстрого синка шапок."""
+    if not client.enabled or not hub.orders_parsed or not hub.orders_parsed.rows:
+        return False
+    if not hub.parsed or not hub.parsed.rows:
+        return False
+
+    orders_raw = [
+        {"id": row.get("_moysklad_id")}
+        for row in hub.orders_parsed.rows
+        if row.get("_moysklad_id")
+    ]
+    if not orders_raw:
+        return False
+
+    try:
+        positions_by_order_id = await client.fetch_positions_for_orders(orders_raw)
+    except Exception:  # noqa: BLE001
+        return False
+
+    order_rows = [dict(row) for row in hub.orders_parsed.rows]
+    counterparty_rows = [
+        {
+            k: v
+            for k, v in dict(row).items()
+            if k
+            not in (
+                "_orders_context",
+                "_orders_count",
+                "_ordered_positions",
+                "Заказанные позиции",
+            )
+        }
+        for row in hub.parsed.rows
+    ]
+    apply_positions_to_orders(order_rows, positions_by_order_id)
+    _apply_rows_to_hub(hub, counterparty_rows, order_rows)
+
+    if cache:
+        cached = await cache.get_moysklad_sync() or {}
+        await cache.save_moysklad_sync(
+            {
+                **cached,
+                "schema_version": MOYSKLAD_SYNC_SCHEMA_VERSION,
+                "counterparty_rows": counterparty_rows,
+                "order_rows": order_rows,
+                "positions_loaded": True,
+            }
+        )
+    return True
+
+
 async def sync_moysklad_to_hub(
     client: MoySkladClientBase,
     hub: DataHub,
@@ -118,6 +174,7 @@ async def sync_moysklad_to_hub(
     max_orders: int = 0,
     cache: CacheService | None = None,
     force_refresh: bool = False,
+    fetch_positions: bool = True,
 ) -> MoySkladSyncResult:
     if not client.enabled:
         return MoySkladSyncResult(
@@ -160,29 +217,34 @@ async def sync_moysklad_to_hub(
 
     counterparty_rows = [counterparty_to_row(cp) for cp in counterparties_raw]
     order_rows = [order_to_row(order, agents_by_id) for order in orders_raw]
-
-    try:
-        positions_by_order_id = await client.fetch_positions_for_orders(orders_raw)
-        apply_positions_to_orders(order_rows, positions_by_order_id)
-    except Exception:  # noqa: BLE001 — позиции не блокируют синк шапок заказов
-        pass
-
     apply_order_stats(counterparty_rows, compute_order_stats(order_rows))
 
     _apply_rows_to_hub(hub, counterparty_rows, order_rows)
 
+    cache_payload = {
+        "schema_version": MOYSKLAD_SYNC_SCHEMA_VERSION,
+        "counterparty_rows": counterparty_rows,
+        "order_rows": order_rows,
+        "api_cp_total": api_cp_total,
+        "api_orders_total": api_orders_total,
+        "max_counterparties": max_counterparties,
+        "max_orders": max_orders,
+        "positions_loaded": False,
+    }
     if cache:
-        await cache.save_moysklad_sync(
-            {
-                "schema_version": MOYSKLAD_SYNC_SCHEMA_VERSION,
-                "counterparty_rows": counterparty_rows,
-                "order_rows": order_rows,
-                "api_cp_total": api_cp_total,
-                "api_orders_total": api_orders_total,
-                "max_counterparties": max_counterparties,
-                "max_orders": max_orders,
-            }
-        )
+        await cache.save_moysklad_sync(cache_payload)
+
+    if fetch_positions and orders_raw:
+        try:
+            positions_by_order_id = await client.fetch_positions_for_orders(orders_raw)
+            apply_positions_to_orders(order_rows, positions_by_order_id)
+            _apply_rows_to_hub(hub, counterparty_rows, order_rows)
+            cache_payload["order_rows"] = order_rows
+            cache_payload["positions_loaded"] = True
+            if cache:
+                await cache.save_moysklad_sync(cache_payload)
+        except Exception:  # noqa: BLE001 — позиции не блокируют синк шапок заказов
+            pass
 
     return MoySkladSyncResult(
         success=True,

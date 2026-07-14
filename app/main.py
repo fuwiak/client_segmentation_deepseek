@@ -46,7 +46,12 @@ from app.services.export_format import (
 from app.services.fields import enrich_row_computed, finalize_ai_coverage_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
-from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
+from app.services.moysklad import (
+  get_moysklad_client,
+  push_segments_to_moysklad,
+  sync_moysklad_to_hub,
+)
+from app.services.moysklad.sync import refresh_moysklad_positions
 from app.services.segmentation import SegmentationService
 from app.services.tag_rules import (
   RULE_TYPE_OPTIONS,
@@ -191,7 +196,7 @@ async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
   return hub.apply_cached_results(cached)
 
 
-async def _ensure_moysklad_data() -> None:
+async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
   """Подгрузить контрагентов Мой Склад из кэша или API."""
   client = get_moysklad_client(settings)
   if not client.enabled:
@@ -205,6 +210,8 @@ async def _ensure_moysklad_data() -> None:
     if api_total is None:
       api_total = await client.get_entity_count("/entity/counterparty")
     if api_total and parsed_count >= api_total:
+      if fetch_positions and not (cached_ms or {}).get("positions_loaded"):
+        await refresh_moysklad_positions(client, hub, cache=cache)
       return
 
   await sync_moysklad_to_hub(
@@ -214,14 +221,26 @@ async def _ensure_moysklad_data() -> None:
     max_orders=settings.moysklad_sync_orders_limit,
     cache=cache,
     force_refresh=False,
+    fetch_positions=fetch_positions,
   )
 
 
+async def _fetch_moysklad_positions_background() -> None:
+  client = get_moysklad_client(settings)
+  if not client.enabled:
+    return
+  cached_ms = await cache.get_moysklad_sync()
+  if (cached_ms or {}).get("positions_loaded"):
+    return
+  await refresh_moysklad_positions(client, hub, cache=cache)
+
+
 async def _startup_background() -> None:
-  """Тяжёлая инициализация в фоне — не блокирует healthcheck на /."""
+  """Тяжёлая инициализация в фоне — не блокирует healthcheck."""
   try:
     if settings.moysklad_auto_sync:
-      await _ensure_moysklad_data()
+      await _ensure_moysklad_data(fetch_positions=False)
+      asyncio.create_task(_fetch_moysklad_positions_background())
     await _hydrate_hub_from_cache()
     messenger = MessengerEnrichmentService(settings, cache)
     if messenger.telegram_enabled:
@@ -233,9 +252,21 @@ async def _startup_background() -> None:
 
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
-  await hydrate_tag_rules(cache)
-  await _hydrate_hub_from_cache()
-  asyncio.create_task(_startup_background())
+  asyncio.create_task(_startup_all())
+
+
+async def _startup_all() -> None:
+  try:
+    await hydrate_tag_rules(cache)
+    await _hydrate_hub_from_cache()
+    await _startup_background()
+  except Exception:  # noqa: BLE001
+    pass
+
+
+@app.get("/health")
+async def healthcheck() -> JSONResponse:
+  return JSONResponse({"status": "ok"})
 
 
 def _workflow_ctx() -> dict[str, Any]:
@@ -1189,6 +1220,7 @@ async def moysklad_sync(request: Request) -> HTMLResponse:
     max_orders=settings.moysklad_sync_orders_limit,
     cache=cache,
     force_refresh=True,
+    fetch_positions=True,
   )
   healthy = await client.health_check() if client.enabled else False
   return templates.TemplateResponse(

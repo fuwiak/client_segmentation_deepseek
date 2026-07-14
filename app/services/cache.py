@@ -66,7 +66,11 @@ class RedisCache(CacheBackend):
     def __init__(self, url: str) -> None:
         import redis.asyncio as redis
 
-        self._client = redis.from_url(url, socket_connect_timeout=5)
+        self._client = redis.from_url(
+            url,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
 
     async def get(self, key: str) -> Any | None:
         raw = await self._client.get(key)

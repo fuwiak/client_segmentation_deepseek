@@ -1,3 +1,3 @@
-<span class="status-pill {% if health.whatsapp %}ok{% endif %}" title="WhatsApp">WA {% if health.whatsapp %}✓{% else %}—{% endif %}</span>
-<span class="status-pill {% if health.telegram %}ok{% endif %}" title="Telegram">TG {% if health.telegram %}✓{% else %}—{% endif %}</span>
+<span class="status-pill {% if health|default({}).whatsapp %}ok{% endif %}" title="WhatsApp">WA {% if health|default({}).whatsapp %}✓{% else %}—{% endif %}</span>
+<span class="status-pill {% if health|default({}).telegram %}ok{% endif %}" title="Telegram">TG {% if health|default({}).telegram %}✓{% else %}—{% endif %}</span>
 <span class="status-pill {% if has_api_key|default(false) %}ok{% else %}warn{% endif %}" title="OpenRouter">AI {% if has_api_key|default(false) %}✓{% else %}—{% endif %}</span>
