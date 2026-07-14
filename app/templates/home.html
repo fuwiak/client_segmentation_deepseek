@@ -60,9 +60,11 @@
           <td>{{ row.get('Тип продаж') or '—' }}</td>
           <td class="tags-cell">{{ row.get('Теги') or row.get('Группы') or '—' }}</td>
           <td>
-            <button class="btn-text"
-                    hx-get="/clients/{{ row.get('UUID') or row.get('Наименование') }}"
-                    hx-target="#modal-root"
+            <button type="button" class="btn-text"
+                    hx-boost="false"
+                    hx-push-url="false"
+                    hx-get="/clients/{{ client_url_id(row) }}?drawer=1"
+                    hx-target="#client-drawer-panel"
                     hx-swap="innerHTML">Открыть</button>
           </td>
         </tr>

@@ -39,6 +39,7 @@
     <tbody>
       {% for row in clients %}
       {% set cid = row.get('UUID') or row.get('Наименование') %}
+      {% set cid_url = client_url_id(row) %}
       <tr data-client-id="{{ cid }}">
         {% for col in client_columns %}
         <td{% if col in ('Группы', 'Теги') %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% endif %} data-col="{{ col }}">
@@ -46,7 +47,7 @@
           {% if col == 'Наименование' %}
           <button type="button" class="client-name-link"
                   hx-boost="false"
-                  hx-get="/clients/{{ cid }}?drawer=1"
+                  hx-get="/clients/{{ cid_url }}?drawer=1"
                   hx-target="#client-drawer-panel"
                   hx-swap="innerHTML">{{ display_cell_value(value) }}</button>
           {% elif col == 'TG conversation' %}
@@ -70,13 +71,13 @@
           <button type="button" class="btn-text orders-modal-btn"
                   hx-boost="false"
                   hx-push-url="false"
-                  hx-get="/clients/{{ cid }}/orders?modal=1"
+                  hx-get="/clients/{{ cid_url }}/orders?modal=1"
                   hx-target="#modal-root"
                   hx-swap="innerHTML"
                   onclick="prepareOrdersModal(event)">Заказы</button>
           <button type="button" class="btn-text client-name-link"
                   hx-boost="false"
-                  hx-get="/clients/{{ cid }}?drawer=1"
+                  hx-get="/clients/{{ cid_url }}?drawer=1"
                   hx-target="#client-drawer-panel"
                   hx-swap="innerHTML">Карточка</button>
         </td>

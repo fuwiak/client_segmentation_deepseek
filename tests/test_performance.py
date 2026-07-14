@@ -49,6 +49,64 @@ def test_home_page_shows_title_and_active_nav() -> None:
   assert 'data-nav-path="/" class="bottom-nav-item active"' in response.text
 
 
+def test_home_recent_clients_open_uses_drawer() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "Наименование": "+12512569353",
+        "Тип продаж": "маркетплейс",
+        "Теги": "#vip",
+      }],
+      context_columns=["Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+  with patch.object(m, "_hydrate_hub_from_cache", new_callable=AsyncMock, return_value=False):
+    client = TestClient(m.app)
+    response = client.get("/")
+  assert response.status_code == 200
+  assert 'hx-get="/clients/%2B12512569353?drawer=1"' in response.text
+  assert 'hx-target="#client-drawer-panel"' in response.text
+  assert 'hx-boost="false"' in response.text
+
+
+def test_client_card_drawer_resolves_encoded_phone_name() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "Наименование": "+1 305 6455530",
+        "Тип продаж": "маркетплейс",
+        "Всего заказов": 0,
+      }],
+      context_columns=["Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock):
+    client = TestClient(m.app)
+    response = client.get(
+      "/clients/%2B1%20305%206455530?drawer=1",
+      headers={"HX-Request": "true"},
+    )
+  assert response.status_code == 200
+  assert "+1 305 6455530" in response.text
+  assert "rules-drawer-header" in response.text
+
+
 def test_base_template_has_htmx_app_shell() -> None:
   import app.main as m
 

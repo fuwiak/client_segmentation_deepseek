@@ -6,7 +6,7 @@ import re
 from collections import Counter
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from app.services.telegram_export import tg_conversation_label
 from app.services.fields import (
@@ -393,6 +393,20 @@ def collect_group_counts(
 
 def group_chip_hue(name: str) -> int:
     return sum(ord(c) for c in name) % 360
+
+
+def client_url_id(row_or_id: dict[str, Any] | str) -> str:
+    """ID клиента для URL path (percent-encoded)."""
+    if isinstance(row_or_id, dict):
+        key = str(
+            row_or_id.get("UUID")
+            or row_or_id.get("uuid")
+            or row_or_id.get("Наименование")
+            or ""
+        ).strip()
+    else:
+        key = str(row_or_id).strip()
+    return quote(key, safe="")
 
 
 def build_clients_query(

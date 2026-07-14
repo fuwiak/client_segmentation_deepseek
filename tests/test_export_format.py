@@ -6,6 +6,7 @@ from app.services.excel_parser import ParsedWorkbook
 from app.services.export_format import (
     build_clients_query,
     client_cell_value,
+    client_url_id,
     collect_group_counts,
     export_columns,
     format_messenger_history,
@@ -203,3 +204,9 @@ def test_client_display_columns_include_tags() -> None:
 def test_client_cell_value_normalizes_tags() -> None:
     row = {"Теги": "vip #доволен", "_ai_processed": True}
     assert client_cell_value(row, "Теги") == "#vip #доволен"
+
+
+def test_client_url_id_encodes_plus_and_spaces() -> None:
+    assert client_url_id({"Наименование": "+12512569353"}) == "%2B12512569353"
+    assert client_url_id("+1 305 6455530") == "%2B1%20305%206455530"
+    assert client_url_id({"UUID": "abc-123"}) == "abc-123"

@@ -40,6 +40,7 @@ from app.services.export_format import (
   build_clients_query,
   client_cell_state,
   client_cell_value,
+  client_url_id,
   compact_orders_for_display,
   display_cell_value,
   export_columns,
@@ -96,6 +97,7 @@ templates.env.globals["client_cell_state"] = client_cell_state
 templates.env.globals["display_cell_value"] = display_cell_value
 templates.env.globals["format_money_rub"] = format_money_rub
 templates.env.globals["build_clients_query"] = build_clients_query
+templates.env.globals["client_url_id"] = client_url_id
 templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

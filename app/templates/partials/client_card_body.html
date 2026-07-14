@@ -1,4 +1,4 @@
-{% set client_id = client.get('UUID') or client.get('Наименование') %}
+{% set client_id = client_url_id(client) %}
 
 <div class="client-meta">
   {% if client.get('Статус последнего заказа') %}
