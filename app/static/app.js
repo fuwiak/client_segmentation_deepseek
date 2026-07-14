@@ -17,10 +17,22 @@
     var root = document.getElementById("modal-root");
     if (!root) return;
     root.innerHTML =
-      '<div class="modal-overlay orders-modal-overlay">' +
+      '<div class="modal-overlay orders-modal-overlay" onclick="if(event.target===this) closeModal()">' +
       '<div class="modal-card orders-modal">' +
-      '<p class="hint muted orders-modal-loading">Загружаем заказы…</p>' +
+      '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Закрыть">×</button>' +
+      '<h2 class="modal-title">Заказы</h2>' +
+      '<p class="hint muted orders-modal-loading">Открываем заказы…</p>' +
+      '<div class="progress-track indeterminate"><div class="progress-fill"></div></div>' +
       "</div></div>";
+  }
+
+  function prepareOrdersModal(event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    closeClientDrawer();
+    closeTagRulesDrawer();
+    showOrdersModalLoading();
   }
 
   function closeModal() {
@@ -101,6 +113,7 @@
 
   window.toggleMobileNav = toggleMobileNav;
   window.closeModal = closeModal;
+  window.prepareOrdersModal = prepareOrdersModal;
   window.openTagRulesDrawer = openTagRulesDrawer;
   window.closeTagRulesDrawer = closeTagRulesDrawer;
   window.openClientDrawer = openClientDrawer;
@@ -280,6 +293,9 @@
       openClientDrawer();
       processHtmxRegion(target);
     } else if (target && target.id === "modal-root") {
+      processHtmxRegion(target);
+      activateLazyWidgets(target);
+    } else if (target && target.id === "orders-modal-content") {
       processHtmxRegion(target);
     } else if (target && target.id === "clients-table-block") {
       processHtmxRegion(target);

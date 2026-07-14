@@ -1066,6 +1066,10 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   position: relative;
 }
 
+.orders-modal-overlay {
+  z-index: 260;
+}
+
 .orders-modal {
   max-width: 720px;
   max-height: 85vh;
@@ -1082,9 +1086,20 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 }
 
 .orders-modal-loading {
-  margin: 0;
+  margin: 0 0 var(--sm);
   text-align: center;
-  padding: var(--xl) 0;
+  padding: var(--md) 0 0;
+}
+
+.orders-modal-progress {
+  margin-top: var(--md);
+  padding-top: var(--md);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.orders-modal-progress .progress-label {
+  margin-bottom: var(--sm);
+  text-align: center;
 }
 
 .actions-cell {

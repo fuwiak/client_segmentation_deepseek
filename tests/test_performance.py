@@ -94,6 +94,64 @@ def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
   assert "rules-drawer-header" in response.text
 
 
+def test_client_orders_modal_preview_and_list() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  orders_rows = [
+    {
+      "№": str(i),
+      "Дата": f"2026-0{(i % 9) + 1}-01",
+      "Сумма": 1000 * i,
+      "Статус": "OK",
+      "Канал продаж": "Витрина",
+      "_moysklad_agent_id": "cp-modal",
+    }
+    for i in range(1, 6)
+  ]
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "UUID": "cp-modal",
+        "Наименование": "Модалка",
+        "_orders_context": orders_rows[:20],
+        "_orders_count": len(orders_rows),
+      }],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    ParsedWorkbook(
+      source_type="orders",
+      rows=orders_rows,
+      context_columns=[],
+      segment_columns=[],
+      total_rows=len(orders_rows),
+      meta={},
+    ),
+  )
+  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock):
+    client = TestClient(m.app)
+    preview = client.get(
+      "/clients/cp-modal/orders?modal=1&preview=1",
+      headers={"HX-Request": "true"},
+    )
+    assert preview.status_code == 200
+    assert "orders-modal-overlay" in preview.text
+    assert "orders-modal-progress" in preview.text
+    assert preview.text.count("orders-compact-item") == 1
+
+    full_list = client.get(
+      "/clients/cp-modal/orders?modal=1&list_only=1",
+      headers={"HX-Request": "true"},
+    )
+    assert full_list.status_code == 200
+    assert "orders-modal-progress" not in full_list.text
+    assert full_list.text.count("orders-compact-item") == 5
+
+
 def test_client_orders_uses_cache_only_hydrate() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook
