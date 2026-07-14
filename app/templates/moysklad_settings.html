@@ -1,12 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div id="settings-live-region">
 {% include 'partials/settings_subnav.html' %}
 
 <div class="settings-grid">
   <section class="card">
     <h3>Подключение</h3>
-    <div hx-get="/moysklad/status" hx-trigger="load" hx-swap="innerHTML"></div>
+    <div id="moysklad-status-slot"
+         hx-get="/moysklad/status"
+         hx-trigger="load once"
+         hx-select=".moysklad-block"
+         hx-swap="innerHTML">
+      <div class="moysklad-block">
+        <p class="hint muted">Загружаем статус Мой Склад…</p>
+      </div>
+    </div>
   </section>
 
   <section class="card">
@@ -74,4 +83,5 @@
     <li>Документация API: <a href="https://dev.moysklad.ru/doc/api/remap/1.2/" target="_blank" rel="noopener">Remap 1.2</a></li>
   </ul>
 </section>
+</div>
 {% endblock %}

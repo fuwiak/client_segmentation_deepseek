@@ -1,5 +1,26 @@
 <nav class="settings-tabs" aria-label="Разделы настроек">
-  <a href="/settings" class="filter-tab {% if active_page == 'settings' %}active{% endif %}">Интеграции</a>
-  <a href="/settings/communications" class="filter-tab {% if active_page == 'communications' %}active{% endif %}">Автокоммуникация</a>
-  <a href="/settings/moysklad" class="filter-tab {% if active_page == 'moysklad' %}active{% endif %}">Мой Склад</a>
+  <a href="/settings"
+     hx-boost="false"
+     hx-get="/settings"
+     hx-target="#settings-live-region"
+     hx-select="#settings-live-region"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     class="filter-tab {% if active_page == 'settings' %}active{% endif %}">Интеграции</a>
+  <a href="/settings/communications"
+     hx-boost="false"
+     hx-get="/settings/communications"
+     hx-target="#settings-live-region"
+     hx-select="#settings-live-region"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     class="filter-tab {% if active_page == 'communications' %}active{% endif %}">Автокоммуникация</a>
+  <a href="/settings/moysklad"
+     hx-boost="false"
+     hx-get="/settings/moysklad"
+     hx-target="#settings-live-region"
+     hx-select="#settings-live-region"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     class="filter-tab {% if active_page == 'moysklad' %}active{% endif %}">Мой Склад</a>
 </nav>

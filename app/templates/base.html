@@ -26,7 +26,7 @@
       <div class="header-actions">
         <div class="status-strip"
              hx-get="/messenger/sidebar"
-             hx-trigger="load"
+             hx-trigger="load once"
              hx-swap="innerHTML">
           <span class="status-pill muted">…</span>
         </div>
@@ -111,7 +111,7 @@
   </aside>
 
   <script src="/static/clients_ws.js?v=3"></script>
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/app.js?v=5"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

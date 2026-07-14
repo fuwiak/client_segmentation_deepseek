@@ -69,12 +69,14 @@ from app.services.telegram_export import parse_telegram_export_file
 from app.services.telegram_bot import get_telegram_client
 from app.services.db_persist import get_db_persist
 from app.services.background_jobs import get_background_jobs
+from app.services.status_cache import get_status_cache
 from app.logging_config import configure_logging, pipeline_log
 
 configure_logging()
 settings = get_settings()
 cache = get_cache(settings)
 db_persist = get_db_persist(settings)
+status_cache = get_status_cache()
 jobs = get_background_jobs()
 cache.attach_db_persist(db_persist)
 hub = get_data_hub()
@@ -1153,44 +1155,128 @@ async def communications_update(
 
 @app.get("/messenger/sidebar", response_class=HTMLResponse)
 async def messenger_sidebar(request: Request) -> HTMLResponse:
-  messenger = MessengerConnector(settings)
-  health = await messenger.health()
+  payload = await status_cache.get_or_set(
+    "messenger_health",
+    90,
+    _fetch_messenger_status_payload,
+  )
   return templates.TemplateResponse(
     "partials/messenger_sidebar.html",
-    _ctx(request, health=health),
+    _ctx(request, health=payload["health"]),
   )
 
 
-@app.get("/messenger/status", response_class=HTMLResponse)
-async def messenger_status(request: Request) -> HTMLResponse:
-  messenger = MessengerConnector(settings)
-  health = await messenger.health()
+async def _fetch_messenger_status_payload() -> dict[str, Any]:
   wa = get_green_api_client(settings)
   tg = get_telegram_client(settings)
+  health = {"whatsapp": False, "telegram": False}
+  wa_state: dict[str, Any] = {"enabled": False}
+  tg_me: dict[str, Any] = {"enabled": False}
+
   if wa.enabled:
     try:
       wa_state = await wa.get_state()
+      health["whatsapp"] = wa_state.get("stateInstance") in ("authorized", "sleepMode")
     except httpx.HTTPError as exc:
       wa_state = {
         "enabled": True,
         "stateInstance": "rate_limited",
         "error": str(exc),
       }
-  else:
-    wa_state = {"enabled": False}
+
   if tg.enabled:
     try:
       tg_me = await tg.get_me()
+      health["telegram"] = bool(tg_me.get("enabled") and tg_me.get("id"))
     except httpx.HTTPError:
       tg_me = {"enabled": True, "username": settings.telegram_bot_username}
-  else:
-    tg_me = {"enabled": False}
+      health["telegram"] = True
+
   enrichment = MessengerEnrichmentService(settings, cache)
   tg_stats = enrichment.stats if tg.enabled else {}
+  return {
+    "health": health,
+    "wa_state": wa_state,
+    "tg_me": tg_me,
+    "tg_stats": tg_stats,
+  }
+
+
+@app.get("/messenger/status", response_class=HTMLResponse)
+async def messenger_status(request: Request) -> HTMLResponse:
+  payload = await status_cache.get_or_set(
+    "messenger_health",
+    90,
+    _fetch_messenger_status_payload,
+  )
   return templates.TemplateResponse(
     "partials/messenger_status.html",
-    _ctx(request, health=health, wa_state=wa_state, tg_me=tg_me, tg_stats=tg_stats),
+    _ctx(
+      request,
+      health=payload["health"],
+      wa_state=payload["wa_state"],
+      tg_me=payload["tg_me"],
+      tg_stats=payload["tg_stats"],
+    ),
   )
+
+
+async def _moysklad_status_context(
+  *,
+  sync_message: str | None = None,
+  sync_ok: bool | None = None,
+  hub_rows: int | None = None,
+  hub_orders: int | None = None,
+  api_cp_total: int | None = None,
+  api_orders_total: int | None = None,
+  from_moysklad: bool | None = None,
+  from_cache: bool | None = None,
+) -> dict[str, Any]:
+  await _hydrate_hub_from_cache()
+  await _hydrate_moysklad_from_cache()
+  client = get_moysklad_client(settings)
+  cached_ms = await cache.get_moysklad_sync()
+  resolved_cp_total = api_cp_total
+  if resolved_cp_total is None and cached_ms:
+    resolved_cp_total = cached_ms.get("api_cp_total")
+  resolved_orders_total = api_orders_total
+  if resolved_orders_total is None and cached_ms:
+    resolved_orders_total = cached_ms.get("api_orders_total")
+  resolved_hub_rows = hub_rows if hub_rows is not None else len(hub.active_rows())
+  resolved_hub_orders = hub_orders
+  if resolved_hub_orders is None:
+    resolved_hub_orders = (
+      len(hub.orders_parsed.rows)
+      if hub.orders_parsed and hub.orders_parsed.rows
+      else 0
+    )
+  resolved_from_moysklad = from_moysklad
+  if resolved_from_moysklad is None:
+    resolved_from_moysklad = bool(
+      hub.parsed and hub.parsed.meta.get("source") == "moysklad"
+    )
+  resolved_from_cache = from_cache
+  if resolved_from_cache is None:
+    resolved_from_cache = bool(cached_ms and resolved_from_moysklad)
+  healthy = client.enabled and (
+    resolved_from_moysklad or bool(cached_ms) or resolved_hub_rows > 0
+  )
+  ctx: dict[str, Any] = {
+    "enabled": client.enabled,
+    "healthy": healthy,
+    "api_url": settings.moysklad_api_url,
+    "hub_rows": resolved_hub_rows,
+    "hub_orders": resolved_hub_orders,
+    "api_cp_total": resolved_cp_total,
+    "api_orders_total": resolved_orders_total,
+    "from_moysklad": resolved_from_moysklad,
+    "from_cache": resolved_from_cache,
+  }
+  if sync_message is not None:
+    ctx["sync_message"] = sync_message
+  if sync_ok is not None:
+    ctx["sync_ok"] = sync_ok
+  return ctx
 
 
 @app.post("/upload/preview", response_class=HTMLResponse)
@@ -1510,41 +1596,10 @@ async def enrich_progress(
 
 @app.get("/moysklad/status", response_class=HTMLResponse)
 async def moysklad_status(request: Request) -> HTMLResponse:
-  await _ensure_moysklad_data()
-  client = get_moysklad_client(settings)
-  healthy = await client.health_check() if client.enabled else False
-  cached_ms = await cache.get_moysklad_sync()
-  api_cp_total = cached_ms.get("api_cp_total") if cached_ms else None
-  api_orders_total = cached_ms.get("api_orders_total") if cached_ms else None
-  if client.enabled and api_cp_total is None:
-    api_cp_total = await client.get_entity_count("/entity/counterparty")
-  if client.enabled and api_orders_total is None:
-    api_orders_total = await client.get_entity_count("/entity/customerorder")
-  hub_rows = len(hub.active_rows())
-  hub_orders = (
-    len(hub.orders_parsed.rows)
-    if hub.orders_parsed and hub.orders_parsed.rows
-    else 0
-  )
-  from_moysklad = bool(
-    hub.parsed
-    and hub.parsed.meta.get("source") == "moysklad"
-  )
-  from_cache = bool(cached_ms and from_moysklad)
+  ctx = await _moysklad_status_context()
   return templates.TemplateResponse(
     "partials/moysklad_status.html",
-    {
-      "request": request,
-      "enabled": client.enabled,
-      "healthy": healthy,
-      "api_url": settings.moysklad_api_url,
-      "hub_rows": hub_rows,
-      "hub_orders": hub_orders,
-      "api_cp_total": api_cp_total,
-      "api_orders_total": api_orders_total,
-      "from_moysklad": from_moysklad,
-      "from_cache": from_cache,
-    },
+    {"request": request, **ctx},
   )
 
 
@@ -1562,23 +1617,19 @@ async def moysklad_sync(request: Request) -> HTMLResponse:
   )
   if result.success:
     asyncio.create_task(_schedule_lazy_ai(force=True))
-  healthy = await client.health_check() if client.enabled else False
+  ctx = await _moysklad_status_context(
+    sync_message=result.message,
+    sync_ok=result.success,
+    hub_rows=result.counterparties_count if result.success else 0,
+    hub_orders=result.orders_count if result.success else 0,
+    api_cp_total=result.api_counterparties_total,
+    api_orders_total=result.api_orders_total,
+    from_moysklad=result.success,
+    from_cache=result.from_cache,
+  )
   return templates.TemplateResponse(
     "partials/moysklad_status.html",
-    {
-      "request": request,
-      "enabled": client.enabled,
-      "healthy": healthy,
-      "api_url": settings.moysklad_api_url,
-      "hub_rows": result.counterparties_count if result.success else 0,
-      "hub_orders": result.orders_count if result.success else 0,
-      "api_cp_total": result.api_counterparties_total,
-      "api_orders_total": result.api_orders_total,
-      "from_moysklad": result.success,
-      "sync_message": result.message,
-      "sync_ok": result.success,
-      "from_cache": result.from_cache,
-    },
+    {"request": request, **ctx},
   )
 
 

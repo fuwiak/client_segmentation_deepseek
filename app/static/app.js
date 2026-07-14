@@ -99,6 +99,18 @@
     if (typeof window.initClientsPage === "function") {
       window.initClientsPage();
     }
+    if (typeof htmx !== "undefined") {
+      htmx.process(document.getElementById("settings-live-region") || document.body);
+    }
+  }
+
+  function isLiveSwapTarget(target) {
+    return (
+      target &&
+      (target.id === "page-content" ||
+        target.id === "clients-live-region" ||
+        target.id === "settings-live-region")
+    );
   }
 
   function fallbackNavigateFromHtmxEvent(e) {
@@ -122,7 +134,7 @@
 
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     var target = e.detail.target;
-    if (target && (target.id === "page-content" || target.id === "clients-live-region")) {
+    if (isLiveSwapTarget(target)) {
       document.documentElement.classList.add("is-navigating");
     }
     if (target && target.id === "page-content") {
@@ -160,7 +172,7 @@
   document.body.addEventListener("htmx:responseError", fallbackNavigateFromHtmxEvent);
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
-    if (e.detail.target && (e.detail.target.id === "page-content" || e.detail.target.id === "clients-live-region")) {
+    if (isLiveSwapTarget(e.detail.target)) {
       updateActiveNav();
       updateDocumentTitle();
       initPageScripts();

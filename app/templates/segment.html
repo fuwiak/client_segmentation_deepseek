@@ -10,7 +10,15 @@
   {% if moysklad_enabled %}
   <div class="source-block">
     <h4>Мой Склад</h4>
-    <div hx-get="/moysklad/status" hx-trigger="load" hx-swap="innerHTML"></div>
+    <div id="segment-moysklad-status-slot"
+         hx-get="/moysklad/status"
+         hx-trigger="revealed once"
+         hx-select=".moysklad-block"
+         hx-swap="innerHTML">
+      <div class="moysklad-block">
+        <p class="hint muted">Загружаем статус Мой Склад…</p>
+      </div>
+    </div>
   </div>
   {% endif %}
 

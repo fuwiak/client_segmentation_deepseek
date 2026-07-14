@@ -1,13 +1,20 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div id="settings-live-region">
 {% include 'partials/settings_subnav.html' %}
 
 <div class="settings-grid">
   <section class="card">
     <h3>Мессенджеры</h3>
-    <div hx-get="/messenger/status" hx-trigger="load" hx-swap="innerHTML">
-      <p class="hint muted">Проверяем подключения…</p>
+    <div id="messenger-status-slot"
+         hx-get="/messenger/status"
+         hx-trigger="load once"
+         hx-select=".messenger-status-block"
+         hx-swap="innerHTML">
+      <div class="messenger-status-block">
+        <p class="hint muted">Проверяем подключения…</p>
+      </div>
     </div>
     <p class="hint"><a href="/settings/communications">Настроить автокоммуникацию →</a></p>
   </section>
@@ -28,4 +35,5 @@
     <li><code>MOYSKLAD_API_TOKEN</code> / <code>MOYSKLAD_ENABLED</code> — <a href="/settings/moysklad">Мой Склад</a></li>
   </ul>
 </section>
+</div>
 {% endblock %}
