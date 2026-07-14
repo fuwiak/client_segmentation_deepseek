@@ -58,6 +58,8 @@ class DataHub:
     self._client_index_version: int = -1
     self._results_by_key: dict[str, dict[str, Any]] | None = None
     self._results_index_version: int = -1
+    self._order_lookup_cache: dict[str, dict[str, Any]] | None = None
+    self._order_lookup_version: int = -1
 
   def touch(self) -> None:
     self.version += 1
@@ -65,6 +67,7 @@ class DataHub:
     self._filter_cache.clear()
     self._client_index = None
     self._results_by_key = None
+    self._order_lookup_cache = None
 
   def set_workbook(
     self,
@@ -211,14 +214,20 @@ class DataHub:
     return merged[0] if merged else display
 
   def _order_lookup(self) -> dict[str, dict[str, Any]]:
+    if self._order_lookup_cache is not None and self._order_lookup_version == self.version:
+      return self._order_lookup_cache
     order_by_key: dict[str, dict[str, Any]] = {}
     if not self.orders_parsed or not self.orders_parsed.rows:
+      self._order_lookup_cache = order_by_key
+      self._order_lookup_version = self.version
       return order_by_key
     for order in self.orders_parsed.rows:
       for key in (order.get("_moysklad_id"), order.get("№"), order.get("Номер")):
         text = str(key or "").strip()
         if text:
           order_by_key[text] = order
+    self._order_lookup_cache = order_by_key
+    self._order_lookup_version = self.version
     return order_by_key
 
   def resolve_order_entities(self, orders: list[dict[str, Any]]) -> list[dict[str, Any]]:

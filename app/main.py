@@ -1015,6 +1015,7 @@ async def client_orders(
   request: Request,
   client_id: str,
   collapsed: bool = Query(False),
+  modal: bool = Query(False),
 ) -> HTMLResponse:
   if collapsed:
     return HTMLResponse("")
@@ -1024,12 +1025,21 @@ async def client_orders(
     await _ensure_hub_cache_only()
     client, raw_orders, total = hub.get_client_orders(client_id)
   if client is None:
+    if modal:
+      return HTMLResponse(
+        '<div class="modal-overlay orders-modal-overlay" onclick="if(event.target===this) closeModal()">'
+        '<div class="modal-card orders-modal">'
+        '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Закрыть">×</button>'
+        '<p class="hint warn">Клиент не найден</p>'
+        "</div></div>"
+      )
     return HTMLResponse(
       '<div class="orders-nested orders-nested-empty">Клиент не найден</div>'
     )
   orders = compact_orders_for_display(raw_orders)
+  template = "partials/client_orders_modal.html" if modal else "partials/client_orders.html"
   return templates.TemplateResponse(
-    "partials/client_orders.html",
+    template,
     _ctx(
       request,
       client=client,

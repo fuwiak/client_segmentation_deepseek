@@ -1066,6 +1066,35 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   position: relative;
 }
 
+.orders-modal {
+  max-width: 720px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.orders-modal-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.orders-modal-loading {
+  margin: 0;
+  text-align: center;
+  padding: var(--xl) 0;
+}
+
+.actions-cell {
+  white-space: nowrap;
+}
+
+.actions-cell .btn-text + .btn-text {
+  margin-left: var(--sm);
+}
+
 .modal-close {
   position: absolute;
   top: var(--md);

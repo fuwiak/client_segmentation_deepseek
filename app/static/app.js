@@ -9,6 +9,20 @@
     btn.textContent = open ? "✕" : "☰";
   }
 
+  function isOrdersModalRequest(elt) {
+    return elt && elt.classList && elt.classList.contains("orders-modal-btn");
+  }
+
+  function showOrdersModalLoading() {
+    var root = document.getElementById("modal-root");
+    if (!root) return;
+    root.innerHTML =
+      '<div class="modal-overlay orders-modal-overlay">' +
+      '<div class="modal-card orders-modal">' +
+      '<p class="hint muted orders-modal-loading">Загружаем заказы…</p>' +
+      "</div></div>";
+  }
+
   function closeModal() {
     var root = document.getElementById("modal-root");
     if (root) root.innerHTML = "";
@@ -199,6 +213,9 @@
     if (isClientDrawerRequest(elt)) {
       showClientDrawerLoading();
     }
+    if (isOrdersModalRequest(elt)) {
+      showOrdersModalLoading();
+    }
     if (target && target.id === "page-content") {
       closeTagRulesDrawer();
       closeClientDrawer();
@@ -222,13 +239,25 @@
 
   document.body.addEventListener("htmx:responseError", function (e) {
     document.documentElement.classList.remove("is-navigating");
-    if (isClientDrawerRequest(e.detail && e.detail.elt)) {
+    var elt = e.detail && e.detail.elt;
+    if (isClientDrawerRequest(elt)) {
       hideClientDrawerLoading();
       var panel = document.getElementById("client-drawer-panel");
       if (panel) {
         panel.innerHTML = '<p class="hint warn">Не удалось загрузить карточку клиента.</p>';
       }
       openClientDrawer();
+    }
+    if (isOrdersModalRequest(elt)) {
+      var root = document.getElementById("modal-root");
+      if (root) {
+        root.innerHTML =
+          '<div class="modal-overlay orders-modal-overlay" onclick="if(event.target===this) closeModal()">' +
+          '<div class="modal-card orders-modal">' +
+          '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Закрыть">×</button>' +
+          '<p class="hint warn">Не удалось загрузить заказы.</p>' +
+          "</div></div>";
+      }
     }
   });
 
@@ -250,12 +279,8 @@
       hideClientDrawerLoading();
       openClientDrawer();
       processHtmxRegion(target);
-    } else if (target && target.id && target.id.indexOf("orders-") === 0) {
-      var row = target.closest(".orders-expand-row");
-      if (row) {
-        row.classList.add("is-open");
-        processHtmxRegion(target);
-      }
+    } else if (target && target.id === "modal-root") {
+      processHtmxRegion(target);
     } else if (target && target.id === "clients-table-block") {
       processHtmxRegion(target);
     }

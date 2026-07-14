@@ -1,37 +1,3 @@
 <div class="orders-nested orders-compact">
-  <div class="orders-nested-head">
-    <span>Заказы ({{ orders_total|default(orders|length) }})</span>
-    <button type="button" class="btn-text small"
-            hx-get="/clients/{{ client_id }}/orders?collapsed=1"
-            hx-target="closest .orders-nested"
-            hx-swap="outerHTML">Свернуть</button>
-  </div>
-  {% if not orders %}
-  <p class="orders-compact-empty">Нет заказов</p>
-  {% else %}
-  <ul class="orders-compact-list">
-    {% for order in orders %}
-    <li class="orders-compact-item">
-      <div class="orders-compact-main">
-        <span class="oc-num" title="№ заказа">{{ order.number }}</span>
-        <span class="oc-date">{{ order.date }}</span>
-        <span class="oc-amount">{{ order.amount }}</span>
-        <span class="oc-status">{{ order.status }}</span>
-        {% if order.channel %}
-        <span class="oc-channel">{{ order.channel }}</span>
-        {% endif %}
-      </div>
-      {% if order.has_positions %}
-      <div class="oc-positions">{{ order.positions }}</div>
-      {% endif %}
-      {% if order.has_comment %}
-      <div class="oc-comment">{{ order.comment }}</div>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% if orders_total|default(orders|length) > orders|length %}
-  <p class="orders-compact-more">Показаны последние {{ orders|length }} из {{ orders_total }}</p>
-  {% endif %}
-  {% endif %}
+  {% include 'partials/client_orders_list.html' %}
 </div>

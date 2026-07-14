@@ -1,0 +1,11 @@
+<div class="modal-overlay orders-modal-overlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal-card orders-modal" role="dialog" aria-labelledby="orders-modal-title">
+    <button type="button" class="modal-close" onclick="closeModal()" aria-label="Закрыть">×</button>
+    <h2 class="modal-title" id="orders-modal-title">
+      Заказы · {{ client.get('Наименование') or 'Клиент' }}
+    </h2>
+    <div class="orders-nested orders-compact orders-modal-body">
+      {% include 'partials/client_orders_list.html' %}
+    </div>
+  </div>
+</div>
