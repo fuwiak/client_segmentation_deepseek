@@ -253,7 +253,10 @@ class DashboardService:
       monthly=monthly_revenue(cur_order_pairs) if cur_orders else [],
     )
 
-    mp_clients = [r for r in rows if (r.get("Тип продаж") or "") == "маркетплейс"]
+    mp_clients = [
+      r for r in rows
+      if "маркетплейс" in str(r.get("Тип продаж") or r.get("Тип канала продаж") or "")
+    ]
     data.marketplace_clients = MetricBlock(
       total=len(mp_clients),
       growth_pct=None,
@@ -267,7 +270,10 @@ class DashboardService:
       k: MetricBlock(total=v) for k, v in mp_breakdown.most_common()
     }
 
-    direct_clients = [r for r in rows if (r.get("Тип продаж") or "") == "прямые продажи"]
+    direct_clients = [
+      r for r in rows
+      if "прямы" in str(r.get("Тип продаж") or r.get("Тип канала продаж") or "")
+    ]
     data.direct_clients = MetricBlock(total=len(direct_clients), growth_pct=None)
     direct_breakdown: Counter[str] = Counter()
     for r in direct_clients:

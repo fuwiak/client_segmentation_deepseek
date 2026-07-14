@@ -5,7 +5,7 @@
   <span class="chip warn">Открытый заказ: {{ client.get('Статус последнего заказа') }}</span>
   {% endif %}
   <span class="chip">{{ client.get('Заказчик или получатель') or '—' }} / {{ client.get('Пол') or '—' }}</span>
-  <span class="chip">{{ client.get('Тип карала продаж') or client.get('Тип продаж') or '—' }}</span>
+  <span class="chip">{{ client.get('Тип канала продаж') or client.get('Тип продаж') or '—' }}</span>
   {% if client.get('Канал продаж') %}
   <span class="chip">{{ client.get('Канал продаж') }}</span>
   {% endif %}

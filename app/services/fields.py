@@ -63,63 +63,104 @@ def apply_name_parts(merged: dict[str, Any], full_name: str, ai_fields: list[str
       apply_ai_field(merged, "Фамилия (для ИП и физ. лиц)", parts[1], ai_fields)
 
 
-MARKETPLACE_KEYWORDS = (
-  "маркетплейс",
-  "яндекс",
+MARKETPLACE_CHANNEL_KEYWORDS = (
+  "flowwow",
+  "flow wow",
   "ozon",
-  "wildberries",
-  "wb ",
-  "авито",
-  "lamoda",
-  "сбермега",
+  "яндекс",
+  "yandex",
+  "флавери",
+  "flawery",
+  "flaweri",
 )
+
+SALES_CHANNEL_TYPE_MARKETPLACE = "маркетплейс"
+SALES_CHANNEL_TYPE_DIRECT = "прямые продажи"
+SALES_CHANNEL_TYPE_HYBRID = "прямые продажи/маркетплейс"
+
+# Старое имя поля с опечаткой — только для чтения legacy-данных.
+LEGACY_SALES_CHANNEL_TYPE_KEY = "Тип карала продаж"
+SALES_CHANNEL_TYPE_KEY = "Тип канала продаж"
 
 
 def _normalize_channel(channel: str) -> str:
   return channel.strip().lower().replace("ё", "е")
 
 
-def is_direct_sales_channel(channel: str | None) -> bool:
-  """Прямые продажи: витрина, сайт, мессенджеры и явно прямые каналы."""
+def is_marketplace_channel(channel: str | None) -> bool:
+  """Маркетплейс: Flowwow, Ozon, Яндекс, Flawery и их варианты написания."""
   if not channel or not str(channel).strip():
     return False
   text = _normalize_channel(str(channel))
-  if "vereskflowers" in text:
-    return True
-  if "витрина" in text or "витрына" in text:
-    return True
-  if "прямые продажи" in text or text == "прямые":
-    return True
-  if "telegram" in text or "телеграм" in text:
-    return True
-  if "whatsapp" in text or "ватсап" in text or "whats app" in text:
-    return True
-  if re.search(r"(?:^|[/\s])max(?:$|[\s/])", text):
-    return True
-  if text in {"сайт", "site"}:
-    return True
-  return False
+  return any(keyword in text for keyword in MARKETPLACE_CHANNEL_KEYWORDS)
+
+
+def is_direct_sales_channel(channel: str | None) -> bool:
+  """Прямые продажи: любой канал, который не маркетплейс."""
+  if not channel or not str(channel).strip():
+    return False
+  return not is_marketplace_channel(str(channel))
+
+
+def channel_type_from_channel(channel: str | None) -> str:
+  """Классификация одного канала продаж из МойСклад."""
+  if is_marketplace_channel(channel):
+    return SALES_CHANNEL_TYPE_MARKETPLACE
+  return SALES_CHANNEL_TYPE_DIRECT
 
 
 def sales_type_from_channel(channel: str | None) -> str:
-  """Тип продаж по каналу из заказа МойСклад: прямые или маркетплейс."""
-  if not channel or not str(channel).strip():
-    return "прямые продажи"
-  if is_direct_sales_channel(str(channel)):
-    return "прямые продажи"
-  return "маркетплейс"
+  """Тип продаж по одному каналу из заказа МойСклад."""
+  return channel_type_from_channel(channel)
+
+
+def _order_channels(row: dict[str, Any]) -> list[str]:
+  channels: list[str] = []
+  for order in row.get("_orders_context") or []:
+    ch = order.get("Канал продаж")
+    if ch and str(ch).strip():
+      channels.append(str(ch).strip())
+  if not channels:
+    for key in ("Канал продаж", SALES_CHANNEL_TYPE_KEY, LEGACY_SALES_CHANNEL_TYPE_KEY):
+      ch = row.get(key)
+      if ch and str(ch).strip() and not _looks_like_sales_type_label(str(ch)):
+        channels.append(str(ch).strip())
+        break
+  return channels
+
+
+def sales_channel_type_for_row(row: dict[str, Any]) -> str:
+  """Тип канала продаж по всем заказам контрагента."""
+  explicit = (
+    row.get(SALES_CHANNEL_TYPE_KEY)
+    or row.get(LEGACY_SALES_CHANNEL_TYPE_KEY)
+  )
+  if explicit and _looks_like_sales_type_label(str(explicit)):
+    text = str(explicit).strip().lower().replace("ё", "е")
+    if SALES_CHANNEL_TYPE_HYBRID in text or (
+      "прямы" in text and "маркет" in text
+    ):
+      return SALES_CHANNEL_TYPE_HYBRID
+    if "маркет" in text:
+      return SALES_CHANNEL_TYPE_MARKETPLACE
+    return SALES_CHANNEL_TYPE_DIRECT
+
+  types_seen: set[str] = set()
+  for channel in _order_channels(row):
+    types_seen.add(channel_type_from_channel(channel))
+  if not types_seen:
+    return SALES_CHANNEL_TYPE_DIRECT
+  has_marketplace = SALES_CHANNEL_TYPE_MARKETPLACE in types_seen
+  has_direct = SALES_CHANNEL_TYPE_DIRECT in types_seen
+  if has_marketplace and has_direct:
+    return SALES_CHANNEL_TYPE_HYBRID
+  if has_marketplace:
+    return SALES_CHANNEL_TYPE_MARKETPLACE
+  return SALES_CHANNEL_TYPE_DIRECT
 
 
 def sales_type_for_row(row: dict[str, Any]) -> str:
-  channel = row.get("Канал продаж") or row.get("Тип канала продаж")
-  if channel:
-    return sales_type_from_channel(str(channel))
-  orders = row.get("_orders_context") or []
-  for order in orders:
-    ch = order.get("Канал продаж") or order.get("Тип канала продаж")
-    if ch:
-      return sales_type_from_channel(str(ch))
-  return "прямые продажи"
+  return sales_channel_type_for_row(row)
 
 
 def _parse_date(value: Any) -> datetime | None:
@@ -215,25 +256,25 @@ def sales_channel_for_row(row: dict[str, Any]) -> str | None:
 
 def _looks_like_sales_type_label(value: str) -> bool:
   text = value.strip().lower().replace("ё", "е")
-  return text in {"маркетплейс", "прямые продажи", "прямые", "marketplace", "direct"}
+  return text in {
+    SALES_CHANNEL_TYPE_MARKETPLACE,
+    SALES_CHANNEL_TYPE_DIRECT,
+    SALES_CHANNEL_TYPE_HYBRID,
+    "прямые",
+    "marketplace",
+    "direct",
+  } or ("прямы" in text and "маркет" in text)
 
 
 def sales_type_label_for_row(row: dict[str, Any]) -> str:
-  explicit = row.get("Тип карала продаж") or row.get("Тип канала продаж")
-  if explicit and _looks_like_sales_type_label(str(explicit)):
-    text = str(explicit).strip().lower().replace("ё", "е")
-    return "маркетплейс" if "маркет" in text else "прямые продажи"
-  channel = sales_channel_for_row(row) or row.get("Канал продаж")
-  if channel:
-    return sales_type_from_channel(str(channel))
-  return sales_type_for_row(row)
+  return sales_channel_type_for_row(row)
 
 
 def row_sales_type_filter_value(row: dict[str, Any]) -> str:
   return str(
     row.get("Тип продаж")
-    or row.get("Тип карала продаж")
-    or row.get("Тип канала продаж")
+    or row.get(SALES_CHANNEL_TYPE_KEY)
+    or row.get(LEGACY_SALES_CHANNEL_TYPE_KEY)
     or ""
   ).strip().lower()
 
@@ -262,9 +303,9 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   channel = sales_channel_for_row(row)
   if channel:
     enriched["Канал продаж"] = channel
-  sales_type = sales_type_label_for_row(enriched)
+  sales_type = sales_channel_type_for_row(enriched)
   enriched["Тип продаж"] = sales_type
-  enriched["Тип карала продаж"] = sales_type
+  enriched[SALES_CHANNEL_TYPE_KEY] = sales_type
   enriched["Статус последнего заказа"] = last_order_status(row)
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"

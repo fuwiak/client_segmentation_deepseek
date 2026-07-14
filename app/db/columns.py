@@ -15,7 +15,7 @@ CUSTOMER_SCALAR_FIELDS: dict[str, str] = {
     "Наименование": "name",
     "Телефон": "phone",
     "Статус": "status",
-    "Тип карала продаж": "sales_channel_type",
+    "Тип канала продаж": "sales_channel_type",
     "Канал продаж": "sales_channel",
     "Тип продаж": "sales_type",
     "Средний чек": "average_check",

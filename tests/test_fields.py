@@ -1,7 +1,13 @@
 from app.services.fields import (
+    SALES_CHANNEL_TYPE_DIRECT,
+    SALES_CHANNEL_TYPE_HYBRID,
+    SALES_CHANNEL_TYPE_MARKETPLACE,
     apply_ai_field,
+    channel_type_from_channel,
     enrich_row_computed,
     is_direct_sales_channel,
+    is_marketplace_channel,
+    sales_channel_type_for_row,
     sales_type_from_channel,
 )
 from app.services.moysklad.mapper import order_to_row
@@ -24,24 +30,45 @@ def test_apply_ai_field_skips_original_when_empty_before() -> None:
     assert "_ai_original" not in row
 
 
+def test_marketplace_channels() -> None:
+    for channel in (
+        "Яндекс.Маркет",
+        "Ozon",
+        "Flowwow",
+        "FLOW WOW",
+        "Flawery",
+        "Флавери",
+    ):
+        assert is_marketplace_channel(channel) is True
+        assert is_direct_sales_channel(channel) is False
+        assert channel_type_from_channel(channel) == SALES_CHANNEL_TYPE_MARKETPLACE
+        assert sales_type_from_channel(channel) == SALES_CHANNEL_TYPE_MARKETPLACE
+
+
 def test_direct_sales_channels() -> None:
     for channel in (
         "Витрина",
-        "Прямые продажи",
         "Telegram",
         "WhatsApp",
-        "WhatsApp/MAX",
         "https://vereskflowers.ru/",
-        "Сайт vereskflowers.ru",
+        "Wildberries",
+        "Авито",
     ):
+        assert is_marketplace_channel(channel) is False
         assert is_direct_sales_channel(channel) is True
-        assert sales_type_from_channel(channel) == "прямые продажи"
+        assert channel_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
+        assert sales_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
 
 
-def test_marketplace_sales_channels() -> None:
-    for channel in ("Яндекс.Маркет", "Ozon", "Wildberries", "Авито", "Flowwow"):
-        assert is_direct_sales_channel(channel) is False
-        assert sales_type_from_channel(channel) == "маркетплейс"
+def test_sales_channel_type_hybrid_from_orders() -> None:
+    row = {
+        "UUID": "1",
+        "_orders_context": [
+            {"Канал продаж": "Ozon"},
+            {"Канал продаж": "Витрина"},
+        ],
+    }
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
 
 
 def test_enrich_row_computed_uses_order_sales_channel() -> None:
@@ -56,8 +83,8 @@ def test_enrich_row_computed_uses_order_sales_channel() -> None:
     }
     enriched = enrich_row_computed(row)
     assert enriched["Канал продаж"] == "Ozon"
-    assert enriched["Тип карала продаж"] == "маркетплейс"
-    assert enriched["Тип продаж"] == "маркетплейс"
+    assert enriched["Тип канала продаж"] == SALES_CHANNEL_TYPE_MARKETPLACE
+    assert enriched["Тип продаж"] == SALES_CHANNEL_TYPE_MARKETPLACE
 
 
 def test_order_to_row_maps_sales_channel() -> None:
