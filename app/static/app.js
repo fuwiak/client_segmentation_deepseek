@@ -14,28 +14,38 @@
   }
 
   function showOrdersModalLoading() {
+    closeClientDrawer();
+    closeTagRulesDrawer();
+    var loading = document.getElementById("orders-modal-loading");
+    if (loading) loading.hidden = false;
+  }
+
+  function hideOrdersModalLoading() {
+    var loading = document.getElementById("orders-modal-loading");
+    if (loading) loading.hidden = true;
+  }
+
+  function finishOrdersModalRequest(elt, xhr) {
+    if (!isOrdersModalRequest(elt)) return;
+    hideOrdersModalLoading();
     var root = document.getElementById("modal-root");
-    if (!root) return;
-    root.innerHTML =
-      '<div class="modal-overlay orders-modal-overlay" onclick="if(event.target===this) closeModal()">' +
-      '<div class="modal-card orders-modal">' +
-      '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Закрыть">×</button>' +
-      '<h2 class="modal-title">Заказы</h2>' +
-      '<p class="hint muted orders-modal-loading">Открываем заказы…</p>' +
-      '<div class="progress-track indeterminate"><div class="progress-fill"></div></div>' +
-      "</div></div>";
+    if (!root || !xhr || !xhr.responseText) return;
+    if (!root.querySelector(".orders-modal-overlay")) {
+      root.innerHTML = xhr.responseText;
+      processHtmxRegion(root);
+      activateLazyWidgets(root);
+    }
   }
 
   function prepareOrdersModal(event) {
     if (event) {
       event.stopPropagation();
     }
-    closeClientDrawer();
-    closeTagRulesDrawer();
     showOrdersModalLoading();
   }
 
   function closeModal() {
+    hideOrdersModalLoading();
     var root = document.getElementById("modal-root");
     if (root) root.innerHTML = "";
   }
@@ -243,6 +253,7 @@
     document.documentElement.classList.remove("is-navigating");
     if (e.detail.successful) {
       finishClientDrawerRequest(e.detail.elt, e.detail.xhr);
+      finishOrdersModalRequest(e.detail.elt, e.detail.xhr);
     }
     if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest(".upload-form")) {
       var modal = document.getElementById("upload-modal");
@@ -262,6 +273,7 @@
       openClientDrawer();
     }
     if (isOrdersModalRequest(elt)) {
+      hideOrdersModalLoading();
       var root = document.getElementById("modal-root");
       if (root) {
         root.innerHTML =
@@ -293,6 +305,7 @@
       openClientDrawer();
       processHtmxRegion(target);
     } else if (target && target.id === "modal-root") {
+      hideOrdersModalLoading();
       processHtmxRegion(target);
       activateLazyWidgets(target);
     } else if (target && target.id === "orders-modal-content") {

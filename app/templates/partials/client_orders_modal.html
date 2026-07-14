@@ -9,6 +9,8 @@
          {% if orders_loading_more %}
          hx-get="/clients/{{ client_id }}/orders?modal=1&list_only=1"
          hx-trigger="load delay:120ms"
+         hx-boost="false"
+         hx-push-url="false"
          hx-swap="innerHTML"
          {% endif %}>
       {% include 'partials/client_orders_list.html' %}

@@ -61,6 +61,7 @@
         <td class="actions-cell">
           <button type="button" class="btn-text orders-modal-btn"
                   hx-boost="false"
+                  hx-push-url="false"
                   hx-get="/clients/{{ cid }}/orders?modal=1&preview=1"
                   hx-target="#modal-root"
                   hx-swap="innerHTML"

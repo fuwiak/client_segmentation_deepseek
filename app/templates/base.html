@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ page_title|default(title) }}{% endblock %} · Client CRM</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-  <link rel="stylesheet" href="/static/style.css?v=14">
+  <link rel="stylesheet" href="/static/style.css?v=15">
 </head>
 <body hx-boost="true"
       hx-target="#page-content"
@@ -99,6 +99,14 @@
     </a>
   </nav>
 
+  <div id="orders-modal-loading" class="modal-overlay orders-modal-loading-overlay" hidden aria-hidden="true">
+    <div class="modal-card orders-modal">
+      <h2 class="modal-title">Заказы</h2>
+      <p class="hint muted orders-modal-loading">Загрузка…</p>
+      <div class="progress-track indeterminate"><div class="progress-fill"></div></div>
+    </div>
+  </div>
+
   <div id="modal-root"></div>
 
   <div id="upload-modal" class="modal-overlay upload-modal" hidden>
@@ -124,7 +132,7 @@
   </aside>
 
   <script src="/static/clients_ws.js?v=4"></script>
-  <script src="/static/app.js?v=11"></script>
+  <script src="/static/app.js?v=12"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

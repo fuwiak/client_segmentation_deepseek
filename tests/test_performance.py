@@ -50,6 +50,7 @@ def test_base_template_has_htmx_app_shell() -> None:
   assert "nav-progress" in response.text
   assert 'hx-get="/messenger/sidebar"' in response.text
   assert 'hx-push-url="false"' in response.text
+  assert 'id="orders-modal-loading"' in response.text
 
 
 def test_clients_page_skips_relink_and_lazy_ai() -> None:

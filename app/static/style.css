@@ -1070,6 +1070,10 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   z-index: 260;
 }
 
+.orders-modal-loading-overlay {
+  z-index: 255;
+}
+
 .orders-modal {
   max-width: 720px;
   max-height: 85vh;
