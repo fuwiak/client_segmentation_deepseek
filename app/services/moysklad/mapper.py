@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -24,6 +25,38 @@ def href_id(href: str | None) -> str:
     if not href:
         return ""
     return href.rstrip("/").split("/")[-1]
+
+
+def entity_ref_id(entity: dict[str, Any] | None) -> str:
+    """UUID сущности из expand (id) или meta.href."""
+    if not isinstance(entity, dict):
+        return ""
+    direct = str(entity.get("id") or "").strip()
+    if direct:
+        return direct
+    return href_id((entity.get("meta") or {}).get("href"))
+
+
+def _looks_like_phone(value: Any) -> bool:
+    if value is None:
+        return False
+    digits = re.sub(r"\D", "", str(value))
+    return len(digits) >= 10
+
+
+def resolve_counterparty_phone(counterparty: dict[str, Any]) -> str | None:
+    """Телефон контрагента: phone → code → name, если значение похоже на номер."""
+    for key in ("phone", "code", "name"):
+        raw = counterparty.get(key)
+        if not raw or not _looks_like_phone(raw):
+            continue
+        normalized = normalize_phone(str(raw))
+        if normalized:
+            return normalized
+        text = str(raw).strip()
+        if text:
+            return text
+    return None
 
 
 def _minor_to_rub(value: Any) -> float | None:
@@ -135,11 +168,13 @@ def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
     legal_full = _address_full(counterparty, "legalAddressFull")
     actual_full = _address_full(counterparty, "actualAddressFull")
     bank = _bank_fields(counterparty)
+    name = counterparty.get("name")
+    phone = resolve_counterparty_phone(counterparty)
 
     return {
         "UUID": counterparty.get("id"),
-        "Наименование": counterparty.get("name"),
-        "Телефон": counterparty.get("phone"),
+        "Наименование": name,
+        "Телефон": phone,
         "Статус": _counterparty_status(tags),
         "Группы": groups,
         "Фактический адрес": counterparty.get("actualAddress"),
@@ -255,8 +290,9 @@ def order_to_row(
     agents_by_id: dict[str, str],
 ) -> dict[str, Any]:
     agent = order.get("agent") or {}
-    agent_id = href_id((agent.get("meta") or {}).get("href"))
+    agent_id = entity_ref_id(agent)
     agent_name = agent.get("name") or agents_by_id.get(agent_id, "")
+    agent_phone = resolve_counterparty_phone(agent)
 
     state = order.get("state") or {}
     state_name = state.get("name") or ""
@@ -272,6 +308,7 @@ def order_to_row(
         "Канал продаж": sales_channel,
         "_moysklad_id": order.get("id"),
         "_moysklad_agent_id": agent_id,
+        "_moysklad_agent_phone": agent_phone,
         "_source": SourceType.MOYSKLAD.value,
     }
 
@@ -312,7 +349,7 @@ def apply_order_stats(
 
 def customer_from_counterparty(counterparty: dict[str, Any]) -> Customer:
     ext_id = str(counterparty.get("id") or uuid.uuid4())
-    phone = normalize_phone(counterparty.get("phone"))
+    phone = resolve_counterparty_phone(counterparty)
     tags = _tags_list(counterparty)
     addresses = [
         a
@@ -340,7 +377,7 @@ def order_from_customerorder(
 ) -> Order:
     agents_by_id = agents_by_id or {}
     agent = order.get("agent") or {}
-    agent_id = href_id((agent.get("meta") or {}).get("href"))
+    agent_id = entity_ref_id(agent)
     agent_name = agent.get("name") or agents_by_id.get(agent_id, "")
 
     state = order.get("state") or {}

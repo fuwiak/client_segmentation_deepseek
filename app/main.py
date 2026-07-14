@@ -684,12 +684,20 @@ async def tag_rules_save(request: Request) -> HTMLResponse:
   )
 
 
+async def _refresh_client_orders() -> None:
+  await _hydrate_hub_from_cache()
+  await _ensure_moysklad_data()
+  if hub.parsed and hub.parsed.meta.get("source") == "moysklad":
+    hub.relink_orders()
+
+
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
 async def client_card(
   request: Request,
   client_id: str,
   drawer: bool = Query(False),
 ) -> HTMLResponse:
+  await _refresh_client_orders()
   client = hub.get_client(client_id)
   if not client:
     return templates.TemplateResponse(
@@ -712,6 +720,7 @@ async def client_orders(
 ) -> HTMLResponse:
   if collapsed:
     return HTMLResponse("")
+  await _refresh_client_orders()
   client = hub.get_client(client_id)
   orders = (client or {}).get("_orders_context") or []
   return templates.TemplateResponse(

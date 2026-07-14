@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.domain import normalize_phone
+
 SEGMENT_COLUMNS = [
     "Группы",
     "Заказчик или получатель",
@@ -240,6 +242,65 @@ def parse_workbook(content: bytes) -> ParsedWorkbook:
     )
 
 
+def _register_order(bucket: dict[str, list[dict[str, Any]]], key: str | None, order: dict[str, Any]) -> None:
+    if key:
+        bucket.setdefault(key, []).append(order)
+
+
+def _client_lookup_keys(row: dict[str, Any]) -> tuple[str, set[str]]:
+    cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
+    keys: set[str] = set()
+    for raw in (row.get("Наименование"), row.get("Телефон"), row.get("Код")):
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        keys.add(text.lower())
+        phone = normalize_phone(text)
+        if phone:
+            keys.add(phone)
+    return cp_id, keys
+
+
+def _index_orders_for_clients(
+    order_rows: list[dict[str, Any]],
+    contragent_rows: list[dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+    by_agent_id: dict[str, list[dict[str, Any]]] = {}
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    by_phone: dict[str, list[dict[str, Any]]] = {}
+
+    cp_by_id = {
+        str(row.get("UUID") or row.get("_moysklad_id") or ""): row
+        for row in contragent_rows
+        if row.get("UUID") or row.get("_moysklad_id")
+    }
+
+    for order in order_rows:
+        agent_id = str(order.get("_moysklad_agent_id") or "").strip()
+        if agent_id:
+            _register_order(by_agent_id, agent_id, order)
+
+        agent_name = str(order.get("Контрагент") or "").strip()
+        if agent_name:
+            _register_order(by_name, agent_name.lower(), order)
+            phone_from_name = normalize_phone(agent_name)
+            if phone_from_name:
+                _register_order(by_phone, phone_from_name, order)
+
+        agent_phone = normalize_phone(str(order.get("_moysklad_agent_phone") or ""))
+        if agent_phone:
+            _register_order(by_phone, agent_phone, order)
+
+        if agent_id and agent_id in cp_by_id:
+            cp = cp_by_id[agent_id]
+            for raw in (cp.get("Телефон"), cp.get("Наименование"), cp.get("Код")):
+                phone = normalize_phone(str(raw) if raw else None)
+                if phone:
+                    _register_order(by_phone, phone, order)
+
+    return by_agent_id, by_name, by_phone
+
+
 def enrich_with_orders(
     contragents: ParsedWorkbook, orders: ParsedWorkbook
 ) -> ParsedWorkbook:
@@ -248,24 +309,12 @@ def enrich_with_orders(
     if not orders.rows:
         return contragents
 
-    by_name: dict[str, list[dict[str, Any]]] = {}
-    by_agent_id: dict[str, list[dict[str, Any]]] = {}
-    for order in orders.rows:
-        key = str(order.get("Контрагент") or "").strip().lower()
-        if key:
-            by_name.setdefault(key, []).append(order)
-        agent_id = str(order.get("_moysklad_agent_id") or "").strip()
-        if agent_id:
-            by_agent_id.setdefault(agent_id, []).append(order)
+    by_agent_id, by_name, by_phone = _index_orders_for_clients(orders.rows, contragents.rows)
 
     enriched_rows: list[dict[str, Any]] = []
     for row in contragents.rows:
         copy = dict(row)
-        keys = [
-            str(row.get("Наименование") or "").strip().lower(),
-            str(row.get("Телефон") or "").strip().lower(),
-        ]
-        cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
+        cp_id, match_keys = _client_lookup_keys(row)
         related: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
 
@@ -276,11 +325,11 @@ def enrich_with_orders(
                     seen_ids.add(oid)
                     related.append(item)
 
-        if cp_id and cp_id in by_agent_id:
-            _add(by_agent_id[cp_id])
-        for key in keys:
-            if key and key in by_name:
-                _add(by_name[key])
+        if cp_id:
+            _add(by_agent_id.get(cp_id, []))
+        for key in match_keys:
+            _add(by_name.get(key, []))
+            _add(by_phone.get(key, []))
 
         if related:
             copy["_orders_context"] = related[:20]

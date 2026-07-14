@@ -175,7 +175,7 @@ def row_matches_phone(row: dict[str, Any], phone_query: str) -> bool:
     digits = _normalize_phone_digits(phone_query)
     if not digits:
         return True
-    for key in ("Телефон", "Наименование"):
+    for key in ("Телефон", "Наименование", "Код"):
         if digits in _normalize_phone_digits(row.get(key)):
             return True
     return False
@@ -287,6 +287,11 @@ def merge_enriched_rows(
         "_tg_export_context",
         "_tg_export_meta",
     })
+    overlay_skip_keys = frozenset({
+        "_orders_context",
+        "_orders_count",
+        "_ordered_positions",
+    })
     preserve_from_base = (
         "_orders_context",
         "_orders_count",
@@ -318,6 +323,8 @@ def merge_enriched_rows(
             overlay = enriched_map[key]
             combined = dict(base)
             for field, value in overlay.items():
+                if field in overlay_skip_keys:
+                    continue
                 if field in ai_meta_keys:
                     combined[field] = value
                 elif field in ai_overlay_keys and not is_empty_cell(value):
@@ -328,6 +335,11 @@ def merge_enriched_rows(
                 base_val = base.get(field)
                 if not is_empty_cell(base_val) and is_empty_cell(combined.get(field)):
                     combined[field] = base_val
+            base_orders = base.get("_orders_context") or []
+            combined_orders = combined.get("_orders_context") or []
+            if len(base_orders) > len(combined_orders):
+                combined["_orders_context"] = base_orders
+                combined["_orders_count"] = base.get("_orders_count") or len(base_orders)
             merged.append(refresh_row_for_display(combined))
         else:
             merged.append(refresh_row_for_display(row))

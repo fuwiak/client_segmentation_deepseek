@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.domain import normalize_phone
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
 from app.services.export_format import merge_enriched_rows, row_keyword_text, row_matches_phone, sort_client_rows
 from app.services.fields import enrich_row_computed, refresh_row_for_display
@@ -34,8 +35,31 @@ class DataHub:
 
   def relink_orders(self) -> None:
     """Перепривязать заказы к контрагентам (обновление каналов и статистики)."""
-    if self.parsed and self.orders_parsed and self.orders_parsed.rows:
-      self.parsed = enrich_with_orders(self.parsed, self.orders_parsed)
+    if not self.parsed or not self.orders_parsed or not self.orders_parsed.rows:
+      return
+    raw_rows = [
+      {
+        k: v
+        for k, v in dict(row).items()
+        if k
+        not in (
+          "_orders_context",
+          "_orders_count",
+          "_ordered_positions",
+          "Заказанные позиции",
+        )
+      }
+      for row in self.parsed.rows
+    ]
+    contragents = ParsedWorkbook(
+      source_type=self.parsed.source_type,
+      rows=raw_rows,
+      context_columns=list(self.parsed.context_columns),
+      segment_columns=list(self.parsed.segment_columns),
+      total_rows=len(raw_rows),
+      meta=dict(self.parsed.meta),
+    )
+    self.parsed = enrich_with_orders(contragents, self.orders_parsed)
 
   def active_rows(self) -> list[dict[str, Any]]:
     if self.parsed and self.parsed.rows:
@@ -78,10 +102,15 @@ class DataHub:
 
   def get_client(self, client_id: str) -> dict[str, Any] | None:
     key = client_id.strip().lower()
+    key_phone = normalize_phone(client_id)
     for row in self.active_rows():
       uid = str(row.get("UUID") or row.get("uuid") or "").lower()
       name = str(row.get("Наименование") or "").strip().lower()
-      if uid == key or name == key:
+      phone_text = str(row.get("Телефон") or "").strip().lower()
+      row_phone = normalize_phone(row.get("Телефон") or row.get("Наименование"))
+      if uid == key or name == key or phone_text == key:
+        return row
+      if key_phone and row_phone and key_phone == row_phone:
         return row
     return None
 

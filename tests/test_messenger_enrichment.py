@@ -91,6 +91,36 @@ def test_enrich_with_orders_matches_moysklad_agent_id() -> None:
     assert row["_orders_context"][0]["№"] == "100"
 
 
+def test_enrich_with_orders_matches_normalized_phone_in_name() -> None:
+    contragents = ParsedWorkbook(
+        source_type="contragents",
+        rows=[{
+            "UUID": "cp-phone",
+            "Наименование": "89603002010",
+            "Телефон": "+79603002010",
+        }],
+        context_columns=["UUID", "Наименование", "Телефон"],
+        segment_columns=[],
+        total_rows=1,
+    )
+    orders = ParsedWorkbook(
+        source_type="orders",
+        rows=[{
+            "№": "00042",
+            "Контрагент": "Речанова Дарья",
+            "_moysklad_agent_id": "cp-phone",
+            "Канал продаж": "Витрина",
+        }],
+        context_columns=["№", "Контрагент", "Канал продаж"],
+        segment_columns=[],
+        total_rows=1,
+    )
+    enriched = enrich_with_orders(contragents, orders)
+    row = enriched.rows[0]
+    assert row["_orders_count"] == 1
+    assert row["_orders_context"][0]["№"] == "00042"
+
+
 @pytest.mark.asyncio
 async def test_enrich_all_without_messengers_uses_orders_heuristic() -> None:
     settings = Settings()

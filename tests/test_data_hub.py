@@ -84,3 +84,23 @@ def test_filter_rows_sort_by_name() -> None:
     rows = hub.filter_rows(sales_filter="all", sort="Наименование", order="asc")
     names = [r["Наименование"] for r in rows]
     assert names == sorted(names, key=str.lower)
+
+
+def test_get_client_matches_normalized_phone() -> None:
+    hub = DataHub()
+    hub.parsed = ParsedWorkbook(
+        source_type="contragents",
+        rows=[{
+            "UUID": "cp-1",
+            "Наименование": "89603002010",
+            "Телефон": "+79603002010",
+            "_orders_context": [{"№": "1"}],
+            "_orders_count": 1,
+        }],
+        context_columns=["UUID", "Наименование", "Телефон"],
+        segment_columns=[],
+        total_rows=1,
+    )
+    client = hub.get_client("+79603002010")
+    assert client is not None
+    assert client["_orders_count"] == 1
