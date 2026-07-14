@@ -205,16 +205,25 @@ async def _ensure_moysklad_data() -> None:
   )
 
 
+async def _startup_background() -> None:
+  """Тяжёлая инициализация в фоне — не блокирует healthcheck на /."""
+  try:
+    if settings.moysklad_auto_sync:
+      await _ensure_moysklad_data()
+    await _hydrate_hub_from_cache()
+    messenger = MessengerEnrichmentService(settings, cache)
+    if messenger.telegram_enabled:
+      await messenger.sync_telegram_inbox()
+    await _bootstrap_telegram_export()
+  except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
+    pass
+
+
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
   await hydrate_tag_rules(cache)
-  if settings.moysklad_auto_sync:
-    await _ensure_moysklad_data()
   await _hydrate_hub_from_cache()
-  messenger = MessengerEnrichmentService(settings, cache)
-  if messenger.telegram_enabled:
-    await messenger.sync_telegram_inbox()
-  await _bootstrap_telegram_export()
+  asyncio.create_task(_startup_background())
 
 
 def _workflow_ctx() -> dict[str, Any]:

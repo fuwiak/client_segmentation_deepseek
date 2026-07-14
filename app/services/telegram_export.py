@@ -214,11 +214,6 @@ def build_export_index(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _decode_export_bytes(raw: bytes) -> str:
-    if raw[:2] == b"\x1f\x8b":
-        raw = gzip.decompress(raw)
-    return raw.decode("utf-8")
-
 
 def parse_telegram_export_bytes(raw: bytes) -> dict[str, Any]:
     compressed = raw[:2] == b"\x1f\x8b"
