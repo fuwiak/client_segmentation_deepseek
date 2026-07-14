@@ -26,13 +26,14 @@ from app.services.data_hub import get_data_hub
 from app.services.excel_parser import (
   AI_EXTRA_COLUMNS,
   AI_COLUMNS,
+  AI_FILLABLE_COLUMNS,
   CLIENT_DISPLAY_COLUMNS,
   SEGMENT_COLUMNS,
   enrich_with_orders,
   parse_workbook,
 )
 from app.services.export_format import client_cell_value, export_columns, merge_enriched_rows, row_for_export
-from app.services.fields import enrich_row_computed
+from app.services.fields import enrich_row_computed, finalize_ai_coverage_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import get_moysklad_client, push_segments_to_moysklad, sync_moysklad_to_hub
@@ -178,6 +179,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "segment_columns": SEGMENT_COLUMNS,
     "ai_extra_columns": AI_EXTRA_COLUMNS,
     "ai_columns": AI_COLUMNS,
+    "ai_fillable_columns": AI_FILLABLE_COLUMNS,
     "client_columns": CLIENT_DISPLAY_COLUMNS,
     "moysklad_enabled": get_moysklad_client(settings).enabled,
     "model": settings.openrouter_model,
@@ -206,7 +208,9 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
 
   try:
     enriched = await service.enrich_all(rows, progress_cb=_bump)
-    enriched = [enrich_row_computed(r) for r in enriched]
+    enriched = [
+      finalize_ai_coverage_row(enrich_row_computed(r)) for r in enriched
+    ]
     merged = merge_enriched_rows(all_rows, enriched, key_fn=service._row_key)
     with_messages = sum(1 for r in merged if r.get("_messenger_context"))
     ai_filled = sum(1 for r in merged if r.get("_enrichment_fields") or r.get("_ai_processed"))
@@ -301,7 +305,9 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
 
   try:
     results = await service.segment_all(rows, progress_cb=_bump)
-    enriched = [enrich_row_computed(r) for r in results]
+    enriched = [
+      finalize_ai_coverage_row(enrich_row_computed(r)) for r in results
+    ]
     with_messages = sum(1 for r in enriched if r.get("_messenger_context"))
     meta = {
       "processed": len(enriched),

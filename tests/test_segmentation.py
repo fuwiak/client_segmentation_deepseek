@@ -31,6 +31,28 @@ def test_parse_ai_response_marks_only_newly_filled_fields() -> None:
     assert "ТГ ник" not in ai_fields
 
 
+def test_parse_ai_response_fills_extended_empty_fields() -> None:
+    service = _service()
+    rows = [
+        {
+            "UUID": "5",
+            "Наименование": "ООО Ромашка",
+            "ИНН": "",
+            "Комментарий": "ИНН 7701234567",
+        },
+    ]
+    content = (
+        '{"results": [{"uuid": "5", "Группы": "корпоративный", '
+        '"ИНН": "7701234567", "reasoning": "из комментария", "confidence": 0.8}]}'
+    )
+
+    result = service._parse_ai_response(content, rows)[0]
+
+    assert result["ИНН"] == "7701234567"
+    assert "ИНН" in result["_ai_fields"]
+    assert "Группы" in result["_ai_fields"]
+
+
 def test_parse_ai_response_marks_ai_returned_fields() -> None:
     service = _service()
     rows = [{"UUID": "2", "Группы": "новый", "Пол": "Женский"}]

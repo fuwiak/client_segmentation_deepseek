@@ -1,7 +1,10 @@
 {% macro render(row, col, value) %}
+{% set is_unknown = col in (row.get('_ai_unknown_fields') or []) %}
 {% set is_ai = col in (row.get('_ai_fields') or []) or col in (row.get('_enrichment_fields') or []) %}
 {% set original = row.get('_ai_original', {}).get(col) %}
-{% if is_ai %}
+{% if is_unknown %}
+<span class="ai-cell-unknown" title="AI не смог определить значение">no data</span>
+{% elif is_ai %}
 <span class="ai-cell-stack">
   <span class="ai-cell-new" title="Добавлено AI">{{ value or '—' }}</span>
   {% if original is not none and original|string|trim %}

@@ -24,7 +24,7 @@
         {% for col in client_columns %}
         <td{% if col == 'Группы' %} class="tags-cell"{% endif %}>
           {% set value = client_cell_value(row, col) %}
-          {% if col in ai_columns %}
+          {% if col in ai_fillable_columns %}
             {{ ai_cell(row, col, value) }}
           {% else %}
             {{ value or '—' }}

@@ -14,7 +14,11 @@ import httpx
 from app.config import Settings
 from app.services.cache import CacheService
 from app.services.excel_parser import AI_COLUMNS, AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
-from app.services.fields import apply_ai_field, collect_client_comments
+from app.services.fields import (
+  apply_ai_field,
+  collect_client_comments,
+  empty_fillable_columns,
+)
 from app.services.tag_rules import evaluate_tags_for_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
@@ -37,12 +41,15 @@ SYSTEM_PROMPT = """Ты — CRM-аналитик цветочного бизне
 8. "E-mail" — только если явно указан
 9. "Дата рождения" — только если явно указана (ДД.ММ.ГГГГ)
 
+10. Для каждого поля из empty_fields — попробуй заполнить по переписке, комментариям и заказам.
+    Юридические и банковские реквизиты — только при явном указании. Нет данных → null.
+
 ВАЖНО:
 - Учитывай all_comments: комментарий контрагента и комментарии к заказам.
 - Опирайся ТОЛЬКО на переписку и данные клиента. Нет сигнала → null.
 - reasoning — откуда взяты ключевые поля (канал, цитата).
 - references — объект поле → источник.
-- Верни JSON: {"results": [{"uuid", ...поля..., "reasoning", "confidence", "references"}]}"""
+- Верни JSON: {"results": [{"uuid", ...поля..., "empty_fields" values, "reasoning", "confidence", "references"}]}"""
 
 
 def _normalize_phone_key(phone: str | None) -> str:
@@ -274,6 +281,7 @@ class MessengerEnrichmentService:
         payload = {
             "uuid": self._row_key(row),
             "current": {col: row.get(col) for col in ENRICHMENT_COLUMNS},
+            "empty_fields": empty_fillable_columns(row),
             "client": {
                 k: v
                 for k, v in row.items()
@@ -338,7 +346,7 @@ class MessengerEnrichmentService:
         ai_fields: list[str] = list(merged.get("_ai_fields") or [])
         enrichment_fields: list[str] = list(merged.get("_enrichment_fields") or [])
 
-        for col in ENRICHMENT_COLUMNS:
+        for col in dict.fromkeys([*ENRICHMENT_COLUMNS, *empty_fillable_columns(row)]):
             value = ai.get(col)
             if value not in (None, "", "null"):
                 apply_ai_field(merged, col, value, ai_fields)
@@ -401,7 +409,7 @@ class MessengerEnrichmentService:
             enrichment_fields.append("Саммари")
 
         merged["_reasoning"] = "Эвристика по переписке (без AI или API недоступен)"
-        merged["_ai_processed"] = bool(enrichment_fields) or bool(merged.get("_ai_processed"))
+        merged["_ai_processed"] = True
         merged["_ai_fields"] = list(dict.fromkeys(ai_fields))
         merged["_enrichment_fields"] = list(dict.fromkeys(enrichment_fields))
         merged["_enrichment_source"] = "messenger_heuristic"
@@ -412,9 +420,9 @@ class MessengerEnrichmentService:
         base["_enrichment_source"] = "orders_only"
         base["_messenger_sources"] = row.get("_messenger_sources") or []
         base["_messenger_context"] = row.get("_messenger_context") or []
+        base["_ai_processed"] = True
         if base.get("_ai_fields"):
             base["_enrichment_fields"] = list(base.get("_ai_fields") or [])
-            base["_ai_processed"] = True
         return base
 
     @staticmethod

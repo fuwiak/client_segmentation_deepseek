@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from app.services.excel_parser import AI_FILLABLE_COLUMNS
+
 COUNTERPARTY_COMMENT_KEYS = (
   "Комментарий",
   "Фактический адрес (Комментарий)",
@@ -199,10 +201,34 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   return enriched
 
 
+AI_NO_DATA_LABEL = "no data"
+
+
 def _normalized_cell(value: Any) -> str:
   if value in (None, "", "null"):
     return ""
   return str(value).strip()
+
+
+def is_empty_cell(value: Any) -> bool:
+  text = _normalized_cell(value)
+  if not text or text.lower() in {"—", "-", "нет", "none", "n/a", AI_NO_DATA_LABEL}:
+    return True
+  return False
+
+
+def empty_fillable_columns(row: dict[str, Any]) -> list[str]:
+  return [col for col in AI_FILLABLE_COLUMNS if is_empty_cell(row.get(col))]
+
+
+def finalize_ai_coverage_row(row: dict[str, Any]) -> dict[str, Any]:
+  """После AI/обогащения пометить незаполненные поля как no data."""
+  if not row.get("_ai_processed"):
+    return row
+  merged = dict(row)
+  unknown = [col for col in AI_FILLABLE_COLUMNS if is_empty_cell(merged.get(col))]
+  merged["_ai_unknown_fields"] = unknown
+  return merged
 
 
 def apply_ai_field(

@@ -14,6 +14,7 @@ from app.services.fields import (
   apply_ai_field,
   apply_name_parts,
   collect_client_comments,
+  empty_fillable_columns,
   extract_email_from_row,
   COUNTERPARTY_COMMENT_KEYS,
 )
@@ -62,6 +63,11 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
 10. Если есть messages_sample (WhatsApp/Telegram) — учитывай тон переписки, поводы, жалобы,
    благодарности, имена получателей. Указывай в references канал (whatsapp/telegram).
 
+11. Для каждого поля из empty_fields — попробуй заполнить по данным клиента и заказов.
+    Адреса, ИНН/КПП/ОГРН/ОКПО, банковские реквизиты (БИК, Банк, К/с, Р/с), тип контрагента,
+    полное наименование, местонахождение, комментарии, статус, канал продаж — ТОЛЬКО при явном
+    указании в данных. Не выдумывай юридические и банковские реквизиты.
+
 Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
 
 ВАЖНО:
@@ -72,6 +78,7 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
   uuid, "Группы", "Заказчик или получатель", "Пол", "ТГ ник", "Теги", "Саммари",
   "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)",
   "E-mail", "Дата рождения",
+  а также любые поля из empty_fields клиента, если удалось определить значение,
   reasoning, confidence, references
   confidence — число от 0 до 1."""
 
@@ -185,6 +192,7 @@ class SegmentationService:
             {
                 "uuid": self._row_key(row),
                 "current": {col: row.get(col) for col in AI_COLUMNS},
+                "empty_fields": empty_fillable_columns(row),
                 "data": _compact_row(row),
             }
             for row in rows
@@ -248,8 +256,10 @@ class SegmentationService:
             ai = by_uuid.get(self._row_key(row), {})
             merged = dict(row)
             ai_fields: list[str] = []
-            all_ai_cols = AI_COLUMNS
-            for col in all_ai_cols:
+            target_cols = list(
+                dict.fromkeys([*AI_COLUMNS, *empty_fillable_columns(row)])
+            )
+            for col in target_cols:
                 value = ai.get(col)
                 if value not in (None, "", "null"):
                     apply_ai_field(merged, col, value, ai_fields)

@@ -83,6 +83,12 @@ CLIENT_TABLE_COLUMNS = [
     "Фактический адрес (Код ФИАС)",
 ]
 
+AI_NON_FILLABLE_COLUMNS = frozenset({"UUID"})
+
+AI_FILLABLE_COLUMNS = [
+    col for col in CLIENT_TABLE_COLUMNS if col not in AI_NON_FILLABLE_COLUMNS
+] + [col for col in AI_EXTRA_COLUMNS if col not in CLIENT_TABLE_COLUMNS]
+
 CLIENT_DISPLAY_COLUMNS = CLIENT_TABLE_COLUMNS
 
 CONTRAGENT_MARKERS = {"UUID", "Наименование", "Тип контрагента"}

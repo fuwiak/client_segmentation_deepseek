@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.fields import AI_NO_DATA_LABEL
+
 from app.services.excel_parser import (
     AI_EXTRA_COLUMNS,
     CLIENT_TABLE_COLUMNS,
@@ -109,6 +111,8 @@ def _cell_value(row: dict[str, Any], col: str) -> Any:
 
 def client_cell_value(row: dict[str, Any], col: str) -> Any:
     """Значение ячейки для таблицы клиентов и экспорта."""
+    if col in (row.get("_ai_unknown_fields") or []):
+        return AI_NO_DATA_LABEL
     return _cell_value(row, col)
 
 
