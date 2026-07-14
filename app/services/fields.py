@@ -380,13 +380,17 @@ _FEMALE_PATRONYMIC_SUFFIXES = ("овна", "евна", "ична", "инична
 _MALE_PATRONYMIC_SUFFIXES = ("ович", "евич", "ич")
 _COMPANY_MARKERS = (
   "банк", "холдинг", "групп", "лизинг", "страхован", "компания", "фирма",
+  "аренда", "доставка", "логистик", "магазин", "салон", "ресторан", "кафе",
+  "цветочн", "букетн", "оптов", "розниц",
 )
-_LEGAL_ENTITY_TOKENS = frozenset({
-  "ип", "ооо", "ooo", "оао", "oao", "зао", "zao", "пао", "pao", "ао", "ao",
-  "чп", "нп", "гуп", "муп", "фгуп", "нко",
+_NON_PERSON_TOKENS = frozenset({
+  "аренда", "доставка", "заказ", "оплата", "букет", "витрина", "магазин", "салон",
+  "офис", "клиент", "гость", "продажа", "покупка", "услуга", "сервис", "филиал",
+  "отдел", "склад", "цветы", "букеты", "курьер", "получатель", "отправитель",
+  "контрагент", "абонент", "подписка", "предоплата", "наличные", "безнал",
+  "розница", "опт", "промо", "акция", "скидка", "возврат", "обмен", "логистика",
+  "касса", "самовывоз", "корпоратив", "маркетплейс",
 })
-_CYRILLIC_NAME_TOKEN_RE = re.compile(r"^[А-ЯЁ][а-яё]{2,}$")
-_LATIN_NAME_TOKEN_RE = re.compile(r"^[A-Za-z][a-z]{2,}$")
 _GENDER_LABEL_ALIASES = {
   "мужской": "Мужской",
   "male": "Мужской",
@@ -396,8 +400,19 @@ _GENDER_LABEL_ALIASES = {
   "female": "Женский",
   "f": "Женский",
   "woman": "Женский",
+  "не применимо": "не применимо",
+  "неприменимо": "не применимо",
+  "n/a": "не применимо",
+  "na": "не применимо",
+  "not applicable": "не применимо",
 }
-
+GENDER_NOT_APPLICABLE = "не применимо"
+_LEGAL_ENTITY_TOKENS = frozenset({
+  "ип", "ооо", "ooo", "оао", "oao", "зао", "zao", "пао", "pao", "ао", "ao",
+  "чп", "нп", "гуп", "муп", "фгуп", "нко",
+})
+_CYRILLIC_NAME_TOKEN_RE = re.compile(r"^[А-ЯЁ][а-яё]{2,}$")
+_LATIN_NAME_TOKEN_RE = re.compile(r"^[A-Za-z][a-z]{2,}$")
 
 def strip_legal_entity_prefixes(name: str) -> str:
   """Убрать ИП, ООО, ОАО и др. префиксы — оставить ФИО для определения пола."""
@@ -413,6 +428,31 @@ def strip_legal_entity_prefixes(name: str) -> str:
       continue
     break
   return " ".join(parts).strip()
+
+
+def is_non_person_label(value: Any) -> bool:
+  """Название услуги, фирмы или ярлык без ФИО — пол человека не определяется."""
+  text = str(value or "").strip()
+  if not text or _PHONE_RE.match(text):
+    return False
+  if gender_from_role_label(text):
+    return False
+  if _has_person_name_signal(text):
+    return False
+  cleaned = strip_legal_entity_prefixes(text)
+  if not cleaned:
+    return True
+  low = cleaned.lower().replace("ё", "е")
+  if any(marker in low for marker in _COMPANY_MARKERS):
+    return True
+  parts = _name_parts_for_gender(text)
+  if len(parts) == 1:
+    token = re.sub(r"[^\wа-яё]", "", parts[0], flags=re.IGNORECASE).lower().replace("ё", "е")
+    if token in _NON_PERSON_TOKENS:
+      return True
+    if token.endswith(("ция", "ение", "ство", "ика", "инг")):
+      return True
+  return False
 
 
 def gender_from_surname(token: str) -> str | None:
@@ -431,6 +471,9 @@ def gender_from_surname(token: str) -> str | None:
 
 def _gender_from_token(token: str) -> str | None:
   text = token.lower().strip(".,").replace("ё", "е")
+  token_norm = re.sub(r"[^\wа-яё]", "", text, flags=re.IGNORECASE)
+  if token_norm in _NON_PERSON_TOKENS:
+    return None
   if text in FEMALE_NAMES:
     return "Женский"
   if text in MALE_NAMES:
@@ -438,18 +481,11 @@ def _gender_from_token(token: str) -> str | None:
   patronymic = gender_from_patronymic(text)
   if patronymic:
     return patronymic
-  if len(text) >= 3 and text.endswith(("а", "я")) and text not in _MALE_A_ENDING:
-    return "Женский"
-  if (
-    len(text) >= 3
-    and text.isascii()
-    and text.endswith("a")
-    and text not in _MALE_A_ENDING
-  ):
-    return "Женский"
   surname_gender = gender_from_surname(token)
   if surname_gender:
     return surname_gender
+  if _LATIN_NAME_TOKEN_RE.match(token) and len(text) >= 3 and text.endswith("a") and text not in _MALE_A_ENDING:
+    return "Женский"
   return None
 
 
@@ -530,6 +566,8 @@ def guess_gender(name: str | None) -> str | None:
   """Пол по ФИО: кириллица/латиница, «Фамилия Имя», ник @username, лишние слова."""
   if not name:
     return None
+  if is_non_person_label(name):
+    return None
   role_gender = gender_from_role_label(name)
   if role_gender:
     return role_gender
@@ -570,6 +608,25 @@ def unique_person_naimenovanie(rows: list[dict[str, Any]]) -> list[str]:
   return unique_naimenovanie_missing_gender(rows)
 
 
+def apply_gender_not_applicable_labels(
+  rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+  """Проставить «не применимо» для Наименование-услуг и названий фирм."""
+  updated: list[dict[str, Any]] = []
+  for row in rows:
+    merged = dict(row)
+    if is_empty_cell(merged.get("Пол")):
+      gender = infer_gender_heuristic(merged)
+      if gender:
+        merged["Пол"] = gender
+      else:
+        name = str(merged.get("Наименование") or "").strip()
+        if name and is_non_person_label(name):
+          merged["Пол"] = GENDER_NOT_APPLICABLE
+    updated.append(merged)
+  return updated
+
+
 def build_heuristic_gender_map(names: list[str]) -> dict[str, str]:
   gender_map: dict[str, str] = {}
   for name in names:
@@ -600,6 +657,7 @@ def apply_gender_map_to_rows(
 
 def enrich_gender_by_unique_naimenovanie(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
   """Эвристика по уникальным Наименование без пола → применить Пол ко всем строкам."""
+  rows = apply_gender_not_applicable_labels(rows)
   names = unique_naimenovanie_missing_gender(rows)
   gender_map = build_heuristic_gender_map(names)
   return apply_gender_map_to_rows(rows, gender_map)
@@ -647,6 +705,8 @@ def normalize_gender_label(value: Any) -> str | None:
     return _GENDER_LABEL_ALIASES[text]
   if text in ("мужской", "женский"):
     return text[:1].upper() + text[1:]
+  if text == GENDER_NOT_APPLICABLE:
+    return GENDER_NOT_APPLICABLE
   return None
 
 
@@ -669,6 +729,8 @@ def _is_gender_candidate_naimenovanie(value: Any) -> bool:
     text = text[1:]
   if not text or _PHONE_RE.match(text):
     return False
+  if is_non_person_label(text):
+    return False
   if gender_from_role_label(text):
     return True
   cleaned = strip_legal_entity_prefixes(text)
@@ -688,19 +750,18 @@ def _looks_like_person_name(value: Any) -> bool:
   text = str(value or "").strip()
   if not text or _PHONE_RE.match(text):
     return False
+  if is_non_person_label(text):
+    return False
   cleaned = strip_legal_entity_prefixes(text)
   if not cleaned:
     return False
-  low = cleaned.lower().replace("ё", "е")
-  if any(marker in low for marker in _COMPANY_MARKERS):
-    return False
-  if _PERSON_NAME_RE.match(cleaned):
+  if _has_person_name_signal(text):
+    return True
+  if _PERSON_NAME_RE.match(cleaned) and len(cleaned.split()) >= 2:
     return True
   if re.match(r"^[A-Za-z][a-z]+(?:\s+[A-Za-z][a-z]+){0,2}$", cleaned):
     return True
-  if guess_gender(text):
-    return True
-  return _has_person_name_signal(text)
+  return False
 
 
 def recipient_name_from_row(row: dict[str, Any]) -> str | None:
@@ -838,6 +899,14 @@ def apply_resolved_gender(
     apply_ai_field(merged, "Пол", heuristic, ai_fields)
     if enrichment_fields is not None and "Пол" not in enrichment_fields:
       enrichment_fields.append("Пол")
+    return
+
+  if is_empty_cell(merged.get("Пол")):
+    name = str(merged.get("Наименование") or "").strip()
+    if name and is_non_person_label(name):
+      apply_ai_field(merged, "Пол", GENDER_NOT_APPLICABLE, ai_fields)
+      if enrichment_fields is not None and "Пол" not in enrichment_fields:
+        enrichment_fields.append("Пол")
 
 
 def extract_tg_nick_from_text(text: Any) -> str | None:
@@ -999,6 +1068,10 @@ def enrich_row_computed(
     gender = infer_gender_heuristic(enriched)
     if gender:
       enriched["Пол"] = gender
+    else:
+      name = str(enriched.get("Наименование") or "").strip()
+      if name and is_non_person_label(name):
+        enriched["Пол"] = GENDER_NOT_APPLICABLE
   from app.services.tag_rules import normalize_tags_field
 
   tags = normalize_tags_field(enriched.get("Теги"))

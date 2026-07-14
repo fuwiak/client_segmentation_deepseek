@@ -206,6 +206,54 @@ def test_guess_gender_from_name_and_patronymic() -> None:
     assert guess_gender("Покупатель") == "Мужской"
 
 
+def test_guess_gender_skips_service_and_company_labels() -> None:
+    from app.services.fields import GENDER_NOT_APPLICABLE, guess_gender, is_non_person_label
+
+    assert guess_gender("Аренда") is None
+    assert guess_gender("Доставка") is None
+    assert guess_gender("ООО Аренда") is None
+    assert is_non_person_label("Аренда") is True
+    assert is_non_person_label("Доставка") is True
+    assert is_non_person_label("ООО Аренда") is True
+    assert is_non_person_label("Ольга") is False
+    assert is_non_person_label("Иван Петров") is False
+
+
+def test_enrich_gender_marks_service_labels_not_applicable() -> None:
+    from app.services.fields import GENDER_NOT_APPLICABLE, enrich_gender_by_unique_naimenovanie
+
+    rows = [
+        {"UUID": "1", "Наименование": "Аренда"},
+        {"UUID": "2", "Наименование": "Доставка"},
+        {"UUID": "3", "Наименование": "Иван Петров"},
+    ]
+    enriched = enrich_gender_by_unique_naimenovanie(rows)
+    assert enriched[0]["Пол"] == GENDER_NOT_APPLICABLE
+    assert enriched[1]["Пол"] == GENDER_NOT_APPLICABLE
+    assert enriched[2]["Пол"] == "Мужской"
+
+
+def test_unique_naimenovanie_excludes_service_labels() -> None:
+    from app.services.fields import unique_naimenovanie_missing_gender
+
+    rows = [
+        {"Наименование": "Аренда"},
+        {"Наименование": "Доставка"},
+        {"Наименование": "маша"},
+    ]
+    names = unique_naimenovanie_missing_gender(rows)
+    assert "Аренда" not in names
+    assert "Доставка" not in names
+    assert "маша" in names
+
+
+def test_normalize_gender_label_accepts_not_applicable() -> None:
+    from app.services.fields import GENDER_NOT_APPLICABLE, normalize_gender_label
+
+    assert normalize_gender_label("не применимо") == GENDER_NOT_APPLICABLE
+    assert normalize_gender_label("N/A") == GENDER_NOT_APPLICABLE
+
+
 def test_enrich_gender_pokupatel_s_ulitsy() -> None:
     from app.services.fields import enrich_gender_by_unique_naimenovanie
 
