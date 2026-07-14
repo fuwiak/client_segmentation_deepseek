@@ -118,16 +118,13 @@ def test_heuristic_intent_summary_unknown_occasion() -> None:
     assert "не определён" in summary
 
 
-def test_apply_resolved_gender_prefers_ai_over_heuristic() -> None:
+def test_apply_resolved_gender_prefers_confident_heuristic_over_wrong_ai() -> None:
     from app.services.fields import apply_resolved_gender
 
-    row = {
-        "Заказчик или получатель": "Иван Петров",
-        "_messenger_context": [{"display_name": "Иван", "text": "привет"}],
-    }
+    row = {"Наименование": "Ростислав Патерюхин"}
     ai_fields: list[str] = []
     apply_resolved_gender(row, "Женский", ai_fields)
-    assert row["Пол"] == "Женский"
+    assert row["Пол"] == "Мужской"
     assert "Пол" in ai_fields
 
 

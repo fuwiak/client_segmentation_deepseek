@@ -290,6 +290,10 @@ def test_guess_gender_from_name_and_patronymic() -> None:
     assert guess_gender("Ольга") == "Женский"
     assert guess_gender("Ермаков Данил") == "Мужской"
     assert guess_gender("Данил Ермаков") == "Мужской"
+    assert guess_gender("Ростислав") == "Мужской"
+    assert guess_gender("Ростислав Патерюхин") == "Мужской"
+    assert guess_gender("Патерюхин Ростислав") == "Мужской"
+    assert guess_gender("Ростислава Патерюхина") == "Женский"
     assert guess_gender("Петровна") == "Женский"
     assert guess_gender("Сергеевич") == "Мужской"
     assert guess_gender("Саша") is None
@@ -317,6 +321,18 @@ def test_guess_gender_skips_service_and_company_labels() -> None:
     assert is_non_person_label("ООО Аренда") is True
     assert is_non_person_label("Ольга") is False
     assert is_non_person_label("Иван Петров") is False
+
+
+def test_enrich_row_corrects_wrong_gender_for_rostislav() -> None:
+    from app.services.fields import enrich_row_computed
+
+    row = {
+        "Наименование": "Ростислав Патерюхин",
+        "Пол": "Женский",
+        "_orders_count": 1,
+    }
+    enriched = enrich_row_computed(row)
+    assert enriched["Пол"] == "Мужской"
 
 
 def test_enrich_gender_marks_service_labels_not_applicable() -> None:

@@ -389,12 +389,14 @@ MALE_NAMES = {
   "кирилл", "тимофей", "матвей", "егор", "глеб", "степан", "богдан", "вадим",
   "руслан", "тимур", "марк", "лев", "данил", "даниил", "арсений", "герман",
   "владислав", "вячеслав", "станислав", "георгий", "платон", "савелий", "ярослав",
+  "ростислав", "братислав", "святослав", "мстислав",
   "филипп", "семён", "семен", "тихон", "прохор", "назар", "эмиль", "адам",
   "влад", "коля", "вова", "дима", "слава", "костя", "паша",
   "vladislav", "alexey", "aleksey", "alex", "dmitry", "dmitri", "ivan", "sergey",
   "sergei", "nikolay", "nikolai", "mikhail", "maxim", "artem", "pavel", "roman",
   "denis", "andrey", "andrei", "eugene", "kirill", "timur", "ruslan", "george",
   "yaroslav", "philip", "konstantin", "vladimir", "oleg", "igor", "anton",
+  "rostislav", "radislav", "bratislav", "svyatoslav",
 }
 _MALE_A_ENDING = frozenset({
   "илья", "никита", "фома", "кузьма", "савва", "лука", "миша", "саша", "женя",
@@ -505,6 +507,11 @@ def _gender_from_token(token: str) -> str | None:
   patronymic = gender_from_patronymic(text)
   if patronymic:
     return patronymic
+  if _CYRILLIC_NAME_TOKEN_RE.match(token):
+    if token_norm.endswith("слава"):
+      return "Женский"
+    if token_norm.endswith("слав") and len(token_norm) >= 6:
+      return "Мужской"
   surname_gender = gender_from_surname(token)
   if surname_gender:
     return surname_gender
@@ -871,6 +878,26 @@ def collect_gender_name_candidates(row: dict[str, Any]) -> list[str]:
   return candidates
 
 
+def confident_gender_from_row(row: dict[str, Any]) -> str | None:
+  """Уверенный guess по ФИО (имя/фамилия), без голосования по переписке."""
+  name = str(row.get("Наименование") or "").strip()
+  if name:
+    gender = guess_gender(strip_legal_entity_prefixes(name) or name)
+    if gender:
+      return gender
+  parts = [
+    row.get("Фамилия (для ИП и физ. лиц)"),
+    row.get("Имя (для ИП и физ. лиц)"),
+    row.get("Отчество (для ИП и физ. лиц)"),
+  ]
+  full_name = " ".join(str(part).strip() for part in parts if part)
+  if full_name:
+    gender = guess_gender(full_name)
+    if gender:
+      return gender
+  return None
+
+
 def infer_gender_heuristic(row: dict[str, Any]) -> str | None:
   """Эвристика пола: МойСклад, ФИО, заказы, переписка Telegram/WhatsApp."""
   existing = normalize_gender_label(row.get("Пол"))
@@ -909,12 +936,22 @@ def apply_resolved_gender(
   *,
   enrichment_fields: list[str] | None = None,
 ) -> None:
-  """Сначала эвристика, затем AI для согласованности (AI перекрывает расхождение)."""
+  """Эвристика по ФИО, затем AI; уверенная эвристика перекрывает ошибочный AI."""
+  confident = confident_gender_from_row(merged)
   heuristic = infer_gender_heuristic(merged) if is_empty_cell(merged.get("Пол")) else None
   ai_norm = normalize_gender_label(ai_gender) if ai_gender not in (None, "", "null") else None
 
   if ai_norm is not None:
-    apply_ai_field(merged, "Пол", ai_norm, ai_fields)
+    if confident and ai_norm != confident:
+      apply_ai_field(merged, "Пол", confident, ai_fields)
+    else:
+      apply_ai_field(merged, "Пол", ai_norm, ai_fields)
+    if enrichment_fields is not None and "Пол" not in enrichment_fields:
+      enrichment_fields.append("Пол")
+    return
+
+  if confident and is_empty_cell(merged.get("Пол")):
+    apply_ai_field(merged, "Пол", confident, ai_fields)
     if enrichment_fields is not None and "Пол" not in enrichment_fields:
       enrichment_fields.append("Пол")
     return
@@ -1096,6 +1133,11 @@ def enrich_row_computed(
       name = str(enriched.get("Наименование") or "").strip()
       if name and is_non_person_label(name):
         enriched["Пол"] = GENDER_NOT_APPLICABLE
+  else:
+    correction = confident_gender_from_row(enriched)
+    existing = normalize_gender_label(enriched.get("Пол"))
+    if correction and existing and correction != existing:
+      enriched["Пол"] = correction
   from app.services.tag_rules import normalize_tags_field
 
   tags = normalize_tags_field(enriched.get("Теги"))
