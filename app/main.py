@@ -632,7 +632,7 @@ def _segment_results_ctx() -> dict[str, Any]:
 
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
-  layout_template = "boosted.html" if request.headers.get("hx-boosted") else "base.html"
+  layout_template = "boosted.html" if request.headers.get("hx-request") else "base.html"
   return {
     "request": request,
     "layout_template": layout_template,

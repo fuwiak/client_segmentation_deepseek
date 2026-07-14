@@ -180,6 +180,17 @@ def test_boosted_navigation_returns_page_content_fragment() -> None:
   assert "<h1>Дашборд</h1>" in response.text
 
 
+def test_htmx_navigation_request_without_boost_header_returns_fragment() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get("/clients", headers={"HX-Request": "true"})
+  assert response.status_code == 200
+  assert response.text.lstrip().startswith('<main id="page-content"')
+  assert 'class="site-header"' not in response.text
+  assert '<script src=' not in response.text
+
+
 def test_clients_page_skips_relink_and_lazy_ai() -> None:
   import app.main as m
 
