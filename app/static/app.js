@@ -50,6 +50,18 @@
     if (overlay) overlay.hidden = false;
   }
 
+  function prepareClientDrawer() {
+    openClientDrawer();
+    var panel = document.getElementById("client-drawer-panel");
+    if (panel) {
+      panel.innerHTML = '<p class="hint drawer-loading">Загрузка карточки…</p>';
+    }
+  }
+
+  function isClientDrawerRequest(elt) {
+    return elt && elt.getAttribute && elt.getAttribute("hx-target") === "#client-drawer-panel";
+  }
+
   function closeClientDrawer() {
     var drawer = document.getElementById("client-drawer");
     var overlay = document.getElementById("client-drawer-overlay");
@@ -62,6 +74,7 @@
   window.openTagRulesDrawer = openTagRulesDrawer;
   window.closeTagRulesDrawer = closeTagRulesDrawer;
   window.openClientDrawer = openClientDrawer;
+  window.prepareClientDrawer = prepareClientDrawer;
   window.closeClientDrawer = closeClientDrawer;
 
   function settingsNavActive(path) {
@@ -164,8 +177,12 @@
 
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     var target = e.detail.target;
+    var elt = e.detail.elt;
     if (isLiveSwapTarget(target)) {
       document.documentElement.classList.add("is-navigating");
+    }
+    if (isClientDrawerRequest(elt)) {
+      prepareClientDrawer();
     }
     if (target && target.id === "page-content") {
       closeTagRulesDrawer();
@@ -185,8 +202,15 @@
     }
   });
 
-  document.body.addEventListener("htmx:responseError", function () {
+  document.body.addEventListener("htmx:responseError", function (e) {
     document.documentElement.classList.remove("is-navigating");
+    if (isClientDrawerRequest(e.detail && e.detail.elt)) {
+      var panel = document.getElementById("client-drawer-panel");
+      if (panel) {
+        panel.innerHTML = '<p class="hint warn">Не удалось загрузить карточку клиента.</p>';
+      }
+      openClientDrawer();
+    }
   });
 
   document.body.addEventListener("htmx:sendError", function (e) {
@@ -212,6 +236,8 @@
         row.classList.add("is-open");
         processHtmxRegion(target);
       }
+    } else if (target && target.id === "clients-table-block") {
+      processHtmxRegion(target);
     }
     if (isLiveSwapTarget(target)) {
       updateActiveNav();

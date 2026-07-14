@@ -966,6 +966,14 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   white-space: normal;
 }
 
+.clients-table-wide .actions-col,
+.clients-table-wide .actions-cell {
+  max-width: none;
+  min-width: 6.5rem;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .orders-expand-row.is-open td {
   padding: 0;
 }
