@@ -999,6 +999,11 @@ def enrich_row_computed(
     gender = infer_gender_heuristic(enriched)
     if gender:
       enriched["Пол"] = gender
+  from app.services.tag_rules import normalize_tags_field
+
+  tags = normalize_tags_field(enriched.get("Теги"))
+  if tags:
+    enriched["Теги"] = tags
   return enriched
 
 
@@ -1067,6 +1072,13 @@ def apply_ai_field(
   ai_fields: list[str],
 ) -> None:
   """Записать AI-поле и сохранить прежнее значение, если оно изменилось."""
+  if col == "Теги":
+    from app.services.tag_rules import normalize_tags_field
+
+    normalized = normalize_tags_field(new_value)
+    if not normalized:
+      return
+    new_value = normalized
   new_str = _normalized_cell(new_value)
   if not new_str:
     return

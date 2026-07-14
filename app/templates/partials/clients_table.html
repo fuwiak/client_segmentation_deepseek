@@ -1,11 +1,12 @@
 {% from 'partials/ai_cell.html' import render as ai_cell %}
+{% from 'partials/ai_tags.html' import render as ai_tags %}
 <div class="table-wrap">
   <table class="clients-table clients-table-wide">
     <thead>
       <tr>
         {% for col in client_columns %}
         {% set next_order = 'desc' if sort_col == col and sort_order == 'asc' else 'asc' %}
-        <th{% if col == 'Группы' %} class="tags-col-head sortable-th draggable-col"{% else %} class="sortable-th draggable-col"{% endif %} data-col="{{ col }}">
+        <th{% if col in ('Группы', 'Теги') %} class="tags-col-head sortable-th draggable-col"{% else %} class="sortable-th draggable-col"{% endif %} data-col="{{ col }}">
           <span class="col-drag-handle" draggable="true" title="Перетащите для изменения порядка колонок" aria-hidden="true">⠿</span>
           <a href="/clients?{{ build_clients_query(
             sales_filter=sales_filter,
@@ -40,7 +41,7 @@
       {% set cid = row.get('UUID') or row.get('Наименование') %}
       <tr data-client-id="{{ cid }}">
         {% for col in client_columns %}
-        <td{% if col == 'Группы' %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% endif %} data-col="{{ col }}">
+        <td{% if col in ('Группы', 'Теги') %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% endif %} data-col="{{ col }}">
           {% set value = client_cell_value(row, col) %}
           {% if col == 'Наименование' %}
           <button type="button" class="client-name-link"
@@ -52,6 +53,12 @@
           <span class="tg-conv-badge" title="{{ value }}">{{ display_cell_value(value) }}</span>
           {% elif col == 'Средний чек' %}
             {{ format_money_rub(value) }}
+          {% elif col == 'Теги' %}
+            {% if client_cell_state(row, col) in ('running', 'unknown') %}
+            {{ ai_cell(row, col, value) }}
+            {% else %}
+            {{ ai_tags(row) }}
+            {% endif %}
           {% elif col in ai_fillable_columns %}
             {{ ai_cell(row, col, value) }}
           {% else %}

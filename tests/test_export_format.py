@@ -191,3 +191,15 @@ def test_merge_enriched_rows_preserves_moysklad_sales_channel() -> None:
     assert merged[0]["Тип канала продаж"] == "маркетплейс"
     assert "Канал продаж" not in (merged[0].get("_ai_unknown_fields") or [])
     assert client_cell_value(merged[0], "Канал продаж") == "Ozon"
+
+
+def test_client_display_columns_include_tags() -> None:
+    from app.services.excel_parser import CLIENT_DISPLAY_COLUMNS
+
+    assert "Теги" in CLIENT_DISPLAY_COLUMNS
+    assert CLIENT_DISPLAY_COLUMNS.index("Теги") == CLIENT_DISPLAY_COLUMNS.index("Группы") + 1
+
+
+def test_client_cell_value_normalizes_tags() -> None:
+    row = {"Теги": "vip #доволен", "_ai_processed": True}
+    assert client_cell_value(row, "Теги") == "#vip #доволен"

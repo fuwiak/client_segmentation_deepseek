@@ -128,6 +128,10 @@ def _cell_value(row: dict[str, Any], col: str) -> Any:
         return tg_conversation_label(row)
     if col == "Группы":
         return row.get("Группы") or row.get("_moysklad_tags_display")
+    if col == "Теги":
+        from app.services.tag_rules import normalize_tags_field
+
+        return normalize_tags_field(row.get("Теги")) or row.get("Теги")
     if col in COLUMN_ALIASES:
         return _resolve_aliases(row, col)
     return row.get(col)

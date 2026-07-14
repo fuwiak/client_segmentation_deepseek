@@ -145,6 +145,30 @@ def _normalize_tag(tag: str) -> str:
     return tag if tag.startswith("#") else f"#{tag}"
 
 
+def normalize_tags_field(value: Any) -> str | None:
+    """Несколько тегов через пробел: #nik1 #nik2 #nik3."""
+    if value in (None, "", "null"):
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for part in re.split(r"[\s,;]+", raw):
+        part = part.strip()
+        if not part:
+            continue
+        tag = _normalize_tag(part)
+        if not tag:
+            continue
+        key = tag.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        tokens.append(tag)
+    return " ".join(tokens) if tokens else None
+
+
 def _orders_count(row: dict[str, Any]) -> int:
     try:
         return int(row.get("Всего заказов") or row.get("_orders_count") or 0)
@@ -258,7 +282,8 @@ def evaluate_tags_for_row(
         if tag not in tags:
             tags.append(tag)
         reasons[tag] = f"{rule.description} ({detail})"
-    return (" ".join(tags) if tags else None, reasons)
+    joined = " ".join(tags) if tags else None
+    return (normalize_tags_field(joined), reasons)
 
 
 def rule_label(rule: TagRule) -> str:

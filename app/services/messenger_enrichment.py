@@ -22,7 +22,7 @@ from app.services.fields import (
   empty_fillable_columns,
   extract_tg_nick_from_messages,
 )
-from app.services.tag_rules import evaluate_tags_for_row
+from app.services.tag_rules import evaluate_tags_for_row, normalize_tags_field
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
 from app.services.telegram_export import (
@@ -554,10 +554,12 @@ class MessengerEnrichmentService:
 
         tags, tag_reasons = evaluate_tags_for_row(merged)
         if tags:
-            existing = [t for t in str(merged.get("Теги") or "").split() if t]
-            combined = " ".join(dict.fromkeys([*existing, *tags.split()]))
-            apply_ai_field(merged, "Теги", combined, ai_fields)
-            enrichment_fields.append("Теги")
+            existing = normalize_tags_field(merged.get("Теги")) or ""
+            existing_list = [t for t in existing.split() if t]
+            combined = normalize_tags_field(" ".join(dict.fromkeys([*existing_list, *tags.split()])))
+            if combined:
+                apply_ai_field(merged, "Теги", combined, ai_fields)
+                enrichment_fields.append("Теги")
             merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
 
         if not merged.get("Саммари"):

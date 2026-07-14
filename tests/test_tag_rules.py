@@ -4,6 +4,7 @@ from app.services.tag_rules import (
     evaluate_tags_for_row,
     get_tag_rules,
     hydrate_tag_rules,
+    normalize_tags_field,
     rules_from_form,
     save_tag_rules,
 )
@@ -19,6 +20,13 @@ class _FakeCache:
 
     async def save_tag_rules(self, payload: list[dict]) -> None:
         self.payload = payload
+
+
+def test_normalize_tags_field() -> None:
+    assert normalize_tags_field("vip доволен") == "#vip #доволен"
+    assert normalize_tags_field("#nik1 #nik2 #nik3") == "#nik1 #nik2 #nik3"
+    assert normalize_tags_field("#vip, #vip #деньрождения") == "#vip #деньрождения"
+    assert normalize_tags_field("") is None
 
 
 def test_evaluate_vip_from_avg_check() -> None:

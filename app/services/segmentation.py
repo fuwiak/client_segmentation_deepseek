@@ -26,7 +26,7 @@ from app.services.fields import (
   sales_type_from_channel,
   COUNTERPARTY_COMMENT_KEYS,
 )
-from app.services.tag_rules import evaluate_tags_for_row
+from app.services.tag_rules import evaluate_tags_for_row, normalize_tags_field
 
 SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочного бизнеса (продажа букетов, доставка).
 Твоя задача — по данным клиента и его заказов заполнить поля сегментации и профиль клиента.
@@ -55,7 +55,8 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
 4. "ТГ ник" — telegram username в формате @username.
    Ищи в email, комментариях контрагента и заказов, поле Наименование. НЕ выдумывай.
 
-5. "Теги" — хэштеги событий и характеристик через пробел, например: #деньрождения #vip #проблемный #доволен
+5. "Теги" — хэштеги событий и характеристик через пробел: #nik1 #nik2 #nik3 (каждый с #).
+   Пример: #деньрождения #vip #проблемный #доволен
    Определи по датам заказов (праздники), сумме, комментариям контрагента и заказов, тону коммуникации.
    Теги: события (8марта, деньрождения, свадьба), настроение (доволен/недоволен), проблемный, постоянный, vip.
 
@@ -451,7 +452,7 @@ class SegmentationService:
             tags.append("#проблемный")
         if any(w in all_text for w in ("день рождения", "др ", "birthday")):
             tags.append("#деньрождения")
-        return " ".join(dict.fromkeys(tags)) if tags else None
+        return normalize_tags_field(" ".join(dict.fromkeys(tags))) if tags else None
 
     _EVENT_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
         (("день рождения", "д.р.", "др ", "birthday"), "день рождения"),
