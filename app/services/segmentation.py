@@ -52,7 +52,14 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
    Определи по датам заказов (праздники), сумме, комментариям контрагента и заказов, тону коммуникации.
    Теги: события (8марта, деньрождения, свадьба), настроение (доволен/недоволен), проблемный, постоянный, vip.
 
-6. "Саммари" — 1-2 предложения на русском: кто клиент, для кого заказывает, постоянный ли, есть ли проблемы.
+6. "Саммари" — 2–3 предложения на русском о МОТИВАЦИИ покупки (intent), а не о профиле клиента.
+   НЕ пиши «постоянный клиент», «высокий средний чек», «настроение не определено» — это уже в других полях.
+   Фокус:
+   - СОБЫТИЕ/ПОВОД: день рождения, 8 марта, 14 февраля, годовщина, свадьба, извинение, выпускной, Новый год и т.д.
+   - INTENT: зачем покупает — подарок (кому именно), для себя, романтический жест, корпоративный заказ, срочная доставка «к 18:00»
+   - ПАТТЕРН: если заказы повторяются в одни даты — укажи регулярное событие (например, «ежегодно на 8 марта»)
+   Источники: комментарии заказов, переписка, даты заказов, имена получателей.
+   Если повод не ясен — одной фразой «повод не определён из данных», без общих описаний клиента.
 
 7. "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)" —
    заполни из ФИО заказчика/получателя, если явно указаны в данных или комментариях.
@@ -339,18 +346,10 @@ class SegmentationService:
                 apply_ai_field(merged, "Теги", tags, ai_fields)
                 merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
 
-        if not merged.get("Саммари") and row.get("_messenger_context"):
-            msgs = row["_messenger_context"]
-            channels = ", ".join(sorted({m.get("channel", "") for m in msgs if m.get("channel")}))
-            apply_ai_field(
-                merged,
-                "Саммари",
-                (
-                    f"Есть переписка ({channels}, {len(msgs)} сообщ.). "
-                    f"Последнее: {msgs[-1].get('text', '')[:100]}"
-                ),
-                ai_fields,
-            )
+        if not merged.get("Саммари"):
+            summary = self._heuristic_intent_summary(row)
+            if summary:
+                apply_ai_field(merged, "Саммари", summary, ai_fields)
 
         merged["_reasoning"] = "Эвристика без AI (ключ API не задан)"
         merged["_confidence"] = None
@@ -396,6 +395,67 @@ class SegmentationService:
         if any(w in all_text for w in ("день рождения", "др ", "birthday")):
             tags.append("#деньрождения")
         return " ".join(dict.fromkeys(tags)) if tags else None
+
+    _EVENT_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+        (("день рождения", "д.р.", "др ", "birthday"), "день рождения"),
+        (("8 марта", "8марта"), "8 марта"),
+        (("14 февраля", "14февраля", "валентин"), "14 февраля"),
+        (("свадьб", "бракосочет"), "свадьба"),
+        (("годовщин",), "годовщина"),
+        (("выпуск",), "выпускной"),
+        (("новый год", "новогод"), "Новый год"),
+        (("1 сентября", "1сентября"), "1 сентября"),
+        (("извин", "прости"), "извинение"),
+    )
+
+    _INTENT_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+        (("мам", "маме", "матери", "мамочк"), "подарок маме"),
+        (("девушк", "жене", "жён", "подруг", "любим"), "подарок партнёру"),
+        (("коллег", "началь", "босс", "корпоратив"), "корпоративный заказ"),
+        (("для себя", "себе", "домой"), "для себя"),
+        (("подарок", "подар"), "подарок"),
+        (("срочн", "к 18", "к 19", "к 20", "к 21"), "срочная доставка"),
+    )
+
+    @classmethod
+    def _collect_intent_text(cls, row: dict[str, Any]) -> str:
+        parts = [collect_client_comments(row).lower()]
+        for msg in row.get("_messenger_context") or []:
+            parts.append(str(msg.get("text") or "").lower())
+        return " ".join(parts)
+
+    @classmethod
+    def _heuristic_intent_summary(cls, row: dict[str, Any]) -> str | None:
+        """Саммари: события и intent покупки из комментариев и переписки."""
+        text = cls._collect_intent_text(row)
+        if not text.strip():
+            return None
+
+        events: list[str] = []
+        for keywords, label in cls._EVENT_HINTS:
+            if any(k in text for k in keywords):
+                events.append(label)
+
+        intents: list[str] = []
+        for keywords, label in cls._INTENT_HINTS:
+            if any(k in text for k in keywords):
+                intents.append(label)
+
+        parts: list[str] = []
+        if events:
+            parts.append(f"Поводы: {', '.join(dict.fromkeys(events))}.")
+        if intents:
+            parts.append(f"Intent: {', '.join(dict.fromkeys(intents))}.")
+
+        recipient = row.get("Заказчик или получатель")
+        if recipient and str(recipient).strip():
+            parts.append(f"Получатель: {recipient}.")
+
+        if parts:
+            return " ".join(parts)
+        if row.get("_orders_context") or row.get("_messenger_context"):
+            return "Повод покупки не определён из доступных комментариев и переписки."
+        return None
 
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:

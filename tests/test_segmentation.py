@@ -92,6 +92,31 @@ def test_heuristic_row_tracks_added_fields() -> None:
     assert result["Пол"] == "Женский"
 
 
+def test_heuristic_intent_summary_from_order_comment() -> None:
+    service = _service()
+    row = {
+        "UUID": "6",
+        "Наименование": "Дмитрий",
+        "_orders_context": [{"Комментарий": "Букет на день рождения мамы"}],
+    }
+    summary = service._heuristic_intent_summary(row)
+    assert summary is not None
+    assert "день рождения" in summary
+    assert "подарок маме" in summary
+
+
+def test_heuristic_intent_summary_unknown_occasion() -> None:
+    service = _service()
+    row = {
+        "UUID": "7",
+        "_orders_context": [{"Комментарий": "стандартная доставка"}],
+        "_messenger_context": [{"text": "здравствуйте", "channel": "telegram"}],
+    }
+    summary = service._heuristic_intent_summary(row)
+    assert summary is not None
+    assert "не определён" in summary
+
+
 def test_guess_gender() -> None:
     assert guess_gender("Иван Петров") == "Мужской"
     assert guess_gender("Ольга") == "Женский"

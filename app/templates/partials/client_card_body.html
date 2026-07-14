@@ -61,6 +61,7 @@
 {% if client.get('Саммари') or client.get('_reasoning') %}
 <section class="client-section ai-block">
   <h4>Рекомендация AI</h4>
+  <p class="hint">Повод и intent покупки — зачем клиент заказывает.</p>
   <p class="ai-summary">{{ client.get('Саммари') or client.get('_reasoning') }}</p>
   {% if client.get('_enrichment_fields') %}
   <p class="hint">Обогащено: {{ client.get('_enrichment_fields')|join(', ') }}</p>

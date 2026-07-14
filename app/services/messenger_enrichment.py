@@ -37,7 +37,10 @@ SYSTEM_PROMPT = """Ты — CRM-аналитик цветочного бизне
 3. "Пол" — "Мужской" или "Женский" по имени; если неоднозначно → null
 4. "ТГ ник" — @username только если явно есть в переписке, комментариях или профиле
 5. "Теги" — хэштеги: #деньрождения #vip #доволен #проблемный и т.д.
-6. "Саммари" — 1-2 предложения: кто клиент, для кого заказывает, настроение
+6. "Саммари" — 2–3 предложения о МОТИВАЦИИ покупки (intent), не о профиле клиента.
+   НЕ пиши «постоянный покупатель», «высокий чек», «настроение не определено».
+   Фокус: СОБЫТИЕ/ПОВОД (день рождения, 8 марта, годовщина, свадьба…) и INTENT (подарок кому, для себя, срочно, корпоратив).
+   Если повод не ясен — «повод не определён из переписки/заказов».
 7. "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)" — из ФИО в данных
 8. "E-mail" — только если явно указан
 9. "Дата рождения" — только если явно указана (ДД.ММ.ГГГГ)
@@ -469,18 +472,11 @@ class MessengerEnrichmentService:
             enrichment_fields.append("Теги")
             merged["_ai_tag_reasons"] = {**dict(merged.get("_ai_tag_reasons") or {}), **tag_reasons}
 
-        if not merged.get("Саммари") and messages:
-            channels = ", ".join(sorted({m.get("channel", "") for m in messages}))
-            apply_ai_field(
-                merged,
-                "Саммари",
-                (
-                    f"Переписка в {channels}: {len(messages)} сообщений. "
-                    f"Последнее: {messages[-1].get('text', '')[:120]}"
-                ),
-                ai_fields,
-            )
-            enrichment_fields.append("Саммари")
+        if not merged.get("Саммари"):
+            summary = self._segmentation._heuristic_intent_summary(merged)
+            if summary:
+                apply_ai_field(merged, "Саммари", summary, ai_fields)
+                enrichment_fields.append("Саммари")
 
         merged["_reasoning"] = "Эвристика по переписке (без AI или API недоступен)"
         merged["_ai_processed"] = True
