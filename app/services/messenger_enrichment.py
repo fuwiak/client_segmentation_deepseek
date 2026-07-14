@@ -17,6 +17,7 @@ from app.services.cache import CacheService
 from app.services.excel_parser import AI_COLUMNS, AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 from app.services.fields import (
   apply_ai_field,
+  apply_resolved_gender,
   collect_client_comments,
   empty_fillable_columns,
   extract_tg_nick_from_messages,
@@ -28,7 +29,7 @@ from app.services.telegram_export import (
   messages_for_row as export_messages_for_row,
   tg_nick_for_row,
 )
-from app.services.segmentation import SegmentationService, guess_gender
+from app.services.segmentation import SegmentationService
 from app.services.telegram_bot import get_telegram_client
 
 ENRICHMENT_COLUMNS = AI_COLUMNS
@@ -509,17 +510,20 @@ class MessengerEnrichmentService:
         enrichment_fields: list[str] = list(merged.get("_enrichment_fields") or [])
 
         for col in dict.fromkeys([*ENRICHMENT_COLUMNS, *empty_fillable_columns(row)]):
+            if col == "Пол":
+                continue
             value = ai.get(col)
             if value not in (None, "", "null"):
                 apply_ai_field(merged, col, value, ai_fields)
                 if col not in enrichment_fields:
                     enrichment_fields.append(col)
 
-        if not merged.get("Пол"):
-            guessed = guess_gender(merged.get("Заказчик или получатель"))
-            if guessed:
-                apply_ai_field(merged, "Пол", guessed, ai_fields)
-                enrichment_fields.append("Пол")
+        apply_resolved_gender(
+            merged,
+            ai.get("Пол"),
+            ai_fields,
+            enrichment_fields=enrichment_fields,
+        )
 
         merged["_reasoning"] = ai.get("reasoning") or merged.get("_reasoning") or ""
         merged["_confidence"] = ai.get("confidence")
@@ -535,7 +539,9 @@ class MessengerEnrichmentService:
         row: dict[str, Any],
         messages: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        merged = self._segmentation._heuristic_row(dict(row))
+        row_with_messages = dict(row)
+        row_with_messages["_messenger_context"] = messages
+        merged = self._segmentation._heuristic_row(row_with_messages)
         ai_fields: list[str] = list(merged.get("_ai_fields") or [])
         enrichment_fields: list[str] = list(merged.get("_enrichment_fields") or [])
         merged["_messenger_context"] = messages

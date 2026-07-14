@@ -328,6 +328,246 @@ def row_sales_type_filter_value(row: dict[str, Any]) -> str:
 
 
 _TG_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
+_PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
+_PERSON_NAME_RE = re.compile(r"^[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){0,2}$")
+_INTRO_NAME_RE = re.compile(
+  r"(?:\bменя зовут|\bэто)\s+([А-ЯЁ][а-яё]+)",
+  re.IGNORECASE,
+)
+_FOR_RECIPIENT_RE = re.compile(r"\bдля\s+([А-ЯЁ][а-яё]+)", re.IGNORECASE)
+_RECIPIENT_IN_ORDER_RE = re.compile(r"[Пп]олучатель\t?\s*([А-ЯЁ][а-яё]+)")
+_RECIPIENT_IN_COMMENT_RE = re.compile(
+  r"[Пп]олучатель[:\s]+([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){0,2})"
+)
+
+FEMALE_NAMES = {
+  "ксения", "ольга", "анна", "мария", "елена", "татьяна", "наталья", "ирина",
+  "светлана", "юлия", "екатерина", "виктория", "дарья", "полина", "алина",
+  "марина", "оксана", "людмила", "галина", "надежда", "вера", "любовь",
+  "валентина", "лариса", "нина", "евгения", "александра", "софия", "софья",
+  "алёна", "алена", "кристина", "яна", "инна", "жанна", "маргарита", "лидия",
+  "элина", "диана", "карина", "ангелина", "вероника", "валерия", "лилия",
+  "зоя", "раиса", "тамара", "элла", "снежана", "милана", "арина", "варвара",
+  "ульяна", "василиса", "майя", "злата", "стефания", "мирослава", "виолетта",
+  "регина", "эмилия", "камилла", "амина", "алиса", "мадина", "гульнара",
+  "фаина", "клара", "роза", "нелли", "зинаида", "антонина", "анастасия",
+  "настя", "лена", "катя", "маша", "даша", "оля", "таня", "света", "юля",
+}
+MALE_NAMES = {
+  "иван", "пётр", "петр", "сергей", "александр", "андрей", "дмитрий", "алексей",
+  "михаил", "николай", "владимир", "евгений", "максим", "артём", "артем",
+  "денис", "роман", "антон", "павел", "игорь", "виктор", "олег", "константин",
+  "юрий", "василий", "григорий", "борис", "фёдор", "федор", "никита", "илья",
+  "кирилл", "тимофей", "матвей", "егор", "глеб", "степан", "богдан", "вадим",
+  "руслан", "тимур", "марк", "лев", "данил", "даниил", "арсений", "герман",
+  "владислав", "вячеслав", "станислав", "георгий", "платон", "савелий", "ярослав",
+  "филипп", "семён", "семен", "тихон", "прохор", "назар", "эмиль", "адам",
+  "влад", "коля", "вова", "дима", "слава", "костя", "паша",
+}
+_MALE_A_ENDING = frozenset({
+  "илья", "никита", "фома", "кузьма", "савва", "лука", "миша", "саша", "женя",
+})
+_FEMALE_PATRONYMIC_SUFFIXES = ("овна", "евна", "ична", "инична")
+_MALE_PATRONYMIC_SUFFIXES = ("ович", "евич", "ич")
+_COMPANY_MARKERS = (
+  "ооо", "оао", "зао", "пао", "ип ", "ип\"", "банк", "ао ", "компания", "фирма",
+  "холдинг", "групп", "лизинг", "страхован",
+)
+_GENDER_LABEL_ALIASES = {
+  "мужской": "Мужской",
+  "male": "Мужской",
+  "m": "Мужской",
+  "man": "Мужской",
+  "женский": "Женский",
+  "female": "Женский",
+  "f": "Женский",
+  "woman": "Женский",
+}
+
+
+def guess_gender(name: str | None) -> str | None:
+  """Пол по первому слову имени (словари + окончания)."""
+  if not name:
+    return None
+  first = name.strip().split()[0].lower().strip(".,").replace("ё", "е")
+  if first in FEMALE_NAMES:
+    return "Женский"
+  if first in MALE_NAMES:
+    return "Мужской"
+  patronymic = gender_from_patronymic(first)
+  if patronymic:
+    return patronymic
+  if len(first) >= 3 and first.endswith(("а", "я")) and first not in _MALE_A_ENDING:
+    return "Женский"
+  return None
+
+
+def normalize_gender_label(value: Any) -> str | None:
+  if value in (None, "", "null"):
+    return None
+  text = str(value).strip().lower().replace("ё", "е")
+  if text in _GENDER_LABEL_ALIASES:
+    return _GENDER_LABEL_ALIASES[text]
+  if text in ("мужской", "женский"):
+    return text[:1].upper() + text[1:]
+  return None
+
+
+def gender_from_patronymic(name: str) -> str | None:
+  text = name.strip().lower().replace("ё", "е")
+  if not text:
+    return None
+  for suffix in _FEMALE_PATRONYMIC_SUFFIXES:
+    if text.endswith(suffix):
+      return "Женский"
+  for suffix in _MALE_PATRONYMIC_SUFFIXES:
+    if text.endswith(suffix) and not text.endswith("овична"):
+      return "Мужской"
+  return None
+
+
+def _looks_like_person_name(value: Any) -> bool:
+  text = str(value or "").strip()
+  if not text or _PHONE_RE.match(text):
+    return False
+  low = text.lower().replace("ё", "е")
+  if any(marker in low for marker in _COMPANY_MARKERS):
+    return False
+  return bool(_PERSON_NAME_RE.match(text))
+
+
+def recipient_name_from_row(row: dict[str, Any]) -> str | None:
+  for order in row.get("_orders_context") or []:
+    for value in order.values():
+      match = _RECIPIENT_IN_ORDER_RE.search(str(value))
+      if match:
+        return match.group(1)
+  comments = collect_client_comments(row)
+  if comments:
+    match = _RECIPIENT_IN_COMMENT_RE.search(comments)
+    if match:
+      return match.group(1).strip()
+  return None
+
+
+def _names_from_messages(messages: list[dict[str, Any]]) -> list[str]:
+  names: list[str] = []
+  seen: set[str] = set()
+
+  def add(raw: Any) -> None:
+    if not raw:
+      return
+    text = str(raw).strip()
+    if not text or text.startswith("@") or text.isdigit():
+      return
+    first = text.split()[0].lower().replace("ё", "е")
+    if first in {"мамы", "маме", "мама", "папы", "папе", "папа", "жены", "жена", "мужа", "муж", "сына", "сын", "дочери", "дочь"}:
+      return
+    key = text.lower()
+    if key in seen:
+      return
+    seen.add(key)
+    names.append(text)
+
+  for msg in messages:
+    add(msg.get("display_name"))
+    sender = msg.get("sender")
+    if sender and not str(sender).startswith("@"):
+      add(sender)
+    add(msg.get("chat_name"))
+    text = str(msg.get("text") or "")
+    for pattern in (_INTRO_NAME_RE, _FOR_RECIPIENT_RE):
+      for match in pattern.finditer(text):
+        add(match.group(1))
+  return names
+
+
+def collect_gender_name_candidates(row: dict[str, Any]) -> list[str]:
+  candidates: list[str] = []
+  seen: set[str] = set()
+
+  def add(raw: Any) -> None:
+    if not raw:
+      return
+    text = str(raw).strip()
+    if not text:
+      return
+    key = text.lower()
+    if key in seen:
+      return
+    seen.add(key)
+    candidates.append(text)
+
+  add(row.get("Заказчик или получатель"))
+  add(recipient_name_from_row(row))
+  add(row.get("Имя (для ИП и физ. лиц)"))
+  parts = [
+    row.get("Фамилия (для ИП и физ. лиц)"),
+    row.get("Имя (для ИП и физ. лиц)"),
+    row.get("Отчество (для ИП и физ. лиц)"),
+  ]
+  full_name = " ".join(str(part).strip() for part in parts if part)
+  add(full_name)
+  if _looks_like_person_name(row.get("Наименование")):
+    add(row.get("Наименование"))
+  messages = list(row.get("_messenger_context") or []) + list(row.get("_tg_export_context") or [])
+  for name in _names_from_messages(messages):
+    add(name)
+  return candidates
+
+
+def infer_gender_heuristic(row: dict[str, Any]) -> str | None:
+  """Эвристика пола: МойСклад, ФИО, заказы, переписка Telegram/WhatsApp."""
+  existing = normalize_gender_label(row.get("Пол"))
+  if existing:
+    return existing
+
+  middle = row.get("Отчество (для ИП и физ. лиц)")
+  if middle:
+    patronymic_gender = gender_from_patronymic(str(middle))
+    if patronymic_gender:
+      return patronymic_gender
+
+  votes: dict[str, int] = {}
+  for candidate in collect_gender_name_candidates(row):
+    parts = candidate.split()
+    if len(parts) >= 3:
+      patronymic_gender = gender_from_patronymic(parts[2])
+      if patronymic_gender:
+        votes[patronymic_gender] = votes.get(patronymic_gender, 0) + 3
+    gender = guess_gender(candidate)
+    if gender:
+      votes[gender] = votes.get(gender, 0) + 1
+
+  if not votes:
+    return None
+  ranked = sorted(votes.items(), key=lambda item: item[1], reverse=True)
+  if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+    return None
+  return ranked[0][0]
+
+
+def apply_resolved_gender(
+  merged: dict[str, Any],
+  ai_gender: Any,
+  ai_fields: list[str],
+  *,
+  enrichment_fields: list[str] | None = None,
+) -> None:
+  """Сначала эвристика, затем AI для согласованности (AI перекрывает расхождение)."""
+  heuristic = infer_gender_heuristic(merged) if is_empty_cell(merged.get("Пол")) else None
+  ai_norm = normalize_gender_label(ai_gender) if ai_gender not in (None, "", "null") else None
+
+  if ai_norm is not None:
+    apply_ai_field(merged, "Пол", ai_norm, ai_fields)
+    if enrichment_fields is not None and "Пол" not in enrichment_fields:
+      enrichment_fields.append("Пол")
+    return
+
+  if heuristic and is_empty_cell(merged.get("Пол")):
+    apply_ai_field(merged, "Пол", heuristic, ai_fields)
+    if enrichment_fields is not None and "Пол" not in enrichment_fields:
+      enrichment_fields.append("Пол")
 
 
 def extract_tg_nick_from_messages(messages: list[dict[str, Any]]) -> str | None:
@@ -367,6 +607,10 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
     )
     if tg:
       enriched["ТГ ник"] = tg
+  if is_empty_cell(enriched.get("Пол")):
+    gender = infer_gender_heuristic(enriched)
+    if gender:
+      enriched["Пол"] = gender
   return enriched
 
 

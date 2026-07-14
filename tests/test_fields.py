@@ -8,9 +8,13 @@ from app.services.fields import (
     channel_type_from_channel,
     client_status_from_orders,
     enrich_row_computed,
+    guess_gender,
+    infer_gender_heuristic,
     is_direct_sales_channel,
     is_marketplace_channel,
+    normalize_gender_label,
     order_count_for_row,
+    recipient_name_from_row,
     sales_channel_type_for_row,
     sales_type_from_channel,
 )
@@ -179,3 +183,48 @@ def test_order_to_row_resolves_sales_channel_by_id() -> None:
         {channel_id: "Flowwow"},
     )
     assert row["Канал продаж"] == "Flowwow"
+
+
+def test_guess_gender_from_name_and_patronymic() -> None:
+    assert guess_gender("Иван Петров") == "Мужской"
+    assert guess_gender("Ольга") == "Женский"
+    assert guess_gender("Петровна") == "Женский"
+    assert guess_gender("Сергеевич") == "Мужской"
+    assert guess_gender("Саша") is None
+
+
+def test_infer_gender_from_moysklad_and_patronymic() -> None:
+    row = {
+        "Пол": "MALE",
+        "Имя (для ИП и физ. лиц)": "Анна",
+    }
+    assert normalize_gender_label(row["Пол"]) == "Мужской"
+    assert infer_gender_heuristic(row) == "Мужской"
+
+    row = {"Отчество (для ИП и физ. лиц)": "Ивановна"}
+    assert infer_gender_heuristic(row) == "Женский"
+
+
+def test_infer_gender_from_orders_and_telegram() -> None:
+    row = {
+        "Наименование": "ООО Аренда",
+        "_orders_context": [{"Комментарий": "Получатель\tМария"}],
+        "_messenger_context": [
+            {"channel": "telegram", "display_name": "Екатерина Смирнова", "text": "здравствуйте"},
+        ],
+    }
+    assert recipient_name_from_row(row) == "Мария"
+    assert infer_gender_heuristic(row) == "Женский"
+
+    enriched = enrich_row_computed(row)
+    assert enriched["Пол"] == "Женский"
+
+
+def test_infer_gender_from_message_text() -> None:
+    row = {
+        "Наименование": "Клиент 1",
+        "_messenger_context": [
+            {"channel": "telegram", "text": "Меня зовут Дмитрий, букет для мамы"},
+        ],
+    }
+    assert infer_gender_heuristic(row) == "Мужской"

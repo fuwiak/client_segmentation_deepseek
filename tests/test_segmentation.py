@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from app.config import Settings
-from app.services.segmentation import SegmentationService, guess_gender
+from app.services.segmentation import SegmentationService
+from app.services.fields import guess_gender
 
 
 def _service() -> SegmentationService:
@@ -115,6 +116,19 @@ def test_heuristic_intent_summary_unknown_occasion() -> None:
     summary = service._heuristic_intent_summary(row)
     assert summary is not None
     assert "не определён" in summary
+
+
+def test_apply_resolved_gender_prefers_ai_over_heuristic() -> None:
+    from app.services.fields import apply_resolved_gender
+
+    row = {
+        "Заказчик или получатель": "Иван Петров",
+        "_messenger_context": [{"display_name": "Иван", "text": "привет"}],
+    }
+    ai_fields: list[str] = []
+    apply_resolved_gender(row, "Женский", ai_fields)
+    assert row["Пол"] == "Женский"
+    assert "Пол" in ai_fields
 
 
 def test_guess_gender() -> None:

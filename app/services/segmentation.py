@@ -13,10 +13,13 @@ from app.services.excel_parser import AI_COLUMNS, AI_EXTRA_COLUMNS, SEGMENT_COLU
 from app.services.fields import (
   apply_ai_field,
   apply_name_parts,
+  apply_resolved_gender,
   collect_client_comments,
   empty_fillable_columns,
   extract_email_from_row,
   extract_tg_nick_from_messages,
+  guess_gender,
+  infer_gender_heuristic,
   sales_type_from_channel,
   COUNTERPARTY_COMMENT_KEYS,
 )
@@ -95,37 +98,8 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
   reasoning, confidence, references
   confidence — число от 0 до 1."""
 
-FEMALE_NAMES = {
-    "ксения", "ольга", "анна", "мария", "елена", "татьяна", "наталья", "ирина",
-    "светлана", "юлия", "екатерина", "виктория", "дарья", "полина", "алина",
-    "марина", "оксана", "людмила", "галина", "надежда", "вера", "любовь",
-    "валентина", "лариса", "нина", "евгения", "александра", "софия", "софья",
-    "алёна", "алена", "кристина", "яна", "инна", "жанна", "маргарита", "лидия",
-    "элина", "диана", "карина", "ангелина", "вероника", "валерия", "лилия",
-    "зоя", "раиса", "тамара", "элла", "снежана", "милана", "арина", "варвара",
-}
-MALE_NAMES = {
-    "иван", "пётр", "петр", "сергей", "александр", "андрей", "дмитрий", "алексей",
-    "михаил", "николай", "владимир", "евгений", "максим", "артём", "артем",
-    "денис", "роман", "антон", "павел", "игорь", "виктор", "олег", "константин",
-    "юрий", "василий", "григорий", "борис", "фёдор", "федор", "никита", "илья",
-    "кирилл", "тимофей", "матвей", "егор", "глеб", "степан", "богдан", "вадим",
-    "руслан", "тимур", "марк", "лев", "данил", "даниил", "арсений", "герман",
-}
-
 _PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
 _TG_RE = re.compile(r"@([A-Za-z][A-Za-z0-9_]{3,31})")
-
-
-def guess_gender(name: str | None) -> str | None:
-    if not name:
-        return None
-    first = name.strip().split()[0].lower().strip(".,")
-    if first in FEMALE_NAMES:
-        return "Женский"
-    if first in MALE_NAMES:
-        return "Мужской"
-    return None
 
 
 def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -277,14 +251,13 @@ class SegmentationService:
                 dict.fromkeys([*AI_COLUMNS, *empty_fillable_columns(row)])
             )
             for col in target_cols:
+                if col == "Пол":
+                    continue
                 value = ai.get(col)
                 if value not in (None, "", "null"):
                     apply_ai_field(merged, col, value, ai_fields)
 
-            if not merged.get("Пол"):
-                guessed = guess_gender(merged.get("Заказчик или получатель"))
-                if guessed:
-                    apply_ai_field(merged, "Пол", guessed, ai_fields)
+            apply_resolved_gender(merged, ai.get("Пол"), ai_fields)
 
             merged["_reasoning"] = ai.get("reasoning", "")
             merged["_confidence"] = ai.get("confidence")
@@ -336,9 +309,7 @@ class SegmentationService:
             apply_ai_field(merged, "Заказчик или получатель", recipient, ai_fields)
 
         if not merged.get("Пол"):
-            guessed = guess_gender(
-                merged.get("Заказчик или получатель") or merged.get("Наименование")
-            )
+            guessed = infer_gender_heuristic(merged)
             if guessed:
                 apply_ai_field(merged, "Пол", guessed, ai_fields)
 
