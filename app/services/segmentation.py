@@ -18,6 +18,7 @@ from app.services.fields import (
   empty_fillable_columns,
   extract_email_from_row,
   extract_tg_nick_from_row,
+  gender_analysis_payload,
   guess_gender,
   infer_gender_heuristic,
   normalize_gender_label,
@@ -101,10 +102,11 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
   confidence — число от 0 до 1."""
 
 GENDER_CONFIRM_SYSTEM_PROMPT = """Ты определяешь пол человека по ФИО или имени из CRM цветочного магазина.
-Форматы: «Фамилия Имя», «Имя Фамилия», «Имя», латиница (Vladislav Koroteev), ник Telegram (@username).
+Игнорируй префиксы ИП, ООО, ОАО, ЗАО — смотри на cleaned_name (имя/фамилия физлица).
+Форматы: «Фамилия Имя», «Имя Фамилия», «Имя», русские и иностранные имена (латиница, Vladislav Koroteev).
 Учитывай heuristic_guess как подсказку, но исправь если уверен в другом значении.
 Верни СТРОГО JSON {"results": [{"name": "исходное имя как во входе", "Пол": "Мужской"|"Женский"|null}]}.
-null только для явно неоднозначных имён (Саша, Женя без фамилии) или если это не имя человека."""
+null только для явно неоднозначных имён (Саша, Женя без фамилии) или если это не имя человека (название фирмы без ФИО)."""
 
 _PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
 
@@ -197,12 +199,7 @@ class SegmentationService:
             for offset in range(0, len(names), batch_size):
                 chunk = names[offset : offset + batch_size]
                 payload = [
-                    {
-                        "name": name,
-                        "heuristic_guess": heuristic_map.get(
-                            normalize_naimenovanie_key(name)
-                        ),
-                    }
+                    gender_analysis_payload(name, heuristic_map)
                     for name in chunk
                 ]
                 user_prompt = (

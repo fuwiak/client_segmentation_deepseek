@@ -197,6 +197,19 @@ def test_guess_gender_from_name_and_patronymic() -> None:
     assert guess_gender("Александра М") == "Женский"
     assert guess_gender("Алексей коллега") == "Мужской"
     assert guess_gender("маша") == "Женский"
+    assert guess_gender("ИП Иванов") == "Мужской"
+    assert guess_gender("ООО Иванов") == "Мужской"
+    assert guess_gender("ИП Иванова") == "Женский"
+    assert guess_gender("ООО Иванов Иван") == "Мужской"
+
+
+def test_strip_legal_entity_prefixes() -> None:
+    from app.services.fields import strip_legal_entity_prefixes
+
+    assert strip_legal_entity_prefixes("ИП Иванов") == "Иванов"
+    assert strip_legal_entity_prefixes("ООО Иванов") == "Иванов"
+    assert strip_legal_entity_prefixes('ООО "Ромашка"') == '"Ромашка"'
+    assert strip_legal_entity_prefixes("Иван Петров") == "Иван Петров"
 
 
 def test_unique_naimenovanie_missing_gender() -> None:
@@ -216,6 +229,11 @@ def test_unique_naimenovanie_missing_gender() -> None:
     assert "ООО Ромашка" not in names
     assert "Иван" not in names
 
+    ip_rows = [{"Наименование": "ИП Иванов"}, {"Наименование": "ООО Иванова"}]
+    ip_names = unique_naimenovanie_missing_gender(ip_rows)
+    assert "ИП Иванов" in ip_names
+    assert "ООО Иванова" in ip_names
+
 
 def test_enrich_gender_by_unique_naimenovanie() -> None:
     from app.services.fields import enrich_gender_by_unique_naimenovanie
@@ -229,6 +247,10 @@ def test_enrich_gender_by_unique_naimenovanie() -> None:
     assert enriched[0]["Пол"] == "Мужской"
     assert enriched[1]["Пол"] == "Мужской"
     assert enriched[2].get("Пол") in (None, "")
+
+    ip_rows = [{"UUID": "4", "Наименование": "ИП Иванов"}]
+    ip_enriched = enrich_gender_by_unique_naimenovanie(ip_rows)
+    assert ip_enriched[0]["Пол"] == "Мужской"
 
 
 def test_infer_gender_from_moysklad_and_patronymic() -> None:

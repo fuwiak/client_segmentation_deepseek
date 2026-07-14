@@ -379,9 +379,14 @@ _MALE_A_ENDING = frozenset({
 _FEMALE_PATRONYMIC_SUFFIXES = ("овна", "евна", "ична", "инична")
 _MALE_PATRONYMIC_SUFFIXES = ("ович", "евич", "ич")
 _COMPANY_MARKERS = (
-  "ооо", "оао", "зао", "пао", "ип ", "ип\"", "банк", "ао ", "компания", "фирма",
-  "холдинг", "групп", "лизинг", "страхован",
+  "банк", "холдинг", "групп", "лизинг", "страхован", "компания", "фирма",
 )
+_LEGAL_ENTITY_TOKENS = frozenset({
+  "ип", "ооо", "ooo", "оао", "oao", "зао", "zao", "пао", "pao", "ао", "ao",
+  "чп", "нп", "гуп", "муп", "фгуп", "нко",
+})
+_CYRILLIC_NAME_TOKEN_RE = re.compile(r"^[А-ЯЁ][а-яё]{2,}$")
+_LATIN_NAME_TOKEN_RE = re.compile(r"^[A-Za-z][a-z]{2,}$")
 _GENDER_LABEL_ALIASES = {
   "мужской": "Мужской",
   "male": "Мужской",
@@ -392,6 +397,36 @@ _GENDER_LABEL_ALIASES = {
   "f": "Женский",
   "woman": "Женский",
 }
+
+
+def strip_legal_entity_prefixes(name: str) -> str:
+  """Убрать ИП, ООО, ОАО и др. префиксы — оставить ФИО для определения пола."""
+  text = str(name or "").strip()
+  if not text:
+    return ""
+  parts = text.split()
+  while parts:
+    raw = parts[0].strip(".,;:\"'«»()")
+    token = re.sub(r"[^\wа-яё]", "", raw, flags=re.IGNORECASE).lower().replace("ё", "е")
+    if token in _LEGAL_ENTITY_TOKENS:
+      parts.pop(0)
+      continue
+    break
+  return " ".join(parts).strip()
+
+
+def gender_from_surname(token: str) -> str | None:
+  """Пол по русской фамилии (-ов/-ова, -ев/-ева…)."""
+  if not _CYRILLIC_NAME_TOKEN_RE.match(token):
+    return None
+  text = token.lower().replace("ё", "е")
+  if len(text) < 4:
+    return None
+  if text.endswith(("ова", "ева", "ина", "ская", "цкая", "ая", "яя")):
+    return "Женский"
+  if text.endswith(("ов", "ев", "ин", "ский", "цкий", "ой", "ий", "ый")):
+    return "Мужской"
+  return None
 
 
 def _gender_from_token(token: str) -> str | None:
@@ -412,11 +447,16 @@ def _gender_from_token(token: str) -> str | None:
     and text not in _MALE_A_ENDING
   ):
     return "Женский"
+  surname_gender = gender_from_surname(token)
+  if surname_gender:
+    return surname_gender
   return None
 
 
 def _name_parts_for_gender(name: str) -> list[str]:
-  text = str(name or "").strip()
+  text = strip_legal_entity_prefixes(name)
+  if not text:
+    text = str(name or "").strip()
   if text.startswith("@"):
     text = text[1:]
   parts: list[str] = []
@@ -424,8 +464,41 @@ def _name_parts_for_gender(name: str) -> list[str]:
     token = raw.strip(".,;:")
     if not token or len(token) == 1:
       continue
+    norm = re.sub(r"[^\wа-яё]", "", token, flags=re.IGNORECASE).lower().replace("ё", "е")
+    if norm in _LEGAL_ENTITY_TOKENS:
+      continue
     parts.append(token)
   return parts
+
+
+def _has_person_name_signal(name: str) -> bool:
+  parts = _name_parts_for_gender(name)
+  if not parts:
+    return False
+  for part in parts:
+    low = part.lower().replace("ё", "е")
+    if low in FEMALE_NAMES or low in MALE_NAMES:
+      return True
+    if gender_from_patronymic(part) or gender_from_surname(part):
+      return True
+    if _LATIN_NAME_TOKEN_RE.match(part):
+      return True
+  return False
+
+
+def gender_analysis_payload(name: str, heuristic_map: dict[str, str] | None = None) -> dict[str, Any]:
+  """Контекст для AI: исходное имя, без ИП/ООО, эвристика."""
+  cleaned = strip_legal_entity_prefixes(name)
+  heuristic = None
+  if heuristic_map is not None:
+    heuristic = heuristic_map.get(normalize_naimenovanie_key(name))
+  if not heuristic and cleaned:
+    heuristic = guess_gender(cleaned)
+  return {
+    "name": name,
+    "cleaned_name": cleaned or None,
+    "heuristic_guess": heuristic,
+  }
 
 
 def _name_token_order(part_count: int) -> list[int]:
@@ -481,7 +554,8 @@ def unique_person_naimenovanie(rows: list[dict[str, Any]]) -> list[str]:
 def build_heuristic_gender_map(names: list[str]) -> dict[str, str]:
   gender_map: dict[str, str] = {}
   for name in names:
-    gender = guess_gender(name)
+    cleaned = strip_legal_entity_prefixes(name)
+    gender = guess_gender(cleaned or name)
     if gender:
       gender_map[normalize_naimenovanie_key(name)] = gender
   return gender_map
@@ -576,31 +650,36 @@ def _is_gender_candidate_naimenovanie(value: Any) -> bool:
     text = text[1:]
   if not text or _PHONE_RE.match(text):
     return False
-  low = text.lower().replace("ё", "е")
+  cleaned = strip_legal_entity_prefixes(text)
+  if not cleaned:
+    return False
+  low = cleaned.lower().replace("ё", "е")
   if any(marker in low for marker in _COMPANY_MARKERS):
     return False
   if not re.search(r"[a-zа-яё]", low):
     return False
   if len(text) > 80:
     return False
-  return True
+  return _has_person_name_signal(text)
 
 
 def _looks_like_person_name(value: Any) -> bool:
   text = str(value or "").strip()
   if not text or _PHONE_RE.match(text):
     return False
-  low = text.lower().replace("ё", "е")
+  cleaned = strip_legal_entity_prefixes(text)
+  if not cleaned:
+    return False
+  low = cleaned.lower().replace("ё", "е")
   if any(marker in low for marker in _COMPANY_MARKERS):
     return False
-  if _PERSON_NAME_RE.match(text):
+  if _PERSON_NAME_RE.match(cleaned):
     return True
-  if re.match(r"^[A-Za-z][a-z]+(?:\s+[A-Za-z][a-z]+){0,2}$", text):
+  if re.match(r"^[A-Za-z][a-z]+(?:\s+[A-Za-z][a-z]+){0,2}$", cleaned):
     return True
-  parts = _name_parts_for_gender(text)
-  if parts and guess_gender(text):
+  if guess_gender(text):
     return True
-  return bool(_is_gender_candidate_naimenovanie(text) and parts)
+  return _has_person_name_signal(text)
 
 
 def recipient_name_from_row(row: dict[str, Any]) -> str | None:
@@ -677,6 +756,9 @@ def collect_gender_name_candidates(row: dict[str, Any]) -> list[str]:
   add(full_name)
   if _looks_like_person_name(row.get("Наименование")):
     add(row.get("Наименование"))
+    cleaned = strip_legal_entity_prefixes(str(row.get("Наименование") or ""))
+    if cleaned:
+      add(cleaned)
   messages = list(row.get("_messenger_context") or []) + list(row.get("_tg_export_context") or [])
   for name in _names_from_messages(messages):
     add(name)
