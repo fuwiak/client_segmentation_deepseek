@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from app.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramBotClient:
   def __init__(self, settings: Settings) -> None:
     self._token = settings.telegram_bot_token
     self._enabled = settings.telegram_enabled and bool(self._token)
+    self._timeout = httpx.Timeout(
+      connect=min(10.0, float(settings.telegram_api_timeout_seconds)),
+      read=float(settings.telegram_api_timeout_seconds),
+      write=float(settings.telegram_api_timeout_seconds),
+      pool=float(settings.telegram_api_timeout_seconds),
+    )
 
   @property
   def enabled(self) -> bool:
@@ -22,15 +32,19 @@ class TelegramBotClient:
   async def get_me(self) -> dict:
     if not self.enabled:
       return {"enabled": False}
-    async with httpx.AsyncClient(timeout=30) as client:
-      resp = await client.get(self._url("getMe"))
-      resp.raise_for_status()
-      data = resp.json()
-      if data.get("ok"):
-        result = data["result"]
-        result["enabled"] = True
-        return result
-      return {"enabled": False, "error": data}
+    try:
+      async with httpx.AsyncClient(timeout=self._timeout) as client:
+        resp = await client.get(self._url("getMe"))
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("ok"):
+          result = data["result"]
+          result["enabled"] = True
+          return result
+        return {"enabled": False, "error": data}
+    except httpx.HTTPError as exc:
+      logger.warning("Telegram getMe failed: %s", exc)
+      return {"enabled": False, "error": str(exc)}
 
   async def health_check(self) -> bool:
     if not self.enabled:
@@ -44,7 +58,7 @@ class TelegramBotClient:
   async def send_message(self, chat_id: str | int, text: str) -> dict:
     if not self.enabled:
       raise RuntimeError("Telegram бот не настроен")
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=self._timeout) as client:
       resp = await client.post(
         self._url("sendMessage"),
         json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
@@ -58,13 +72,17 @@ class TelegramBotClient:
     params: dict[str, int] = {"limit": max(1, min(limit, 100))}
     if offset is not None:
       params["offset"] = offset
-    async with httpx.AsyncClient(timeout=30) as client:
-      resp = await client.get(self._url("getUpdates"), params=params)
-      resp.raise_for_status()
-      data = resp.json()
-      if not data.get("ok"):
-        return []
-      return data.get("result") or []
+    try:
+      async with httpx.AsyncClient(timeout=self._timeout) as client:
+        resp = await client.get(self._url("getUpdates"), params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("ok"):
+          return []
+        return data.get("result") or []
+    except httpx.HTTPError as exc:
+      logger.warning("Telegram getUpdates failed: %s", exc)
+      return []
 
   async def fetch_all_updates(
     self,

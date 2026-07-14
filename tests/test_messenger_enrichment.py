@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from app.config import Settings
@@ -155,6 +156,30 @@ def test_enrich_with_orders_matches_normalized_phone_in_name() -> None:
     row = enriched.rows[0]
     assert row["_orders_count"] == 1
     assert row["_orders_context"][0]["№"] == "00042"
+
+
+@pytest.mark.asyncio
+async def test_attach_messages_continues_when_telegram_sync_fails() -> None:
+    settings = Settings(
+        messenger_enabled=True,
+        telegram_enabled=True,
+        telegram_bot_token="123:abc",
+    )
+    service = MessengerEnrichmentService(settings)
+
+    with patch.object(
+        service,
+        "sync_telegram_inbox",
+        new=AsyncMock(side_effect=httpx.ConnectTimeout("timeout")),
+    ), patch.object(
+        service,
+        "fetch_client_messages",
+        new=AsyncMock(return_value=[]),
+    ):
+        rows = await service.attach_messages([dict(SAMPLE_ROW)])
+
+    assert len(rows) == 1
+    assert rows[0]["UUID"] == "cp-1"
 
 
 @pytest.mark.asyncio

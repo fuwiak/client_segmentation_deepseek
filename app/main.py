@@ -362,9 +362,13 @@ async def _fetch_moysklad_positions_background() -> None:
 async def _attach_messenger_for_ai(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
   messenger = MessengerEnrichmentService(settings, cache)
   await messenger.load_telegram_export()
-  if messenger.available:
-    return await messenger.attach_messages(rows)
-  return await messenger.attach_tg_export_only(rows)
+  try:
+    if messenger.available:
+      return await messenger.attach_messages(rows, sync_live=False, fetch_live=False)
+    return await messenger.attach_tg_export_only(rows)
+  except httpx.HTTPError as exc:
+    pipeline_log("AI", "messenger attach skipped: %s", exc, level=logging.WARNING)
+    return await messenger.attach_tg_export_only(rows)
 
 
 async def _schedule_lazy_ai(*, force: bool = False) -> None:
@@ -398,7 +402,10 @@ async def _startup_background() -> None:
     await _hydrate_hub_from_cache()
     messenger = MessengerEnrichmentService(settings, cache)
     if messenger.telegram_enabled:
-      await messenger.sync_telegram_inbox()
+      try:
+        await messenger.sync_telegram_inbox()
+      except httpx.HTTPError as exc:
+        pipeline_log("PIPE", "startup telegram sync skipped: %s", exc, level=logging.WARNING)
     await _bootstrap_telegram_export()
     await _schedule_lazy_ai()
   except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
@@ -746,7 +753,7 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
   await messenger.load_telegram_export()
   if messenger.available:
     pipeline_log("AI", "segmentation attach messenger start rows=%s", len(rows))
-    rows = await messenger.attach_messages(rows)
+    rows = await messenger.attach_messages(rows, sync_live=False, fetch_live=False)
     pipeline_log("AI", "segmentation attach messenger done rows=%s", len(rows))
   service = SegmentationService(settings)
 

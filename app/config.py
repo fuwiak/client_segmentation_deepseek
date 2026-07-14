@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
     telegram_bot_username: str = "my_veresk_bot"
+    telegram_api_timeout_seconds: int = 10
+    telegram_sync_on_attach: bool = False
 
     # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
     repository_backend: str = "memory"

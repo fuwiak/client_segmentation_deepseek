@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
+
+import httpx
 
 from app.config import Settings
 from app.services.cache import CacheService
 from app.services.telegram_bot import TelegramBotClient, get_telegram_client
+
+logger = logging.getLogger(__name__)
 
 MESSENGER_INDEX_KEY = "telegram_index"
 
@@ -111,7 +116,12 @@ class MessengerMessageStore:
         if offset <= 1:
             offset = None
 
-        fetched = await self._tg.fetch_all_updates(offset=offset)
+        try:
+            fetched = await self._tg.fetch_all_updates(offset=offset)
+        except httpx.HTTPError as exc:
+            logger.warning("Telegram sync failed, using cached messages: %s", exc)
+            return 0
+
         added = 0
         for update in fetched:
             parsed = parse_telegram_update(update)

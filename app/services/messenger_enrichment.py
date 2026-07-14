@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from collections.abc import Callable
 from datetime import datetime
@@ -142,21 +143,38 @@ class MessengerEnrichmentService:
             limit=self._settings.enrichment_chat_limit,
         )
 
-    async def attach_messages(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def attach_messages(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        sync_live: bool | None = None,
+        fetch_live: bool | None = None,
+    ) -> list[dict[str, Any]]:
         if not self.available:
             return rows
 
         await self._store.load()
         await self.load_telegram_export()
-        if self._tg.enabled:
-            await self.sync_telegram_inbox()
+        should_sync = (
+            self._settings.telegram_sync_on_attach
+            if sync_live is None
+            else sync_live
+        )
+        if should_sync and self._tg.enabled:
+            try:
+                await self.sync_telegram_inbox()
+            except httpx.HTTPError as exc:
+                logging.getLogger(__name__).warning(
+                    "Telegram inbox sync skipped, using cached messages: %s", exc
+                )
 
+        use_live_fetch = fetch_live if fetch_live is not None else should_sync
         semaphore = asyncio.Semaphore(self._settings.enrichment_concurrency)
 
         async def _attach(row: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
                 copy = dict(row)
-                messages = await self.fetch_client_messages(copy)
+                messages = await self.fetch_client_messages(copy, live=use_live_fetch)
                 export_msgs = self._export_messages_for_row(copy)
                 if export_msgs:
                     copy["_tg_export_context"] = export_msgs
@@ -261,7 +279,12 @@ class MessengerEnrichmentService:
         all_messages.sort(key=lambda m: m.get("date") or "")
         return all_messages[-limit:]
 
-    async def fetch_client_messages(self, row: dict[str, Any]) -> list[dict[str, Any]]:
+    async def fetch_client_messages(
+        self,
+        row: dict[str, Any],
+        *,
+        live: bool = True,
+    ) -> list[dict[str, Any]]:
         await self._store.load()
         if self._export_index is None:
             await self.load_telegram_export()
@@ -278,17 +301,20 @@ class MessengerEnrichmentService:
         _add(self._export_messages_for_row(row))
         _add(self._store.messages_for_row(row))
 
-        phone = row.get("Телефон")
-        tg = row.get("ТГ ник")
-        tasks: list[Any] = []
-        if phone and self._wa.enabled:
-            tasks.append(self.fetch_whatsapp_history(str(phone)))
-        if self._tg.enabled and tg and not combined:
-            tasks.append(self.fetch_telegram_history(str(tg)))
-        if tasks:
-            parts = await asyncio.gather(*tasks)
-            for part in parts:
-                _add(list(part))
+        if live:
+            phone = row.get("Телефон")
+            tg = row.get("ТГ ник")
+            tasks: list[Any] = []
+            if phone and self._wa.enabled:
+                tasks.append(self.fetch_whatsapp_history(str(phone)))
+            if self._tg.enabled and tg and not combined:
+                tasks.append(self.fetch_telegram_history(str(tg)))
+            if tasks:
+                parts = await asyncio.gather(*tasks, return_exceptions=True)
+                for part in parts:
+                    if isinstance(part, Exception):
+                        continue
+                    _add(list(part))
 
         combined.sort(key=lambda m: m.get("date") or "")
         return combined[-self._settings.enrichment_chat_limit :]
