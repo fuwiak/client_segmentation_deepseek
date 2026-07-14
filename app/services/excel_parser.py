@@ -83,7 +83,13 @@ CLIENT_TABLE_COLUMNS = [
     "Фактический адрес (Код ФИАС)",
 ]
 
-AI_NON_FILLABLE_COLUMNS = frozenset({"UUID"})
+AI_NON_FILLABLE_COLUMNS = frozenset({
+    "UUID",
+    "Баллы начисленные",
+    "Средний чек",
+    "Всего заказов",
+    "Дата последнего заказа",
+})
 
 AI_FILLABLE_COLUMNS = [
     col for col in CLIENT_TABLE_COLUMNS if col not in AI_NON_FILLABLE_COLUMNS

@@ -71,6 +71,22 @@ def test_bank_fields_from_accounts_meta_array() -> None:
     assert row["Р/с"] == "40702810999"
 
 
+def test_bonus_points_from_moysklad_bonus_program() -> None:
+    row = counterparty_to_row({"id": "cp-bonus", "name": "Клиент", "bonusPoints": 0})
+    assert row["Баллы начисленные"] == 0
+
+    row = counterparty_to_row({"id": "cp-bonus2", "name": "Клиент", "bonusPoints": 150})
+    assert row["Баллы начисленные"] == 150
+
+
+def test_display_cell_value_shows_zero() -> None:
+    from app.services.export_format import display_cell_value
+
+    assert display_cell_value(0) == 0
+    assert display_cell_value(None) == "—"
+    assert display_cell_value(9890.0) == 9890
+
+
 def test_export_columns_for_moysklad_matches_excel_plus_ai() -> None:
     parsed = ParsedWorkbook(
         source_type="contragents",

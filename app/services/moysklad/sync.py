@@ -19,6 +19,8 @@ from app.services.moysklad.mapper import (
 if TYPE_CHECKING:
     from app.services.cache import CacheService
 
+MOYSKLAD_SYNC_SCHEMA_VERSION = 2
+
 
 @dataclass
 class MoySkladSyncResult:
@@ -66,7 +68,8 @@ def _apply_rows_to_hub(
 
 def _cache_matches_limits(cached: dict[str, Any], max_counterparties: int, max_orders: int) -> bool:
     return (
-        cached.get("max_counterparties") == max_counterparties
+        cached.get("schema_version") == MOYSKLAD_SYNC_SCHEMA_VERSION
+        and cached.get("max_counterparties") == max_counterparties
         and cached.get("max_orders") == max_orders
     )
 
@@ -162,6 +165,7 @@ async def sync_moysklad_to_hub(
     if cache:
         await cache.save_moysklad_sync(
             {
+                "schema_version": MOYSKLAD_SYNC_SCHEMA_VERSION,
                 "counterparty_rows": counterparty_rows,
                 "order_rows": order_rows,
                 "api_cp_total": api_cp_total,

@@ -109,6 +109,15 @@ def _cell_value(row: dict[str, Any], col: str) -> Any:
     return row.get(col)
 
 
+def display_cell_value(value: Any) -> Any:
+    """Отображение ячейки: 0 и другие falsy-значения не превращать в «—»."""
+    if value is None or value == "":
+        return "—"
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def client_cell_value(row: dict[str, Any], col: str) -> Any:
     """Значение ячейки для таблицы клиентов и экспорта."""
     if col in (row.get("_ai_unknown_fields") or []):

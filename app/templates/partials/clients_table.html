@@ -34,11 +34,11 @@
                   hx-get="/clients/{{ cid }}?drawer=1"
                   hx-target="#client-drawer-panel"
                   hx-swap="innerHTML"
-                  onclick="openClientDrawer()">{{ value or '—' }}</button>
+                  onclick="openClientDrawer()">{{ display_cell_value(value) }}</button>
           {% elif col in ai_fillable_columns %}
             {{ ai_cell(row, col, value) }}
           {% else %}
-            {{ value or '—' }}
+            {{ display_cell_value(value) }}
           {% endif %}
         </td>
         {% endfor %}

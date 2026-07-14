@@ -32,7 +32,7 @@
   <div><span class="kpi-label">Средний чек</span><span class="kpi-value sm">{{ client.get('Средний чек') or '—' }}</span></div>
   <div><span class="kpi-label">Заказов</span><span class="kpi-value sm">{{ client.get('Всего заказов') or client.get('_orders_count') or 0 }}</span></div>
   <div><span class="kpi-label">ВИП</span><span class="kpi-value sm">{{ client.get('ВИП') or 'нет' }}</span></div>
-  <div><span class="kpi-label">Лояльность</span><span class="kpi-value sm">{{ client.get('Баллы начисленные') or '—' }} б.</span></div>
+  <div><span class="kpi-label">Лояльность</span><span class="kpi-value sm">{{ display_cell_value(client.get('Баллы начисленные')) }}{% if client.get('Баллы начисленные') is not none and client.get('Баллы начисленные') != '' %} б.{% endif %}</span></div>
 </section>
 
 {% if orders %}

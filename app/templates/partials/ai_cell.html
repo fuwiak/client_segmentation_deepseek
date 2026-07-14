@@ -6,12 +6,12 @@
 <span class="ai-cell-unknown" title="AI не смог определить значение">no data</span>
 {% elif is_ai %}
 <span class="ai-cell-stack">
-  <span class="ai-cell-new" title="Добавлено AI">{{ value or '—' }}</span>
+  <span class="ai-cell-new" title="Добавлено AI">{{ display_cell_value(value) }}</span>
   {% if original is not none and original|string|trim %}
   <span class="ai-cell-old" title="Было">{{ original }}</span>
   {% endif %}
 </span>
 {% else %}
-{{ value or '—' }}
+{{ display_cell_value(value) }}
 {% endif %}
 {% endmacro %}

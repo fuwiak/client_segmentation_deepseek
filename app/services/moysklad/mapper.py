@@ -103,6 +103,20 @@ def _accounts_list(counterparty: dict[str, Any]) -> list[dict[str, Any]]:
     return [a for a in items if isinstance(a, dict)]
 
 
+def _bonus_points(counterparty: dict[str, Any]) -> int | float | None:
+    """Бонусные баллы по активной бонусной программе (bonusPoints в Remap 1.2)."""
+    raw = counterparty.get("bonusPoints")
+    if raw is None:
+        raw = counterparty.get("bonus_points")
+    if raw is None:
+        return None
+    try:
+        num = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return int(num) if num.is_integer() else num
+
+
 def _bank_fields(counterparty: dict[str, Any]) -> dict[str, Any]:
     accounts = _accounts_list(counterparty)
     account = accounts[0] if accounts else {}
@@ -156,7 +170,7 @@ def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
         "Дата рождения": counterparty.get("birthDate"),
         "Юридический адрес (Код ФИАС)": legal_full.get("fiasCode") or legal_full.get("code"),
         "Фактический адрес (Код ФИАС)": actual_full.get("fiasCode") or actual_full.get("code"),
-        "Баллы начисленные": counterparty.get("bonusPoints"),
+        "Баллы начисленные": _bonus_points(counterparty),
         **bank,
         "_moysklad_id": counterparty.get("id"),
         "_moysklad_tags": tags,
