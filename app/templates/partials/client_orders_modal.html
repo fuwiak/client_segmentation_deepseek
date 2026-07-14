@@ -4,22 +4,8 @@
     <h2 class="modal-title" id="orders-modal-title">
       Заказы · {{ client.get('Наименование') or 'Клиент' }}
     </h2>
-    <div class="orders-nested orders-compact orders-modal-body"
-         id="orders-modal-content"
-         {% if orders_loading_more %}
-         hx-get="/clients/{{ client_id }}/orders?modal=1&list_only=1"
-         hx-trigger="load delay:120ms"
-         hx-boost="false"
-         hx-push-url="false"
-         hx-swap="innerHTML"
-         {% endif %}>
+    <div class="orders-nested orders-compact orders-modal-body" id="orders-modal-content">
       {% include 'partials/client_orders_list.html' %}
-      {% if orders_loading_more %}
-      <div class="orders-modal-progress" aria-live="polite">
-        <p class="progress-label">Загружаем остальные заказы ({{ orders_total - orders|length }}+)…</p>
-        <div class="progress-track indeterminate"><div class="progress-fill"></div></div>
-      </div>
-      {% endif %}
     </div>
   </div>
 </div>

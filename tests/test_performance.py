@@ -98,7 +98,7 @@ def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
   assert "rules-drawer-header" in response.text
 
 
-def test_client_orders_modal_preview_and_list() -> None:
+def test_client_orders_modal_returns_all_orders_from_cache() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook
 
@@ -136,24 +136,21 @@ def test_client_orders_modal_preview_and_list() -> None:
       meta={},
     ),
   )
-  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock):
+  with patch.object(m, "_ensure_hub_cache_only", new_callable=AsyncMock) as cache_mock, patch.object(
+    m, "_ensure_moysklad_data", new_callable=AsyncMock
+  ) as ensure_ms_mock:
     client = TestClient(m.app)
-    preview = client.get(
-      "/clients/cp-modal/orders?modal=1&preview=1",
+    response = client.get(
+      "/clients/cp-modal/orders?modal=1",
       headers={"HX-Request": "true"},
     )
-    assert preview.status_code == 200
-    assert "orders-modal-overlay" in preview.text
-    assert "orders-modal-progress" in preview.text
-    assert preview.text.count("orders-compact-item") == 1
-
-    full_list = client.get(
-      "/clients/cp-modal/orders?modal=1&list_only=1",
-      headers={"HX-Request": "true"},
-    )
-    assert full_list.status_code == 200
-    assert "orders-modal-progress" not in full_list.text
-    assert full_list.text.count("orders-compact-item") == 5
+    assert response.status_code == 200
+    assert "orders-modal-overlay" in response.text
+    assert "orders-modal-progress" not in response.text
+    assert "Загружаем остальные заказы" not in response.text
+    assert response.text.count("orders-compact-item") == 5
+    cache_mock.assert_awaited_once()
+    ensure_ms_mock.assert_not_awaited()
 
 
 def test_client_orders_uses_cache_only_hydrate() -> None:
@@ -177,7 +174,7 @@ def test_client_orders_uses_cache_only_hydrate() -> None:
     ),
     None,
   )
-  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock) as ready_mock, patch.object(
+  with patch.object(m, "_ensure_hub_cache_only", new_callable=AsyncMock) as cache_mock, patch.object(
     m, "_ensure_moysklad_data", new_callable=AsyncMock
   ) as ensure_ms_mock:
     client = TestClient(m.app)
@@ -186,7 +183,7 @@ def test_client_orders_uses_cache_only_hydrate() -> None:
       headers={"HX-Request": "true"},
     )
     assert response.status_code == 200
-    ready_mock.assert_not_called()
-    ensure_ms_mock.assert_not_called()
+    cache_mock.assert_awaited_once()
+    ensure_ms_mock.assert_not_awaited()
     assert "orders-compact" in response.text
     assert "42" in response.text

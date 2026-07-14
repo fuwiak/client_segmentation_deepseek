@@ -1017,15 +1017,14 @@ async def client_orders(
   client_id: str,
   collapsed: bool = Query(False),
   modal: bool = Query(False),
-  preview: bool = Query(False),
-  list_only: bool = Query(False),
 ) -> HTMLResponse:
   if collapsed:
     return HTMLResponse("")
   pipeline_log("PIPE", "partial client_orders client_id=%s", client_id)
+  await _ensure_hub_cache_only()
   client, raw_orders, total = hub.get_client_orders(client_id)
   if client is None:
-    await _ensure_hub_cache_only()
+    await _ensure_moysklad_data(fetch_positions=False)
     client, raw_orders, total = hub.get_client_orders(client_id)
   if client is None:
     if modal:
@@ -1039,12 +1038,10 @@ async def client_orders(
     return HTMLResponse(
       '<div class="orders-nested orders-nested-empty">Клиент не найден</div>'
     )
-  display_limit = 1 if modal and preview and not list_only else 20
-  orders = compact_orders_for_display(raw_orders, limit=display_limit)
-  orders_loading_more = bool(modal and preview and not list_only and total > len(orders))
-  if modal and list_only:
+  orders = compact_orders_for_display(raw_orders)
+  if modal:
     return templates.TemplateResponse(
-      "partials/client_orders_list.html",
+      "partials/client_orders_modal.html",
       _ctx(
         request,
         client=client,
@@ -1053,16 +1050,14 @@ async def client_orders(
         client_id=client_id,
       ),
     )
-  template = "partials/client_orders_modal.html" if modal else "partials/client_orders.html"
   return templates.TemplateResponse(
-    template,
+    "partials/client_orders.html",
     _ctx(
       request,
       client=client,
       orders=orders,
       orders_total=total,
       client_id=client_id,
-      orders_loading_more=orders_loading_more,
     ),
   )
 
