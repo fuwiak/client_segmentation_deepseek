@@ -193,7 +193,19 @@ class BackgroundJobService:
             try:
                 if messenger_attach:
                     pipeline_log("AI", "lazy messenger attach start rows=%s", len(rows))
-                    rows = await messenger_attach(rows)
+                    try:
+                        rows = await messenger_attach(rows)
+                    except Exception as attach_exc:  # noqa: BLE001
+                        logger.warning(
+                            "Lazy AI messenger attach failed, continuing without live sync: %s",
+                            attach_exc,
+                        )
+                        pipeline_log(
+                            "AI",
+                            "lazy messenger attach failed error=%s",
+                            attach_exc,
+                            level=logging.WARNING,
+                        )
                     pipeline_log("AI", "lazy messenger attach done rows=%s", len(rows))
 
                 service = SegmentationService(settings)
