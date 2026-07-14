@@ -12,9 +12,7 @@
       <span class="oc-date">{{ order.date }}</span>
       <span class="oc-amount">{{ order.amount }}</span>
       <span class="oc-status">{{ order.status }}</span>
-      {% if order.channel %}
-      <span class="oc-channel">{{ order.channel }}</span>
-      {% endif %}
+      <span class="oc-channel">{{ order.channel or '—' }}</span>
     </div>
     {% if order.has_positions %}
     <div class="oc-positions">{{ order.positions }}</div>

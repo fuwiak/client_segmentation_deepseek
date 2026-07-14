@@ -15,12 +15,13 @@ from app.services.moysklad.mapper import (
     compute_order_stats,
     counterparty_to_row,
     order_to_row,
+    sales_channels_by_id,
 )
 
 if TYPE_CHECKING:
     from app.services.cache import CacheService
 
-MOYSKLAD_SYNC_SCHEMA_VERSION = 5
+MOYSKLAD_SYNC_SCHEMA_VERSION = 6
 
 
 @dataclass
@@ -189,6 +190,8 @@ async def sync_moysklad_to_hub(
             max_rows=max_counterparties
         )
         orders_raw = await client.fetch_all_customer_orders(max_rows=max_orders)
+        channels_raw = await client.fetch_all_sales_channels()
+        channels_by_id = sales_channels_by_id(channels_raw)
     except Exception as exc:  # noqa: BLE001 — показываем пользователю текст API-ошибки
         return MoySkladSyncResult(
             success=False,
@@ -204,7 +207,7 @@ async def sync_moysklad_to_hub(
     }
 
     counterparty_rows = [counterparty_to_row(cp) for cp in counterparties_raw]
-    order_rows = [order_to_row(order, agents_by_id) for order in orders_raw]
+    order_rows = [order_to_row(order, agents_by_id, channels_by_id) for order in orders_raw]
     apply_order_stats(counterparty_rows, compute_order_stats(order_rows))
 
     _apply_rows_to_hub(hub, counterparty_rows, order_rows)

@@ -214,14 +214,39 @@ def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _sales_channel_from_order(order: dict[str, Any]) -> str | None:
+def _sales_channel_from_order(
+    order: dict[str, Any],
+    channels_by_id: dict[str, str] | None = None,
+) -> str | None:
     """Канал продаж из заказа покупателя (salesChannel в Remap 1.2)."""
+    mapped = order.get("Канал продаж")
+    if mapped and str(mapped).strip():
+        return str(mapped).strip()
+
     sc = order.get("salesChannel") or order.get("sales_channel")
+    if isinstance(sc, str) and sc.strip():
+        return sc.strip()
     if isinstance(sc, dict):
         name = sc.get("name")
         if name:
             return str(name).strip()
+        channel_id = entity_ref_id(sc)
+        if channel_id and channels_by_id:
+            label = channels_by_id.get(channel_id)
+            if label:
+                return label
     return None
+
+
+def sales_channels_by_id(channels: list[dict[str, Any]]) -> dict[str, str]:
+    """Справочник каналов продаж: id → наименование."""
+    result: dict[str, str] = {}
+    for channel in channels:
+        channel_id = str(channel.get("id") or "").strip()
+        name = str(channel.get("name") or "").strip()
+        if channel_id and name:
+            result[channel_id] = name
+    return result
 
 
 def position_to_item(position: dict[str, Any]) -> dict[str, Any]:
@@ -288,6 +313,7 @@ def aggregate_client_positions(orders: list[dict[str, Any]]) -> list[dict[str, A
 def order_to_row(
     order: dict[str, Any],
     agents_by_id: dict[str, str],
+    channels_by_id: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     agent = order.get("agent") or {}
     agent_id = entity_ref_id(agent)
@@ -296,7 +322,7 @@ def order_to_row(
 
     state = order.get("state") or {}
     state_name = state.get("name") or ""
-    sales_channel = _sales_channel_from_order(order)
+    sales_channel = _sales_channel_from_order(order, channels_by_id)
 
     return {
         "№": order.get("name"),
@@ -374,6 +400,7 @@ def order_from_customerorder(
     order: dict[str, Any],
     agents_by_id: dict[str, str] | None = None,
     positions: list[dict[str, Any]] | None = None,
+    channels_by_id: dict[str, str] | None = None,
 ) -> Order:
     agents_by_id = agents_by_id or {}
     agent = order.get("agent") or {}
@@ -398,7 +425,7 @@ def order_from_customerorder(
         for p in (positions or [])
     ]
 
-    sales_channel = _sales_channel_from_order(order)
+    sales_channel = _sales_channel_from_order(order, channels_by_id)
 
     return Order(
         id=str(order.get("id") or order.get("name") or uuid.uuid4()),

@@ -47,6 +47,9 @@ class MoySkladClientBase(ABC):
     async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
         ...
 
+    async def fetch_all_sales_channels(self, max_rows: int = 200) -> list[dict[str, Any]]:
+        ...
+
     @abstractmethod
     async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
         ...
@@ -163,6 +166,11 @@ class MoySkladClient(MoySkladClientBase):
             return []
         return await self._fetch_all("/entity/counterparty", max_rows=max_rows)
 
+    async def fetch_all_sales_channels(self, max_rows: int = 200) -> list[dict[str, Any]]:
+        if not self._enabled:
+            return []
+        return await self._fetch_all("/entity/saleschannel", max_rows=max_rows)
+
     async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
         if not self._enabled:
             return []
@@ -265,6 +273,9 @@ class MoySkladStub(MoySkladClientBase):
         return None
 
     async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
+        return []
+
+    async def fetch_all_sales_channels(self, max_rows: int = 200) -> list[dict[str, Any]]:
         return []
 
     async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:

@@ -128,3 +128,23 @@ def test_order_to_row_maps_sales_channel() -> None:
     )
     assert row["№"] == "00011"
     assert row["Канал продаж"] == "Витрина"
+
+
+def test_order_to_row_resolves_sales_channel_by_id() -> None:
+    channel_id = "61d6519a-ec0b-11ee-0a80-1751000827ea"
+    row = order_to_row(
+        {
+            "id": "order-1",
+            "name": "24255345",
+            "sum": 0,
+            "salesChannel": {
+                "meta": {
+                    "href": f"https://api.moysklad.ru/api/remap/1.2/entity/saleschannel/{channel_id}",
+                }
+            },
+            "agent": {"id": "cp-1", "name": "Клиент"},
+        },
+        {"cp-1": "Клиент"},
+        {channel_id: "Flowwow"},
+    )
+    assert row["Канал продаж"] == "Flowwow"

@@ -28,3 +28,17 @@ def test_compact_orders_truncates_long_text():
     assert compact[0]["has_comment"] is True
     assert len(compact[0]["comment"]) <= 60
     assert compact[0]["comment"].endswith("…")
+
+
+def test_compact_orders_includes_sales_channel():
+    orders = [
+        {
+            "№": "24255345",
+            "Дата": "2026-06-08",
+            "Сумма": 0,
+            "Статус": "Новый",
+            "Канал продаж": "Flowwow",
+        }
+    ]
+    compact = compact_orders_for_display(orders)
+    assert compact[0]["channel"] == "Flowwow"
