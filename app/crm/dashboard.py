@@ -171,6 +171,30 @@ class DashboardService:
     self._cache.set(key, data)
     return data
 
+  def compute_home_kpis(self, rows: list[dict[str, Any]], *, hub_version: int) -> DashboardData:
+    """Лёгкие KPI для главной без полного обхода заказов."""
+    key = f"home:{hub_version}:{len(rows)}"
+    cached = self._cache.get(key)
+    if cached is not None:
+      return cached
+    repeat = 0
+    open_dialogs = 0
+    for row in rows:
+      try:
+        orders_n = int(row.get("Всего заказов") or row.get("_orders_count") or 0)
+      except (TypeError, ValueError):
+        orders_n = 0
+      if orders_n > 1:
+        repeat += 1
+      if row.get("ТГ ник"):
+        open_dialogs += 1
+    data = DashboardData()
+    data.repeat_clients = MetricBlock(total=repeat)
+    data.open_tasks = 0
+    data.open_dialogs = open_dialogs
+    self._cache.set(key, data)
+    return data
+
   def compute(
     self,
     rows: list[dict[str, Any]],

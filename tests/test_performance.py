@@ -99,6 +99,51 @@ def test_home_page_shows_diag_panel_for_import_and_settings() -> None:
   assert "Импорт</a>" not in response.text.split("diag-panel-nav")[0]
 
 
+def test_health_liveness_is_lightweight() -> None:
+  import app.main as m
+
+  with patch.object(m.db_persist, "ping", new_callable=AsyncMock) as db_ping:
+    client = TestClient(m.app)
+    response = client.get("/health")
+  assert response.status_code == 200
+  body = response.json()
+  assert body["status"] == "ok"
+  db_ping.assert_not_called()
+
+
+def test_compute_home_kpis_skips_order_scan() -> None:
+  from app.crm.dashboard import DashboardService
+
+  rows = [
+    {"Наименование": "A", "Всего заказов": 3, "ТГ ник": "@a"},
+    {"Наименование": "B", "Всего заказов": 1},
+    {"Наименование": "C", "_orders_count": 2, "ТГ ник": "@c"},
+  ]
+  svc = DashboardService()
+  data = svc.compute_home_kpis(rows, hub_version=1)
+  assert data.repeat_clients.total == 2
+  assert data.open_dialogs == 2
+  assert data.open_tasks == 0
+
+
+def test_apply_cached_results_does_not_bulk_enrich() -> None:
+  from unittest.mock import patch
+
+  from app.services.data_hub import DataHub
+  hub = DataHub()
+  with patch("app.services.data_hub.enrich_row_computed") as enrich_mock:
+    ok = hub.apply_cached_results(
+      {
+        "results": [{"Наименование": "Иван", "Группы": "новый"}],
+        "meta": {"processed": 1},
+        "workbook_key": "abc123",
+      }
+    )
+  assert ok is True
+  enrich_mock.assert_not_called()
+  assert hub.results[0]["Наименование"] == "Иван"
+
+
 def test_home_recent_clients_open_uses_drawer() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook

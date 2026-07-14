@@ -6,6 +6,7 @@ import io
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -89,7 +90,72 @@ dashboard_svc = DashboardService()
 campaign_svc = CampaignService(repo)
 lead_svc = LeadService(repo)
 
-app = FastAPI(title=settings.app_title)
+_warmup_state: dict[str, Any] = {"ready": False, "hub": False}
+_hub_warmed = False
+
+
+async def _warm_hub_from_cache() -> None:
+  """Быстрая подгрузка hub из Redis/Postgres до первого запроса пользователя."""
+  global _hub_warmed
+  if _hub_warmed:
+    return
+  pipeline_log("CACHE", "warm hub start")
+  await _hydrate_moysklad_from_cache()
+  await _hydrate_hub_from_cache()
+  await hydrate_tag_rules(cache)
+  _hub_warmed = True
+  _warmup_state["hub"] = hub.has_data()
+  rows_n = (
+    len(hub.parsed.rows)
+    if hub.parsed and hub.parsed.rows
+    else len(hub.results)
+  )
+  pipeline_log(
+    "CACHE",
+    "warm hub done has_data=%s rows=%s",
+    hub.has_data(),
+    rows_n,
+  )
+
+
+async def _keep_alive_loop() -> None:
+  """Исходящий ping Redis/Postgres — Railway Serverless не усыпляет сервис."""
+  interval = max(60, settings.keep_alive_interval_seconds)
+  while True:
+    await asyncio.sleep(interval)
+    try:
+      if settings.redis_url:
+        await cache.ping()
+      elif db_persist.enabled:
+        await db_persist.ping()
+    except Exception:  # noqa: BLE001
+      pipeline_log("PIPE", "keep-alive ping failed", level=logging.DEBUG)
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+  pipeline_log("PIPE", "lifespan start")
+  keep_task: asyncio.Task[None] | None = None
+  startup_task: asyncio.Task[None] | None = None
+  try:
+    if settings.warm_cache_on_startup:
+      await _warm_hub_from_cache()
+    _warmup_state["ready"] = True
+    if settings.keep_alive_enabled and (settings.redis_url or db_persist.enabled):
+      keep_task = asyncio.create_task(_keep_alive_loop())
+    startup_task = asyncio.create_task(_startup_all())
+    pipeline_log("PIPE", "lifespan ready")
+    yield
+  finally:
+    if keep_task:
+      keep_task.cancel()
+    if startup_task:
+      startup_task.cancel()
+    await db_persist.close()
+    pipeline_log("PIPE", "lifespan shutdown")
+
+
+app = FastAPI(title=settings.app_title, lifespan=_app_lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 perf_logger = logging.getLogger("performance")
 templates = Jinja2Templates(directory="app/templates")
@@ -486,20 +552,13 @@ async def _startup_background() -> None:
     pipeline_log("PIPE", "startup background done")
 
 
-@app.on_event("startup")
-async def startup_hydrate_cache() -> None:
-  pipeline_log("PIPE", "startup event schedule")
-  asyncio.create_task(_startup_all())
-
-
 async def _startup_all() -> None:
   pipeline_log("PIPE", "startup all start")
   try:
+    if not _hub_warmed:
+      await _warm_hub_from_cache()
     if db_persist.enabled:
       await db_persist.init_schema()
-    await hydrate_tag_rules(cache)
-    await _hydrate_hub_from_cache()
-    await _hydrate_moysklad_from_cache()
     await _backfill_postgres_from_redis()
     await _startup_background()
   except Exception:  # noqa: BLE001
@@ -511,14 +570,30 @@ async def _startup_all() -> None:
 
 @app.get("/health")
 async def healthcheck() -> JSONResponse:
-  postgres_ok = await db_persist.ping() if db_persist.enabled else False
-  ai = jobs.ai_snapshot()
+  """Liveness для Railway — без медленных проверок БД."""
   return JSONResponse(
     {
       "status": "ok",
+      "warm": _warmup_state.get("ready", False),
+      "hub": _warmup_state.get("hub", False),
       "cache_backend": cache.backend_kind,
+    }
+  )
+
+
+@app.get("/health/ready")
+async def health_ready() -> JSONResponse:
+  postgres_ok = await db_persist.ping() if db_persist.enabled else False
+  cache_ok = await cache.ping()
+  ai = jobs.ai_snapshot()
+  return JSONResponse(
+    {
+      "status": "ok" if cache_ok else "degraded",
+      "cache_backend": cache.backend_kind,
+      "cache_ok": cache_ok,
       "postgres_enabled": db_persist.enabled,
       "postgres_ok": postgres_ok,
+      "hub_loaded": hub.has_data(),
       "ai_status": ai.get("status"),
       "ai_progress": ai,
     }
@@ -883,13 +958,9 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
   pipeline_log("PIPE", "page home")
-  await _hydrate_hub_from_cache()
+  await _ensure_hub_cache_only()
   rows = hub.active_rows()
-  dash = dashboard_svc.compute_cached(
-    rows,
-    hub_version=hub.version,
-    period="month",
-  )
+  dash = dashboard_svc.compute_home_kpis(rows, hub_version=hub.version)
   return templates.TemplateResponse(
     "home.html",
     _ctx(

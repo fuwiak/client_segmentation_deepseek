@@ -39,14 +39,19 @@ def _apply_rows_to_hub(
     hub: DataHub,
     counterparty_rows: list[dict[str, Any]],
     order_rows: list[dict[str, Any]],
+    *,
+    from_cache: bool = False,
 ) -> None:
+    meta = {"source": "moysklad", "synced": True}
+    if from_cache:
+        meta["from_cache"] = True
     contragents = ParsedWorkbook(
         source_type="contragents",
         rows=counterparty_rows,
         context_columns=[c for c in MOYSKLAD_EXCEL_COLUMNS if c not in SEGMENT_COLUMNS],
         segment_columns=[],
         total_rows=len(counterparty_rows),
-        meta={"source": "moysklad", "synced": True},
+        meta=meta,
     )
     orders_wb = ParsedWorkbook(
         source_type="orders",
@@ -63,7 +68,7 @@ def _apply_rows_to_hub(
         ],
         segment_columns=[],
         total_rows=len(order_rows),
-        meta={"source": "moysklad", "synced": True},
+        meta=meta,
     )
     hub.set_workbook(contragents, orders_wb)
     hub.workbook_hash = f"moysklad:{len(counterparty_rows)}:{len(order_rows)}"
@@ -94,7 +99,7 @@ async def _load_from_cache(
     api_cp_total = cached.get("api_cp_total")
     if api_cp_total and len(counterparty_rows) < api_cp_total:
         return None
-    _apply_rows_to_hub(hub, counterparty_rows, order_rows)
+    _apply_rows_to_hub(hub, counterparty_rows, order_rows, from_cache=True)
     cp_count = len(counterparty_rows)
     orders_count = len(order_rows)
     return MoySkladSyncResult(

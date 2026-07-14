@@ -16,7 +16,17 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, ensure_ai_client_summary, enrich_gender_by_unique_naimenovanie, enrich_tg_nick_by_phone
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, ensure_ai_client_summary, enrich_gender_by_unique_naimenovanie, enrich_tg_nick_by_phone, is_empty_cell, is_non_person_label
+
+
+def _rows_need_gender_enrich(rows: list[dict[str, Any]]) -> bool:
+  for row in rows:
+    if not is_empty_cell(row.get("Пол")):
+      continue
+    name = str(row.get("Наименование") or "").strip()
+    if name and not is_non_person_label(name):
+      return True
+  return False
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -127,7 +137,10 @@ class DataHub:
     if self._active_rows_cache and self._active_rows_cache[0] == self.version:
       return self._active_rows_cache[1]
     if self.parsed and self.parsed.rows:
-      base = [refresh_row_for_display(r) for r in self.parsed.rows]
+      if self.parsed.meta.get("from_cache"):
+        base = self.parsed.rows
+      else:
+        base = [refresh_row_for_display(r) for r in self.parsed.rows]
       if self.results:
         rows = merge_enriched_rows(base, self.results, key_fn=_row_key)
       else:
@@ -136,7 +149,8 @@ class DataHub:
       rows = self.results
     else:
       rows = []
-    rows = enrich_gender_by_unique_naimenovanie(rows)
+    if _rows_need_gender_enrich(rows):
+      rows = enrich_gender_by_unique_naimenovanie(rows)
     rows = enrich_tg_nick_by_phone(rows, self._phone_username_map)
     self._active_rows_cache = (self.version, rows)
     return rows
@@ -162,7 +176,7 @@ class DataHub:
     results = payload.get("results")
     if not results:
       return False
-    self.results = [enrich_row_computed(r) for r in results]
+    self.results = list(results)
     self.meta = payload.get("meta") or {}
     if payload.get("workbook_key"):
       self.workbook_hash = str(payload["workbook_key"])

@@ -4,9 +4,12 @@ builder = "nixpacks"
 [deploy]
 startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws websockets"
 healthcheckPath = "/health"
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 
 # Railway (рекомендуется для прода):
 # 1. Redis plugin → REDIS_URL (кэш синка МойСклад + AI, переживает рестарт)
 # 2. PostgreSQL plugin → DATABASE_URL + DB_PERSIST_ENABLED=true
 # 3. Variables: MOYSKLAD_ENABLED=true, MOYSKLAD_AUTO_SYNC=true, AI_AUTO_SEGMENT=true
+# 4. Serverless (App Sleeping): отключить в Settings сервиса ИЛИ оставить KEEP_ALIVE_ENABLED=true
+#    (периодический ping Redis/Postgres не даёт уснуть контейнеру ~10 мин без исходящего трафика)

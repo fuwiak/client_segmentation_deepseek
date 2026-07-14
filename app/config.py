@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     telegram_export_auto_import: bool = True
     telegram_export_max_mb: int = 50
 
+    # --- Railway / cold start ---
+    warm_cache_on_startup: bool = True
+    keep_alive_enabled: bool = True
+    keep_alive_interval_seconds: int = 300
+
 
 @lru_cache
 def get_settings() -> Settings:

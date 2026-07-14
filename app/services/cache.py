@@ -61,6 +61,9 @@ class InMemoryCache(CacheBackend):
         if key not in self._order:
             self._order.append(key)
 
+    async def ping(self) -> bool:
+        return True
+
     @property
     def kind(self) -> str:
         return "memory"
@@ -271,6 +274,15 @@ class CacheService:
             return hit if isinstance(hit, dict) else None
         except Exception:  # noqa: BLE001
             return None
+
+    async def ping(self) -> bool:
+        ping = getattr(self._backend, "ping", None)
+        if callable(ping):
+            try:
+                return bool(await ping())
+            except Exception:  # noqa: BLE001
+                return False
+        return self._backend.kind == "memory"
 
 
 _cache_service: CacheService | None = None
