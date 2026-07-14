@@ -50,19 +50,35 @@
     if (overlay) overlay.hidden = false;
   }
 
-  function prepareClientDrawer() {
+  function showClientDrawerLoading() {
     openClientDrawer();
-    var panel = document.getElementById("client-drawer-panel");
-    if (panel) {
-      panel.innerHTML = '<p class="hint drawer-loading">Загрузка карточки…</p>';
-    }
+    var loading = document.getElementById("client-drawer-loading");
+    if (loading) loading.hidden = false;
+  }
+
+  function hideClientDrawerLoading() {
+    var loading = document.getElementById("client-drawer-loading");
+    if (loading) loading.hidden = true;
   }
 
   function isClientDrawerRequest(elt) {
     return elt && elt.getAttribute && elt.getAttribute("hx-target") === "#client-drawer-panel";
   }
 
+  function finishClientDrawerRequest(elt, xhr) {
+    if (!isClientDrawerRequest(elt)) return;
+    hideClientDrawerLoading();
+    var panel = document.getElementById("client-drawer-panel");
+    if (!panel || !xhr || !xhr.responseText) return;
+    if (!panel.querySelector(".rules-drawer-header")) {
+      panel.innerHTML = xhr.responseText;
+      processHtmxRegion(panel);
+    }
+    openClientDrawer();
+  }
+
   function closeClientDrawer() {
+    hideClientDrawerLoading();
     var drawer = document.getElementById("client-drawer");
     var overlay = document.getElementById("client-drawer-overlay");
     if (drawer) drawer.hidden = true;
@@ -74,7 +90,6 @@
   window.openTagRulesDrawer = openTagRulesDrawer;
   window.closeTagRulesDrawer = closeTagRulesDrawer;
   window.openClientDrawer = openClientDrawer;
-  window.prepareClientDrawer = prepareClientDrawer;
   window.closeClientDrawer = closeClientDrawer;
 
   function settingsNavActive(path) {
@@ -182,7 +197,7 @@
       document.documentElement.classList.add("is-navigating");
     }
     if (isClientDrawerRequest(elt)) {
-      prepareClientDrawer();
+      showClientDrawerLoading();
     }
     if (target && target.id === "page-content") {
       closeTagRulesDrawer();
@@ -196,6 +211,9 @@
 
   document.body.addEventListener("htmx:afterRequest", function (e) {
     document.documentElement.classList.remove("is-navigating");
+    if (e.detail.successful) {
+      finishClientDrawerRequest(e.detail.elt, e.detail.xhr);
+    }
     if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest(".upload-form")) {
       var modal = document.getElementById("upload-modal");
       if (modal) modal.hidden = true;
@@ -205,6 +223,7 @@
   document.body.addEventListener("htmx:responseError", function (e) {
     document.documentElement.classList.remove("is-navigating");
     if (isClientDrawerRequest(e.detail && e.detail.elt)) {
+      hideClientDrawerLoading();
       var panel = document.getElementById("client-drawer-panel");
       if (panel) {
         panel.innerHTML = '<p class="hint warn">Не удалось загрузить карточку клиента.</p>';
@@ -228,6 +247,7 @@
   document.body.addEventListener("htmx:afterSwap", function (e) {
     var target = e.detail.target;
     if (target && target.id === "client-drawer-panel") {
+      hideClientDrawerLoading();
       openClientDrawer();
       processHtmxRegion(target);
     } else if (target && target.id && target.id.indexOf("orders-") === 0) {

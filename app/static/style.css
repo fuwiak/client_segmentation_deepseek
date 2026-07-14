@@ -1324,6 +1324,10 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   width: min(480px, 100vw);
 }
 
+.drawer-loading {
+  padding: var(--lg) 0;
+}
+
 .client-name-link {
   background: none;
   border: none;
