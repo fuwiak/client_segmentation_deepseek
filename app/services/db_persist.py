@@ -200,6 +200,38 @@ class DbPersistService:
             return json.dumps(value, default=str, ensure_ascii=False)
         return value
 
+    @staticmethod
+    def _coerce_json_object(value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        return {}
+
+    @staticmethod
+    def _coerce_json_list(value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        return []
+
+    @staticmethod
+    def _coerce_json_value(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, (dict, list)):
+            return value
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+
     async def load_moysklad_sync(self) -> dict[str, Any] | None:
         if not await self.init_schema():
             return None
@@ -223,8 +255,12 @@ class DbPersistService:
                 return None
             return {
                 "schema_version": meta["schema_version"],
-                "counterparty_rows": [dict(r["row_data"]) for r in customer_rows],
-                "order_rows": [dict(r["row_data"]) for r in order_rows],
+                "counterparty_rows": [
+                    self._coerce_json_object(r["row_data"]) for r in customer_rows
+                ],
+                "order_rows": [
+                    self._coerce_json_object(r["row_data"]) for r in order_rows
+                ],
                 "api_cp_total": meta["api_cp_total"],
                 "api_orders_total": meta["api_orders_total"],
                 "max_counterparties": meta["max_counterparties"] or 0,
@@ -291,12 +327,12 @@ class DbPersistService:
                         key,
                     )
                     if row:
-                        results = row["results"]
-                        meta = row["meta"]
+                        results = self._coerce_json_list(row["results"])
+                        meta = self._coerce_json_object(row["meta"])
                         return {
                             "workbook_key": row["workbook_key"],
-                            "results": list(results) if results else [],
-                            "meta": dict(meta) if meta else {},
+                            "results": results,
+                            "meta": meta,
                             "from_postgres": True,
                         }
         except Exception as exc:  # noqa: BLE001
@@ -338,7 +374,7 @@ class DbPersistService:
                     cache_key,
                 )
                 if row:
-                    return row["payload"]
+                    return self._coerce_json_value(row["payload"])
         except Exception as exc:  # noqa: BLE001
             logger.warning("Postgres auxiliary load failed (%s): %s", cache_key, exc)
         return None

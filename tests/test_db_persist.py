@@ -17,3 +17,20 @@ def test_bind_column_list_for_positions():
     bound = DbPersistService._bind_column("positions", payload, frozenset({"positions"}))
     assert isinstance(bound, str)
     assert json.loads(bound)[0]["name"] == "Розы"
+
+
+def test_coerce_json_object_from_string():
+    raw = '{"UUID": "cp-1", "Наименование": "Test"}'
+    parsed = DbPersistService._coerce_json_object(raw)
+    assert parsed["UUID"] == "cp-1"
+
+
+def test_coerce_json_object_from_dict():
+    parsed = DbPersistService._coerce_json_object({"UUID": "cp-1"})
+    assert parsed["UUID"] == "cp-1"
+
+
+def test_coerce_json_list_from_string():
+    raw = '[{"uuid": "1"}]'
+    parsed = DbPersistService._coerce_json_list(raw)
+    assert parsed[0]["uuid"] == "1"
