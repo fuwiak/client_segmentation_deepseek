@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 import pandas as pd
-from fastapi import FastAPI, File, Form, Query, Request, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -67,10 +67,12 @@ from app.services.tag_explanations import explain_tags_for_row
 from app.services.telegram_export import parse_telegram_export_file
 from app.services.telegram_bot import get_telegram_client
 from app.services.db_persist import get_db_persist
+from app.services.background_jobs import get_background_jobs
 
 settings = get_settings()
 cache = get_cache(settings)
 db_persist = get_db_persist(settings)
+jobs = get_background_jobs()
 cache.attach_db_persist(db_persist)
 hub = get_data_hub()
 repo = get_repository()
@@ -222,6 +224,24 @@ async def _backfill_postgres_from_redis() -> None:
     await db_persist.persist_auxiliary("telegram_export:index", tg_index)
 
 
+async def _hydrate_moysklad_from_cache() -> bool:
+  """Быстрая подгрузка МойСклад только из Redis/Postgres — без API."""
+  client = get_moysklad_client(settings)
+  if not client.enabled:
+    return False
+  if hub.parsed and hub.parsed.meta.get("source") == "moysklad" and hub.parsed.rows:
+    return True
+  from app.services.moysklad.sync import _load_from_cache
+
+  result = await _load_from_cache(
+    cache,
+    hub,
+    max_counterparties=settings.moysklad_sync_limit,
+    max_orders=settings.moysklad_sync_orders_limit,
+  )
+  return result is not None and result.success
+
+
 async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
   """Подгрузить контрагентов Мой Склад из кэша или API."""
   client = get_moysklad_client(settings)
@@ -261,6 +281,26 @@ async def _fetch_moysklad_positions_background() -> None:
   await refresh_moysklad_positions(client, hub, cache=cache)
 
 
+async def _attach_messenger_for_ai(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  messenger = MessengerEnrichmentService(settings, cache)
+  await messenger.load_telegram_export()
+  if messenger.available:
+    return await messenger.attach_messages(rows)
+  return await messenger.attach_tg_export_only(rows)
+
+
+async def _schedule_lazy_ai(*, force: bool = False) -> None:
+  if not hub.has_data():
+    return
+  await jobs.schedule_lazy_ai(
+    hub,
+    settings,
+    cache=cache,
+    messenger_attach=_attach_messenger_for_ai,
+    force=force,
+  )
+
+
 async def _startup_background() -> None:
   """Тяжёлая инициализация в фоне — не блокирует healthcheck."""
   try:
@@ -272,6 +312,7 @@ async def _startup_background() -> None:
     if messenger.telegram_enabled:
       await messenger.sync_telegram_inbox()
     await _bootstrap_telegram_export()
+    await _schedule_lazy_ai()
   except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
     pass
 
@@ -296,13 +337,57 @@ async def _startup_all() -> None:
 @app.get("/health")
 async def healthcheck() -> JSONResponse:
   postgres_ok = await db_persist.ping() if db_persist.enabled else False
+  ai = jobs.ai_snapshot()
   return JSONResponse(
     {
       "status": "ok",
       "cache_backend": cache.backend_kind,
       "postgres_enabled": db_persist.enabled,
       "postgres_ok": postgres_ok,
+      "ai_status": ai.get("status"),
+      "ai_progress": ai,
     }
+  )
+
+
+@app.websocket("/ws/clients")
+async def clients_websocket(websocket: WebSocket) -> None:
+  await jobs.ws.connect(websocket)
+  try:
+    await websocket.send_json({"type": "ai_progress", **jobs.ai_snapshot()})
+    while True:
+      msg = await websocket.receive_text()
+      if msg.strip().lower() in {"ping", "refresh"}:
+        await websocket.send_json({"type": "ai_progress", **jobs.ai_snapshot()})
+  except WebSocketDisconnect:
+    pass
+  finally:
+    await jobs.ws.disconnect(websocket)
+
+
+@app.get("/clients/ai/status")
+async def clients_ai_status() -> JSONResponse:
+  pending = len(jobs.pending_ai_rows(hub)) if hub.has_data() else 0
+  return JSONResponse({**jobs.ai_snapshot(), "pending": pending})
+
+
+@app.post("/clients/ai/start", response_class=HTMLResponse)
+async def clients_ai_start(request: Request) -> HTMLResponse:
+  await _hydrate_hub_from_cache()
+  await _hydrate_moysklad_from_cache()
+  started = await jobs.schedule_lazy_ai(
+    hub,
+    settings,
+    cache=cache,
+    messenger_attach=_attach_messenger_for_ai,
+    force=True,
+  )
+  if not started and not jobs.pending_ai_rows(hub):
+    jobs.ai_progress.status = "done"
+    jobs.ai_progress.done = jobs.ai_progress.total = len(hub.active_rows())
+  return templates.TemplateResponse(
+    "partials/ai_progress.html",
+    _ctx(request, **jobs.ai_snapshot(), ai_started=started),
   )
 
 
@@ -518,6 +603,7 @@ def _clients_ctx(
     ),
     tg_export_ready=tg_export_ready,
     tg_export_progress=_tg_export_progress,
+    ai_progress=jobs.ai_snapshot(),
   )
 
 
@@ -552,8 +638,7 @@ async def _clients_ctx_with_tg(
   start = (page - 1) * per_page
   end = start + per_page
   page_rows = rows[start:end]
-  messenger = MessengerEnrichmentService(settings, cache)
-  page_rows = await messenger.attach_tg_export_only(page_rows)
+  asyncio.create_task(_schedule_lazy_ai())
   return _clients_ctx(
     request,
     sales_filter=sales_filter,
@@ -602,6 +687,7 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
       await cache.save_results({"results": enriched, "meta": meta})
     _progress["done"] = _progress["total"]
     _progress["status"] = "done"
+    asyncio.create_task(_schedule_lazy_ai(force=True))
   except Exception as exc:  # noqa: BLE001
     _progress["status"] = "error"
     _progress["error"] = str(exc)
@@ -670,7 +756,7 @@ async def clients_page(
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
-  await _ensure_moysklad_data()
+  await _hydrate_moysklad_from_cache()
   return templates.TemplateResponse(
     "clients.html",
     {
@@ -707,7 +793,7 @@ async def clients_table_partial(
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
-  await _ensure_moysklad_data()
+  await _hydrate_moysklad_from_cache()
   return templates.TemplateResponse(
     "partials/clients_table.html",
     await _clients_ctx_with_tg(
@@ -1313,6 +1399,8 @@ async def moysklad_sync(request: Request) -> HTMLResponse:
     force_refresh=True,
     fetch_positions=True,
   )
+  if result.success:
+    asyncio.create_task(_schedule_lazy_ai(force=True))
   healthy = await client.health_check() if client.enabled else False
   return templates.TemplateResponse(
     "partials/moysklad_status.html",

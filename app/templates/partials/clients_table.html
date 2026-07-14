@@ -39,7 +39,7 @@
     <tbody>
       {% for row in clients %}
       {% set cid = row.get('UUID') or row.get('Наименование') %}
-      <tr>
+      <tr data-client-id="{{ cid }}">
         <td>
           <button class="btn-icon expand-btn" title="Заказы"
                   hx-get="/clients/{{ cid }}/orders"
@@ -47,7 +47,7 @@
                   hx-swap="innerHTML">▾</button>
         </td>
         {% for col in client_columns %}
-        <td{% if col == 'Группы' %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% endif %}>
+        <td{% if col == 'Группы' %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% endif %} data-col="{{ col }}">
           {% set value = client_cell_value(row, col) %}
           {% if col == 'Наименование' %}
           <button type="button" class="client-name-link"

@@ -43,6 +43,10 @@
             hx-swap="innerHTML">↻ Мой Склад</button>
     {% endif %}
     <button type="button" class="btn secondary small"
+            hx-post="/clients/ai/start"
+            hx-target="#ai-progress-block"
+            hx-swap="outerHTML">⟳ Пересегментировать</button>
+    <button type="button" class="btn secondary small"
             hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
             hx-target="#enrich-progress-block"
             hx-swap="outerHTML"
@@ -64,6 +68,7 @@
   {% include 'partials/clients_pagination.html' %}
   {% endif %}
   <div id="clients-sync-status"></div>
+  {% include 'partials/ai_progress.html' %}
   {% include 'partials/enrich_progress.html' %}
 </section>
 
@@ -91,4 +96,8 @@
 </aside>
 
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/clients_ws.js?v=1"></script>
 {% endblock %}

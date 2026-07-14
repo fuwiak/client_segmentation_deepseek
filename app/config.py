@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     ai_max_retries: int = 2
     ai_temperature: float = 0.2
     ai_timeout_seconds: int = 120
+    ai_auto_segment: bool = True
+    ai_lazy_batch_size: int = 5
 
     enrichment_chat_limit: int = 50
     enrichment_batch_size: int = 5

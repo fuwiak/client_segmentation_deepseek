@@ -76,6 +76,16 @@ class DataHub:
     self.meta = meta
     self.results_from_cache = False
 
+  def upsert_results(self, rows: list[dict[str, Any]]) -> None:
+    """Добавить или обновить AI-результаты по ключу строки (lazy evaluation)."""
+    if not rows:
+      return
+    by_key = {_row_key(r): enrich_row_computed(r) for r in self.results}
+    for row in rows:
+      by_key[_row_key(row)] = enrich_row_computed(row)
+    self.results = list(by_key.values())
+    self.results_from_cache = False
+
   def apply_cached_results(self, payload: dict[str, Any]) -> bool:
     results = payload.get("results")
     if not results:

@@ -2,6 +2,11 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws websockets"
 healthcheckPath = "/health"
 restartPolicyType = "on_failure"
+
+# Railway (рекомендуется для прода):
+# 1. Redis plugin → REDIS_URL (кэш синка МойСклад + AI, переживает рестарт)
+# 2. PostgreSQL plugin → DATABASE_URL + DB_PERSIST_ENABLED=true
+# 3. Variables: MOYSKLAD_ENABLED=true, MOYSKLAD_AUTO_SYNC=true, AI_AUTO_SEGMENT=true
