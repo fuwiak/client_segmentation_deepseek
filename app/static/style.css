@@ -1459,6 +1459,11 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .clients-table-wide .muted-cell { color: var(--muted); font-size: 12px; }
 .tag-chip.ai-chip { background: var(--primary-soft); color: var(--primary); }
 
+.mobile-status-strip {
+  padding: var(--sm) 0 var(--md);
+  flex-wrap: wrap;
+}
+
 /* ---- Responsive --------------------------------------------------------- */
 
 @media (max-width: 900px) {
