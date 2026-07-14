@@ -33,7 +33,7 @@
 
 <section class="client-section kpi-inline">
   <div><span class="kpi-label">Средний чек</span><span class="kpi-value sm">{{ format_money_rub(client.get('Средний чек')) }}</span></div>
-  <div><span class="kpi-label">Заказов</span><span class="kpi-value sm">{{ client.get('Всего заказов') or client.get('_orders_count') or 0 }}</span></div>
+  <div><span class="kpi-label">Заказов</span><span class="kpi-value sm">{{ orders_total|default(client.get('Всего заказов') or client.get('_orders_count') or 0) }}</span></div>
   <div><span class="kpi-label">ВИП</span><span class="kpi-value sm">{{ client.get('ВИП') or 'нет' }}</span></div>
   <div><span class="kpi-label">Лояльность</span><span class="kpi-value sm">{{ display_cell_value(client.get('Баллы начисленные')) }}{% if client.get('Баллы начисленные') is not none and client.get('Баллы начисленные') != '' %} б.{% endif %}</span></div>
 </section>
@@ -52,7 +52,7 @@
   <button class="btn secondary small"
           hx-get="/clients/{{ client_id }}/orders"
           hx-target="#client-orders-list"
-          hx-swap="innerHTML">Все заказы ({{ orders_total|default(client.get('Всего заказов') or client.get('_orders_count') or orders|length) }})</button>
+          hx-swap="innerHTML">Все заказы ({{ orders_total|default(0) }})</button>
   <div id="client-orders-list"></div>
 </section>
 {% endif %}

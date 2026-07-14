@@ -16,7 +16,7 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -273,7 +273,7 @@ class DataHub:
     if not row:
       return None, [], 0
     orders = self.resolve_order_entities(row.get("_orders_context") or [])
-    total = int(row.get("_orders_count") or len(orders))
+    total = order_count_for_row(row)
     return row, orders, total
 
   def sync_orders_context_from_order_rows(self) -> None:

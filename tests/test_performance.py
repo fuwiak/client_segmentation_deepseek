@@ -63,6 +63,37 @@ def test_clients_page_skips_relink_and_lazy_ai() -> None:
     lazy_ai_mock.assert_not_called()
 
 
+def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "UUID": "cp-drawer",
+        "Наименование": "Тест",
+        "Всего заказов": "—",
+        "_orders_context": [{"№": "42", "Дата": "2026-03-01", "Сумма": 1000, "Статус": "OK"}],
+      }],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock):
+    client = TestClient(m.app)
+    response = client.get(
+      "/clients/cp-drawer?drawer=1",
+      headers={"HX-Request": "true"},
+    )
+  assert response.status_code == 200
+  assert "Все заказы (1)" in response.text
+  assert "rules-drawer-header" in response.text
+
+
 def test_client_orders_uses_cache_only_hydrate() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook

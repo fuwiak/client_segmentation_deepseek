@@ -47,7 +47,7 @@ from app.services.export_format import (
   merge_enriched_rows,
   row_for_export,
 )
-from app.services.fields import enrich_row_computed, finalize_ai_coverage_row
+from app.services.fields import enrich_row_computed, finalize_ai_coverage_row, order_count_for_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import (
@@ -1003,9 +1003,7 @@ async def client_card(
       _ctx(request, message="Клиент не найден"),
     )
   orders = hub.resolve_order_entities(client.get("_orders_context") or [])
-  orders_total = int(
-    client.get("_orders_count") or client.get("Всего заказов") or len(orders)
-  )
+  orders_total = order_count_for_row(client)
   template = "partials/client_card_drawer.html" if drawer else "partials/client_card.html"
   return templates.TemplateResponse(
     template,
