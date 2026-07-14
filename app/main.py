@@ -479,6 +479,8 @@ async def _clients_ctx_with_tg(
   order: str = "asc",
   page: int = 1,
 ) -> dict[str, Any]:
+  if hub.parsed and hub.parsed.meta.get("source") == "moysklad":
+    hub.relink_orders()
   rows = hub.filter_rows(
     sales_filter=sales_filter,
     tag=tag,

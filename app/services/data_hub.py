@@ -6,7 +6,7 @@ from typing import Any
 
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
 from app.services.export_format import merge_enriched_rows, row_keyword_text, row_matches_phone, sort_client_rows
-from app.services.fields import enrich_row_computed
+from app.services.fields import enrich_row_computed, refresh_row_for_display
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -32,9 +32,14 @@ class DataHub:
     if orders and orders.rows:
       self.parsed = enrich_with_orders(contragents, orders)
 
+  def relink_orders(self) -> None:
+    """Перепривязать заказы к контрагентам (обновление каналов и статистики)."""
+    if self.parsed and self.orders_parsed and self.orders_parsed.rows:
+      self.parsed = enrich_with_orders(self.parsed, self.orders_parsed)
+
   def active_rows(self) -> list[dict[str, Any]]:
     if self.parsed and self.parsed.rows:
-      base = [enrich_row_computed(r) for r in self.parsed.rows]
+      base = [refresh_row_for_display(r) for r in self.parsed.rows]
       if self.results:
         return merge_enriched_rows(base, self.results, key_fn=_row_key)
       return base

@@ -249,12 +249,26 @@ def empty_fillable_columns(row: dict[str, Any]) -> list[str]:
 
 
 def finalize_ai_coverage_row(row: dict[str, Any]) -> dict[str, Any]:
-  """После AI/обогащения пометить незаполненные поля как no data."""
-  if not row.get("_ai_processed"):
-    return row
-  merged = dict(row)
+  """После AI/обогащения пометить незаполненные AI-поля как no data."""
+  merged = refresh_row_for_display(row)
+  if not merged.get("_ai_processed"):
+    return merged
   unknown = [col for col in AI_FILLABLE_COLUMNS if is_empty_cell(merged.get(col))]
   merged["_ai_unknown_fields"] = unknown
+  return merged
+
+
+def refresh_row_for_display(row: dict[str, Any]) -> dict[str, Any]:
+  """Пересчитать поля из заказов МойСклад и убрать ложные AI-метки."""
+  merged = enrich_row_computed(dict(row))
+  unknown = list(merged.get("_ai_unknown_fields") or [])
+  if unknown:
+    merged["_ai_unknown_fields"] = [
+      col for col in unknown
+      if col in AI_FILLABLE_COLUMNS and is_empty_cell(merged.get(col))
+    ]
+    if not merged["_ai_unknown_fields"]:
+      merged.pop("_ai_unknown_fields", None)
   return merged
 
 

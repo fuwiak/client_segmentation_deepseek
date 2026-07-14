@@ -20,15 +20,17 @@ def test_empty_fillable_columns_skips_filled_values() -> None:
         "UUID": "1",
         "Наименование": "Иван",
         "Телефон": "+7999",
-        "ИНН": "",
-        "E-mail": None,
+        "Группы": "vip",
+        "Заказчик или получатель": "",
+        "ТГ ник": None,
     }
     empty = empty_fillable_columns(row)
     assert "UUID" not in empty
     assert "Наименование" not in empty
     assert "Телефон" not in empty
-    assert "ИНН" in empty
-    assert "E-mail" in empty
+    assert "Группы" not in empty
+    assert "Заказчик или получатель" in empty
+    assert "ТГ ник" in empty
 
 
 def test_finalize_marks_unknown_after_ai_processing() -> None:
@@ -36,15 +38,15 @@ def test_finalize_marks_unknown_after_ai_processing() -> None:
         "UUID": "1",
         "Наименование": "Иван",
         "Телефон": "+7999",
-        "ИНН": "",
-        "E-mail": "",
+        "Заказчик или получатель": "",
+        "ТГ ник": "",
         "_ai_processed": True,
         "_ai_fields": ["Группы"],
         "Группы": "премиум",
     }
     result = finalize_ai_coverage_row(row)
-    assert "ИНН" in result["_ai_unknown_fields"]
-    assert "E-mail" in result["_ai_unknown_fields"]
+    assert "Заказчик или получатель" in result["_ai_unknown_fields"]
+    assert "ТГ ник" in result["_ai_unknown_fields"]
     assert "Группы" not in result["_ai_unknown_fields"]
     assert "Телефон" not in result["_ai_unknown_fields"]
 
@@ -57,21 +59,21 @@ def test_finalize_skips_when_not_processed() -> None:
 
 def test_client_cell_value_returns_no_data_label() -> None:
     row = {
-        "ИНН": "",
-        "_ai_unknown_fields": ["ИНН"],
+        "ТГ ник": "",
+        "_ai_unknown_fields": ["ТГ ник"],
     }
-    assert client_cell_value(row, "ИНН") == AI_NO_DATA_LABEL
+    assert client_cell_value(row, "ТГ ник") == AI_NO_DATA_LABEL
 
 
 def test_client_cell_state_running_before_ai() -> None:
-    row = {"Пол": "", "_ai_processed": False}
-    assert client_cell_state(row, "Пол") == "running"
-    assert client_cell_value(row, "Пол") == AI_RUNNING_LABEL
+    row = {"ТГ ник": "", "_ai_processed": False}
+    assert client_cell_state(row, "ТГ ник") == "running"
+    assert client_cell_value(row, "ТГ ник") == AI_RUNNING_LABEL
 
 
 def test_client_cell_state_empty_after_ai() -> None:
-    row = {"Пол": "Женский", "_ai_processed": True}
-    assert client_cell_state(row, "Пол") == "value"
+    row = {"Канал продаж": "Ozon", "_ai_processed": True}
+    assert client_cell_state(row, "Канал продаж") == "value"
 
 
 def test_is_empty_cell() -> None:

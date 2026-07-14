@@ -31,7 +31,7 @@ def test_parse_ai_response_marks_only_newly_filled_fields() -> None:
     assert "ТГ ник" not in ai_fields
 
 
-def test_parse_ai_response_fills_extended_empty_fields() -> None:
+def test_parse_ai_response_fills_segment_columns_only() -> None:
     service = _service()
     rows = [
         {
@@ -48,9 +48,10 @@ def test_parse_ai_response_fills_extended_empty_fields() -> None:
 
     result = service._parse_ai_response(content, rows)[0]
 
-    assert result["ИНН"] == "7701234567"
-    assert "ИНН" in result["_ai_fields"]
+    assert result["Группы"] == "корпоративный"
     assert "Группы" in result["_ai_fields"]
+    assert result.get("ИНН") in ("", None)
+    assert "ИНН" not in result["_ai_fields"]
 
 
 def test_parse_ai_response_marks_ai_returned_fields() -> None:

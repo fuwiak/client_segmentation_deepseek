@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.services.excel_parser import ParsedWorkbook
 from app.services.export_format import (
     build_clients_query,
+    client_cell_value,
     export_columns,
     format_messenger_history,
     row_for_export,
@@ -65,3 +66,27 @@ def test_sort_client_rows_numeric() -> None:
     ]
     sorted_rows = sort_client_rows(rows, "Всего заказов", "asc")
     assert [r["Наименование"] for r in sorted_rows] == ["B", "A", "C"]
+
+
+def test_merge_enriched_rows_preserves_moysklad_sales_channel() -> None:
+    from app.services.export_format import merge_enriched_rows
+
+    base = [{
+        "UUID": "1",
+        "Наименование": "Клиент",
+        "_orders_context": [{"Дата": "2026-06-23T19:04:00", "Канал продаж": "Ozon"}],
+        "Канал продаж": "Ozon",
+        "Тип карала продаж": "Ozon",
+    }]
+    enriched = [{
+        "UUID": "1",
+        "Наименование": "Клиент",
+        "_ai_processed": True,
+        "_ai_unknown_fields": ["Канал продаж", "Тип карала продаж", "ТГ ник"],
+        "Группы": "премиум",
+    }]
+    merged = merge_enriched_rows(base, enriched, key_fn=lambda r: r["UUID"])
+    assert merged[0]["Канал продаж"] == "Ozon"
+    assert merged[0]["Тип карала продаж"] == "Ozon"
+    assert "Канал продаж" not in (merged[0].get("_ai_unknown_fields") or [])
+    assert client_cell_value(merged[0], "Канал продаж") == "Ozon"

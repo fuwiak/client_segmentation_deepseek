@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from app.services.telegram_export import tg_conversation_label
-from app.services.fields import AI_NO_DATA_LABEL, is_empty_cell
+from app.services.fields import AI_NO_DATA_LABEL, is_empty_cell, refresh_row_for_display
 
 from app.services.excel_parser import (
     AI_EXTRA_COLUMNS,
@@ -269,12 +269,66 @@ def merge_enriched_rows(
     *,
     key_fn: Any,
 ) -> list[dict[str, Any]]:
+    from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
+
+    ai_overlay_keys = frozenset(SEGMENT_COLUMNS + AI_EXTRA_COLUMNS + [
+        "Фамилия (для ИП и физ. лиц)",
+        "Имя (для ИП и физ. лиц)",
+        "Отчество (для ИП и физ. лиц)",
+        "E-mail",
+        "Дата рождения",
+    ])
+    ai_meta_keys = frozenset({
+        "_ai_fields",
+        "_enrichment_fields",
+        "_ai_processed",
+        "_ai_original",
+        "_messenger_context",
+        "_tg_export_context",
+        "_tg_export_meta",
+    })
+    preserve_from_base = (
+        "_orders_context",
+        "_orders_count",
+        "_ordered_positions",
+        "Заказанные позиции",
+        "Всего заказов",
+        "Средний чек",
+        "Дата последнего заказа",
+        "Баллы начисленные",
+        "Канал продаж",
+        "Тип карала продаж",
+        "Статус",
+        "Наименование",
+        "Телефон",
+        "Фактический адрес",
+        "Фактический адрес (Комментарий)",
+        "Тип контрагента",
+        "Пол",
+        "E-mail",
+        "Группы",
+    )
+
     enriched_map = {key_fn(r): r for r in enriched}
     merged: list[dict[str, Any]] = []
     for row in all_rows:
         key = key_fn(row)
         if key in enriched_map:
-            merged.append(enriched_map[key])
+            base = dict(row)
+            overlay = enriched_map[key]
+            combined = dict(base)
+            for field, value in overlay.items():
+                if field in ai_meta_keys:
+                    combined[field] = value
+                elif field in ai_overlay_keys and not is_empty_cell(value):
+                    combined[field] = value
+                elif field.startswith("_"):
+                    combined[field] = value
+            for field in preserve_from_base:
+                base_val = base.get(field)
+                if not is_empty_cell(base_val) and is_empty_cell(combined.get(field)):
+                    combined[field] = base_val
+            merged.append(refresh_row_for_display(combined))
         else:
-            merged.append(row)
+            merged.append(refresh_row_for_display(row))
     return merged
