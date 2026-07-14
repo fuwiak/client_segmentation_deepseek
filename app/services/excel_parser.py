@@ -334,6 +334,10 @@ def enrich_with_orders(
         if related:
             copy["_orders_context"] = related[:20]
             copy["_orders_count"] = len(related)
+            copy["_order_channels_all"] = [
+                str(order.get("Канал продаж") or "").strip()
+                for order in related
+            ]
             aggregated = aggregate_client_positions(related)
             if aggregated:
                 copy["_ordered_positions"] = aggregated

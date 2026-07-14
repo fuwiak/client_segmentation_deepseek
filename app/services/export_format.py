@@ -301,7 +301,13 @@ def sales_channel_types_index(order_rows: list[dict[str, Any]]) -> dict[str, str
 
     index: dict[str, str] = {}
     for agent_id, orders in orders_by_agent.items():
-        label = sales_channel_type_for_row({"_orders_context": orders})
+        label = sales_channel_type_for_row({
+            "_orders_context": orders,
+            "_order_channels_all": [
+                str(order.get("Канал продаж") or "").strip()
+                for order in orders
+            ],
+        })
         if label:
             index[agent_id] = label
     return index
@@ -450,11 +456,13 @@ def merge_enriched_rows(
     overlay_skip_keys = frozenset({
         "_orders_context",
         "_orders_count",
+        "_order_channels_all",
         "_ordered_positions",
     })
     preserve_from_base = (
         "_orders_context",
         "_orders_count",
+        "_order_channels_all",
         "_ordered_positions",
         "Заказанные позиции",
         "Всего заказов",

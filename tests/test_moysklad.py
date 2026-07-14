@@ -138,6 +138,7 @@ async def test_sync_moysklad_to_hub_populates_data_hub() -> None:
     client.enabled = True
     client.get_entity_count = AsyncMock(return_value=1)
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
+    client.fetch_all_sales_channels = AsyncMock(return_value=[])
     client.fetch_all_customer_orders = AsyncMock(return_value=[SAMPLE_ORDER])
     client.fetch_positions_for_orders = AsyncMock(
         return_value={"order-uuid-1": [SAMPLE_POSITION]}
@@ -221,6 +222,7 @@ async def test_sync_moysklad_rejects_stale_partial_cache() -> None:
     client.enabled = True
     client.get_entity_count = AsyncMock(side_effect=[9850, 100])
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
+    client.fetch_all_sales_channels = AsyncMock(return_value=[])
     client.fetch_all_customer_orders = AsyncMock(return_value=[])
     client.fetch_positions_for_orders = AsyncMock(return_value={})
 
@@ -247,6 +249,7 @@ async def test_sync_moysklad_saves_to_cache_after_api() -> None:
     client.enabled = True
     client.get_entity_count = AsyncMock(side_effect=[9850, 100])
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
+    client.fetch_all_sales_channels = AsyncMock(return_value=[])
     client.fetch_all_customer_orders = AsyncMock(return_value=[SAMPLE_ORDER])
     client.fetch_positions_for_orders = AsyncMock(return_value={})
 

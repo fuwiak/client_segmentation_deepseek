@@ -67,15 +67,38 @@ def test_direct_sales_channels() -> None:
         assert sales_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
 
 
-def test_sales_channel_type_hybrid_from_orders() -> None:
+def test_sales_channel_type_marketplace_if_any_order_not_direct() -> None:
     row = {
         "UUID": "1",
         "_orders_context": [
             {"Канал продаж": "Ozon"},
             {"Канал продаж": "Витрина"},
         ],
+        "_order_channels_all": ["Ozon", "Витрина"],
     }
-    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_MARKETPLACE
+
+
+def test_sales_channel_type_direct_only_for_whitelist_channels() -> None:
+    row = {
+        "UUID": "2",
+        "_order_channels_all": [
+            "Telegram",
+            "WhatsApp/MAX",
+            "Витрина",
+            "Прямые продажи",
+            "Сайт vereskflowers.ru",
+        ],
+    }
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_DIRECT
+
+
+def test_sales_channel_type_marketplace_for_missing_channel() -> None:
+    row = {
+        "UUID": "3",
+        "_order_channels_all": ["Витрина", ""],
+    }
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_MARKETPLACE
 
 
 @pytest.mark.parametrize(

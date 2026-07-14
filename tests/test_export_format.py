@@ -147,7 +147,7 @@ def test_collect_group_counts_includes_sales_channel_types() -> None:
 
 def test_row_has_group_matches_sales_channel_type() -> None:
     from app.services.export_format import row_has_group
-    from app.services.fields import SALES_CHANNEL_TYPE_HYBRID
+    from app.services.fields import SALES_CHANNEL_TYPE_MARKETPLACE
 
     row = {
         "UUID": "cp-1",
@@ -156,7 +156,7 @@ def test_row_has_group_matches_sales_channel_type() -> None:
             {"Канал продаж": "Витрина"},
         ],
     }
-    assert row_has_group(row, SALES_CHANNEL_TYPE_HYBRID) is True
+    assert row_has_group(row, SALES_CHANNEL_TYPE_MARKETPLACE) is True
 
 
 def test_sort_client_rows_numeric() -> None:

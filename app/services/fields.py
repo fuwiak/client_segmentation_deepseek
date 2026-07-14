@@ -130,12 +130,37 @@ def _order_channels(row: dict[str, Any]) -> list[str]:
     if ch and str(ch).strip():
       channels.append(str(ch).strip())
   if not channels:
-    for key in ("Канал продаж", SALES_CHANNEL_TYPE_KEY, LEGACY_SALES_CHANNEL_TYPE_KEY):
-      ch = row.get(key)
-      if ch and str(ch).strip() and not _looks_like_sales_type_label(str(ch)):
-        channels.append(str(ch).strip())
-        break
+    ch = row.get("Канал продаж")
+    if ch and str(ch).strip() and not _looks_like_sales_type_label(str(ch)):
+      channels.append(str(ch).strip())
   return channels
+
+
+def _order_channels_for_type(row: dict[str, Any]) -> list[str]:
+  """Канал продаж по каждому заказу (пустая строка, если не задан)."""
+  stored = row.get("_order_channels_all")
+  if isinstance(stored, list):
+    return [str(ch).strip() if ch is not None else "" for ch in stored]
+  channels: list[str] = []
+  for order in row.get("_orders_context") or []:
+    ch = order.get("Канал продаж")
+    channels.append(str(ch).strip() if ch else "")
+  if channels:
+    return channels
+  ch = row.get("Канал продаж")
+  if ch and str(ch).strip() and not _looks_like_sales_type_label(str(ch)):
+    return [str(ch).strip()]
+  return []
+
+
+def sales_channel_type_from_channels(channels: list[str]) -> str:
+  """Прямые продажи только если каждый заказ из белого списка каналов."""
+  if not channels:
+    return SALES_CHANNEL_TYPE_DIRECT
+  for channel in channels:
+    if not channel or not is_direct_sales_channel(channel):
+      return SALES_CHANNEL_TYPE_MARKETPLACE
+  return SALES_CHANNEL_TYPE_DIRECT
 
 
 def unique_sales_channels(row: dict[str, Any]) -> list[str]:
@@ -152,46 +177,15 @@ def unique_sales_channels(row: dict[str, Any]) -> list[str]:
 
 def unique_sales_channel_types(row: dict[str, Any]) -> list[str]:
   """Тип канала продаж клиента (если есть данные для определения)."""
-  explicit = (
-    row.get(SALES_CHANNEL_TYPE_KEY)
-    or row.get(LEGACY_SALES_CHANNEL_TYPE_KEY)
-    or row.get("Тип продаж")
-  )
-  if explicit and str(explicit).strip():
-    return [sales_channel_type_for_row(row)]
-  if _order_channels(row):
-    return [sales_channel_type_for_row(row)]
-  return []
+  channels = _order_channels_for_type(row)
+  if not channels:
+    return []
+  return [sales_channel_type_from_channels(channels)]
 
 
 def sales_channel_type_for_row(row: dict[str, Any]) -> str:
   """Тип канала продаж по всем заказам контрагента."""
-  explicit = (
-    row.get(SALES_CHANNEL_TYPE_KEY)
-    or row.get(LEGACY_SALES_CHANNEL_TYPE_KEY)
-  )
-  if explicit and _looks_like_sales_type_label(str(explicit)):
-    text = str(explicit).strip().lower().replace("ё", "е")
-    if SALES_CHANNEL_TYPE_HYBRID in text or (
-      "прямы" in text and "маркет" in text
-    ):
-      return SALES_CHANNEL_TYPE_HYBRID
-    if "маркет" in text:
-      return SALES_CHANNEL_TYPE_MARKETPLACE
-    return SALES_CHANNEL_TYPE_DIRECT
-
-  types_seen: set[str] = set()
-  for channel in _order_channels(row):
-    types_seen.add(channel_type_from_channel(channel))
-  if not types_seen:
-    return SALES_CHANNEL_TYPE_DIRECT
-  has_marketplace = SALES_CHANNEL_TYPE_MARKETPLACE in types_seen
-  has_direct = SALES_CHANNEL_TYPE_DIRECT in types_seen
-  if has_marketplace and has_direct:
-    return SALES_CHANNEL_TYPE_HYBRID
-  if has_marketplace:
-    return SALES_CHANNEL_TYPE_MARKETPLACE
-  return SALES_CHANNEL_TYPE_DIRECT
+  return sales_channel_type_from_channels(_order_channels_for_type(row))
 
 
 def sales_type_for_row(row: dict[str, Any]) -> str:

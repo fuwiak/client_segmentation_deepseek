@@ -21,7 +21,7 @@ from app.services.moysklad.mapper import (
 if TYPE_CHECKING:
     from app.services.cache import CacheService
 
-MOYSKLAD_SYNC_SCHEMA_VERSION = 6
+MOYSKLAD_SYNC_SCHEMA_VERSION = 7
 
 
 @dataclass

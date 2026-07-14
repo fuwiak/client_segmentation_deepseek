@@ -96,6 +96,7 @@ class DataHub:
         not in (
           "_orders_context",
           "_orders_count",
+          "_order_channels_all",
           "_ordered_positions",
           "Заказанные позиции",
         )
