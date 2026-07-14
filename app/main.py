@@ -38,6 +38,7 @@ from app.services.export_format import (
   build_clients_query,
   client_cell_state,
   client_cell_value,
+  compact_orders_for_display,
   display_cell_value,
   export_columns,
   merge_enriched_rows,
@@ -64,9 +65,12 @@ from app.services.tag_rules import (
 from app.services.tag_explanations import explain_tags_for_row
 from app.services.telegram_export import parse_telegram_export_file
 from app.services.telegram_bot import get_telegram_client
+from app.services.db_persist import get_db_persist
 
 settings = get_settings()
 cache = get_cache(settings)
+db_persist = get_db_persist(settings)
+cache.attach_db_persist(db_persist)
 hub = get_data_hub()
 repo = get_repository()
 dashboard_svc = DashboardService()
@@ -186,14 +190,35 @@ async def _bootstrap_telegram_export() -> None:
 
 
 async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
-  """Подгрузить результаты сегментации из Redis/in-memory в hub."""
+  """Подгрузить результаты сегментации из Redis/Postgres в hub."""
   if hub.results:
     return True
   key = workbook_key or hub.workbook_hash
-  cached = await cache.get_segmentation_results(key)
+  cached = await cache.get_segmentation_results_with_fallback(key)
   if not cached:
     return False
   return hub.apply_cached_results(cached)
+
+
+async def _backfill_postgres_from_redis() -> None:
+  """Один раз перенести текущий Redis-снимок в Postgres (если БД пустая)."""
+  if not db_persist.enabled:
+    return
+  await db_persist.init_schema()
+  existing = await db_persist.load_moysklad_sync()
+  if not existing:
+    ms = await cache.get_moysklad_sync()
+    if ms:
+      await db_persist.persist_moysklad_sync(ms)
+  seg = await cache.get_segmentation_results()
+  if seg and not await db_persist.load_segmentation_results():
+    await db_persist.persist_segmentation_results(seg)
+  tag_rules = await cache.get_tag_rules()
+  if tag_rules:
+    await db_persist.persist_auxiliary("tag_rules:v1", tag_rules)
+  tg_index = await cache.get_telegram_export_index()
+  if tg_index:
+    await db_persist.persist_auxiliary("telegram_export:index", tg_index)
 
 
 async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
@@ -257,8 +282,11 @@ async def startup_hydrate_cache() -> None:
 
 async def _startup_all() -> None:
   try:
+    if db_persist.enabled:
+      await db_persist.init_schema()
     await hydrate_tag_rules(cache)
     await _hydrate_hub_from_cache()
+    await _backfill_postgres_from_redis()
     await _startup_background()
   except Exception:  # noqa: BLE001
     pass
@@ -266,7 +294,15 @@ async def _startup_all() -> None:
 
 @app.get("/health")
 async def healthcheck() -> JSONResponse:
-  return JSONResponse({"status": "ok"})
+  postgres_ok = await db_persist.ping() if db_persist.enabled else False
+  return JSONResponse(
+    {
+      "status": "ok",
+      "cache_backend": cache.backend_kind,
+      "postgres_enabled": db_persist.enabled,
+      "postgres_ok": postgres_ok,
+    }
+  )
 
 
 def _workflow_ctx() -> dict[str, Any]:
@@ -342,6 +378,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "telegram_bot_username": settings.telegram_bot_username,
     "messenger_enabled": settings.messenger_enabled,
     "cache_backend": cache.backend_kind,
+    "postgres_enabled": db_persist.enabled,
     "results_from_cache": hub.results_from_cache,
     **_workflow_ctx(),
     **extra,
@@ -684,11 +721,12 @@ async def tag_rules_save(request: Request) -> HTMLResponse:
   )
 
 
-async def _refresh_client_orders() -> None:
+async def _ensure_hub_ready() -> None:
+  """Подгрузить hub из кэша, если данных ещё нет (без relink по всей базе)."""
+  if hub.has_parsed_data():
+    return
   await _hydrate_hub_from_cache()
-  await _ensure_moysklad_data()
-  if hub.parsed and hub.parsed.meta.get("source") == "moysklad":
-    hub.relink_orders()
+  await _ensure_moysklad_data(fetch_positions=False)
 
 
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
@@ -697,7 +735,7 @@ async def client_card(
   client_id: str,
   drawer: bool = Query(False),
 ) -> HTMLResponse:
-  await _refresh_client_orders()
+  await _ensure_hub_ready()
   client = hub.get_client(client_id)
   if not client:
     return templates.TemplateResponse(
@@ -720,12 +758,26 @@ async def client_orders(
 ) -> HTMLResponse:
   if collapsed:
     return HTMLResponse("")
-  await _refresh_client_orders()
   client = hub.get_client(client_id)
-  orders = (client or {}).get("_orders_context") or []
+  if not client:
+    await _ensure_hub_ready()
+    client = hub.get_client(client_id)
+  if not client:
+    return HTMLResponse(
+      '<div class="orders-nested orders-nested-empty">Клиент не найден</div>'
+    )
+  raw_orders = client.get("_orders_context") or []
+  total = int(client.get("_orders_count") or len(raw_orders))
+  orders = compact_orders_for_display(raw_orders)
   return templates.TemplateResponse(
     "partials/client_orders.html",
-    _ctx(request, client=client, orders=orders, client_id=client_id),
+    _ctx(
+      request,
+      client=client,
+      orders=orders,
+      orders_total=total,
+      client_id=client_id,
+    ),
   )
 
 

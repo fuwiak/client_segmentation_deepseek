@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
     repository_backend: str = "memory"
     database_url: str = ""
+    db_persist_enabled: bool = False
 
     # --- Кэш загруженных Excel (Redis на Railway, иначе in-memory) ---
     redis_url: str = ""

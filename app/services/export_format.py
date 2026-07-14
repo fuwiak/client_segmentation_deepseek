@@ -344,3 +344,68 @@ def merge_enriched_rows(
         else:
             merged.append(refresh_row_for_display(row))
     return merged
+
+
+def _format_order_amount(value: Any) -> str:
+    if value in (None, ""):
+        return "—"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if num >= 1000:
+        formatted = f"{num:,.0f}".replace(",", "\u202f")
+        return f"{formatted} ₽"
+    if num.is_integer():
+        return f"{int(num)} ₽"
+    return f"{num:.2f} ₽"
+
+
+def _format_order_date(value: Any) -> str:
+    parsed = _parse_sort_date(value)
+    if parsed:
+        return parsed.strftime("%d.%m.%Y")
+    text = str(value or "").strip()
+    if not text:
+        return "—"
+    return text[:10]
+
+
+def _truncate_text(value: str, limit: int = 80) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def compact_orders_for_display(
+    orders: list[dict[str, Any]], *, limit: int = 20
+) -> list[dict[str, str | bool]]:
+    """Компактные строки заказов для быстрого HTMX-рендера."""
+    sorted_orders = sorted(
+        orders,
+        key=lambda o: _parse_sort_date(o.get("Дата") or o.get("Момент времени"))
+        or datetime.min,
+        reverse=True,
+    )
+    items: list[dict[str, str | bool]] = []
+    for order in sorted_orders[:limit]:
+        positions = _truncate_text(str(order.get("Позиции") or ""), 72)
+        comment = _truncate_text(str(order.get("Комментарий") or ""), 60)
+        channel = str(order.get("Канал продаж") or "").strip()
+        items.append(
+            {
+                "number": str(order.get("№") or order.get("Номер") or "—"),
+                "date": _format_order_date(
+                    order.get("Дата") or order.get("Момент времени")
+                ),
+                "amount": _format_order_amount(order.get("Сумма")),
+                "status": str(order.get("Статус") or order.get("Отгружено") or "—"),
+                "channel": channel,
+                "positions": positions,
+                "comment": comment,
+                "has_positions": bool(positions),
+                "has_comment": bool(comment),
+            }
+        )
+    return items

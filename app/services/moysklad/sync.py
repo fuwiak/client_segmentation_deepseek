@@ -83,7 +83,7 @@ async def _load_from_cache(
     max_counterparties: int,
     max_orders: int,
 ) -> MoySkladSyncResult | None:
-    cached = await cache.get_moysklad_sync()
+    cached = await cache.get_moysklad_sync_with_fallback()
     if not cached or not _cache_matches_limits(cached, max_counterparties, max_orders):
         return None
     counterparty_rows = cached.get("counterparty_rows") or []

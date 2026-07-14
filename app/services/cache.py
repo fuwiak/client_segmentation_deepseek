@@ -10,11 +10,15 @@ graceful fallback на процессный in-memory кэш, чтобы лок�
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import pickle
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config import Settings
+
+if TYPE_CHECKING:
+    from app.services.db_persist import DbPersistService
 
 CACHE_PREFIX = "xlsx:"
 RESULTS_PREFIX = "results:"
@@ -92,6 +96,14 @@ class RedisCache(CacheBackend):
         return "redis"
 
 
+def _schedule(coro: Any) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        pass
+
+
 class CacheService:
     """Фасад кэша: пробует Redis, иначе in-memory. Хранит разобранные workbook."""
 
@@ -99,6 +111,10 @@ class CacheService:
         self._settings = settings
         self._ttl = settings.cache_ttl_seconds
         self._backend: CacheBackend = self._make_backend()
+        self._db: DbPersistService | None = None
+
+    def attach_db_persist(self, db: DbPersistService) -> None:
+        self._db = db
 
     def _make_backend(self) -> CacheBackend:
         if self._settings.redis_url:
@@ -127,11 +143,14 @@ class CacheService:
             pass
 
     async def save_results(
-        self, payload: Any, key: str = LATEST_RESULTS_KEY
+        self, payload: Any, key: str = LATEST_RESULTS_KEY, *, persist_to_db: bool = True
     ) -> None:
         """Сохранить сгенерированные записи сегментации."""
         try:
             await self._backend.set(RESULTS_PREFIX + key, payload, self._ttl)
+            if persist_to_db and self._db and isinstance(payload, dict) and payload.get("results"):
+                full = {**payload, "workbook_key": key}
+                _schedule(self._db.persist_segmentation_results(full))
         except Exception:  # noqa: BLE001
             pass
 
@@ -145,21 +164,31 @@ class CacheService:
         self,
         workbook_key: str,
         payload: dict[str, Any],
+        *,
+        persist_to_db: bool = True,
     ) -> None:
         """Сохранить результаты по ключу workbook и как latest."""
         full = {**payload, "workbook_key": workbook_key}
-        await self.save_results(full, key=LATEST_RESULTS_KEY)
-        await self.save_results(full, key=workbook_key)
+        await self.save_results(full, key=LATEST_RESULTS_KEY, persist_to_db=persist_to_db)
+        await self.save_results(full, key=workbook_key, persist_to_db=False)
 
-    async def get_segmentation_results(
+    async def get_segmentation_results_with_fallback(
         self, workbook_key: str | None = None
     ) -> dict[str, Any] | None:
-        """Вернуть результаты для workbook или последние сохранённые."""
-        if workbook_key:
-            hit = await self.get_results(workbook_key)
-            if hit:
-                return hit
-        return await self.get_results(LATEST_RESULTS_KEY)
+        hit = await self.get_segmentation_results(workbook_key)
+        if hit:
+            return hit
+        if not self._db:
+            return None
+        hit = await self._db.load_segmentation_results(workbook_key)
+        if not hit:
+            return None
+        await self.save_segmentation_results(
+            str(hit.get("workbook_key") or workbook_key or LATEST_RESULTS_KEY),
+            {"results": hit.get("results"), "meta": hit.get("meta") or {}},
+            persist_to_db=False,
+        )
+        return hit
 
     async def save_messenger_index(self, payload: dict[str, Any]) -> None:
         try:
@@ -174,11 +203,37 @@ class CacheService:
         except Exception:  # noqa: BLE001
             return None
 
-    async def save_moysklad_sync(self, payload: dict[str, Any]) -> None:
+    async def get_segmentation_results(
+        self, workbook_key: str | None = None
+    ) -> dict[str, Any] | None:
+        """Вернуть результаты для workbook или последние сохранённые."""
+        if workbook_key:
+            hit = await self.get_results(workbook_key)
+            if hit:
+                return hit
+        return await self.get_results(LATEST_RESULTS_KEY)
+
+    async def save_moysklad_sync(
+        self, payload: dict[str, Any], *, persist_to_db: bool = True
+    ) -> None:
         try:
             await self._backend.set(MOYSKLAD_SYNC_KEY, payload, self._ttl)
+            if persist_to_db and self._db:
+                _schedule(self._db.persist_moysklad_sync(payload))
         except Exception:  # noqa: BLE001
             pass
+
+    async def get_moysklad_sync_with_fallback(self) -> dict[str, Any] | None:
+        hit = await self.get_moysklad_sync()
+        if hit:
+            return hit
+        if not self._db:
+            return None
+        hit = await self._db.load_moysklad_sync()
+        if not hit:
+            return None
+        await self.save_moysklad_sync(hit, persist_to_db=False)
+        return hit
 
     async def get_moysklad_sync(self) -> dict[str, Any] | None:
         try:
@@ -190,6 +245,8 @@ class CacheService:
     async def save_tag_rules(self, payload: list[dict[str, Any]]) -> None:
         try:
             await self._backend.set("tag_rules:v1", payload, self._ttl)
+            if self._db:
+                _schedule(self._db.persist_auxiliary("tag_rules:v1", payload))
         except Exception:  # noqa: BLE001
             pass
 
@@ -203,6 +260,8 @@ class CacheService:
     async def save_telegram_export_index(self, payload: dict[str, Any]) -> None:
         try:
             await self._backend.set("telegram_export:index", payload, self._ttl)
+            if self._db:
+                _schedule(self._db.persist_auxiliary("telegram_export:index", payload))
         except Exception:  # noqa: BLE001
             pass
 

@@ -803,6 +803,57 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .tags-cell { white-space: normal; max-width: 180px; }
 .orders-expand-row td { padding: 0; border: none; }
 .orders-nested { padding: var(--md); background: var(--canvas); }
+.orders-compact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.orders-compact-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline-soft);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.orders-compact-item:last-child { border-bottom: none; }
+.orders-compact-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+}
+.oc-num {
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 52px;
+}
+.oc-date { color: var(--muted); min-width: 72px; }
+.oc-amount { font-weight: 600; color: var(--primary); }
+.oc-status {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--hairline-soft);
+}
+.oc-channel {
+  font-size: 12px;
+  color: var(--muted);
+}
+.oc-positions, .oc-comment {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orders-compact-empty, .orders-compact-more {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.orders-nested-empty { padding: var(--md); color: var(--muted); font-size: 13px; }
 .positions-cell, .positions-summary { font-size: 13px; line-height: 1.45; max-width: 280px; }
 
 /* ---- Modals ------------------------------------------------------------- */
