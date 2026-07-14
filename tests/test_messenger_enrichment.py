@@ -158,6 +158,26 @@ def test_enrich_with_orders_matches_normalized_phone_in_name() -> None:
     assert row["_orders_context"][0]["№"] == "00042"
 
 
+def test_orders_for_client_row_matches_normalized_org_name() -> None:
+    from app.services.excel_parser import orders_for_client_row
+
+    client = {
+        "UUID": "cp-arenda",
+        "Наименование": "Аренда",
+        "Тип контрагента": "Юридическое лицо",
+    }
+    order_rows = [{
+        "№": "1001",
+        "Контрагент": "ООО Аренда",
+        "_moysklad_agent_id": "cp-arenda",
+        "Сумма": 5000,
+        "Дата": "2026-03-01",
+    }]
+    found = orders_for_client_row(client, order_rows)
+    assert len(found) == 1
+    assert found[0]["№"] == "1001"
+
+
 @pytest.mark.asyncio
 async def test_attach_messages_continues_when_telegram_sync_fails() -> None:
     settings = Settings(

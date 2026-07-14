@@ -117,6 +117,11 @@ def test_client_status_from_orders(orders: int, expected: str) -> None:
     assert order_count_for_row(row) == orders
 
 
+def test_order_count_prefers_orders_context_over_zero_stored() -> None:
+    row = {"_orders_count": 0, "Всего заказов": 0, "_orders_context": [{"№": "1"}]}
+    assert order_count_for_row(row) == 1
+
+
 def test_enrich_row_computed_sets_client_status() -> None:
     row = {"UUID": "1", "_orders_count": 5, "Статус": "Новый"}
     enriched = enrich_row_computed(row)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain import normalize_phone
-from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
+from app.services.excel_parser import ParsedWorkbook, enrich_with_orders, orders_for_client_row
 from app.services.export_format import (
   collect_group_counts,
   merge_enriched_rows,
@@ -274,7 +274,20 @@ class DataHub:
     if not row:
       return None, [], 0
     orders = self.resolve_order_entities(row.get("_orders_context") or [])
+    if not orders and self.orders_parsed and self.orders_parsed.rows:
+      found = orders_for_client_row(
+        row,
+        self.orders_parsed.rows,
+        contragent_rows=self.parsed.rows if self.parsed else None,
+      )
+      orders = self.resolve_order_entities(found)
+      if orders:
+        row["_orders_context"] = orders[:20]
+        row["_orders_count"] = len(orders)
+        self.touch()
     total = order_count_for_row(row)
+    if len(orders) > total:
+      total = len(orders)
     return row, orders, total
 
   def sync_orders_context_from_order_rows(self) -> None:

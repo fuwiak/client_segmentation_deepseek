@@ -241,15 +241,16 @@ def is_vip(row: dict[str, Any]) -> bool:
 
 
 def order_count_for_row(row: dict[str, Any]) -> int:
+  actual = len(row.get("_orders_context") or [])
+  stored = 0
   for key in ("_orders_count", "Всего заказов"):
     val = row.get(key)
     if val not in (None, ""):
       try:
-        return max(0, int(val))
+        stored = max(stored, int(val))
       except (TypeError, ValueError):
         pass
-  orders = row.get("_orders_context") or []
-  return len(orders)
+  return max(actual, stored)
 
 
 def client_status_from_orders(row: dict[str, Any]) -> str:

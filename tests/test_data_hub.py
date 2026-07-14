@@ -186,6 +186,50 @@ def test_get_client_orders_returns_context_without_active_rows_scan() -> None:
     assert total == 3
 
 
+def test_get_client_orders_finds_orders_from_cache_when_context_empty() -> None:
+    hub = DataHub()
+    orders_rows = [{
+        "№": "55",
+        "Контрагент": "Аренда",
+        "_moysklad_agent_id": "cp-arenda",
+        "Дата": "2026-03-01",
+        "Сумма": 1000,
+        "Статус": "OK",
+    }]
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[{
+                "UUID": "cp-arenda",
+                "Наименование": "Аренда",
+                "Всего заказов": 0,
+            }],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=1,
+            meta={"source": "moysklad"},
+        ),
+        ParsedWorkbook(
+            source_type="orders",
+            rows=orders_rows,
+            context_columns=["№", "Контрагент"],
+            segment_columns=[],
+            total_rows=1,
+            meta={},
+        ),
+    )
+    hub.parsed.rows[0]["_orders_context"] = []
+    hub.parsed.rows[0]["_orders_count"] = 0
+
+    client, orders, total = hub.get_client_orders("cp-arenda")
+
+    assert client is not None
+    assert len(orders) == 1
+    assert total == 1
+    assert orders[0]["№"] == "55"
+    assert client["_orders_context"][0]["№"] == "55"
+
+
 def test_touch_bumps_version_and_clears_filter_cache() -> None:
     hub = _sample_hub()
     version_before = hub.version

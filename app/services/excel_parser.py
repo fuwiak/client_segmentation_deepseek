@@ -247,18 +247,34 @@ def _register_order(bucket: dict[str, list[dict[str, Any]]], key: str | None, or
         bucket.setdefault(key, []).append(order)
 
 
+def _normalize_org_name(value: str | None) -> str:
+  text = str(value or "").strip().lower().replace("ё", "е")
+  if not text:
+    return ""
+  for prefix in ("ооо ", "оао ", "зао ", "ип ", "ао ", "пао "):
+    if text.startswith(prefix):
+      text = text[len(prefix):].strip()
+  for suffix in (" ооо", " оао", " зао", " ип", " ао", " пао"):
+    if text.endswith(suffix):
+      text = text[: -len(suffix)].strip()
+  return text
+
+
 def _client_lookup_keys(row: dict[str, Any]) -> tuple[str, set[str]]:
-    cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
-    keys: set[str] = set()
-    for raw in (row.get("Наименование"), row.get("Телефон"), row.get("Код")):
-        text = str(raw or "").strip()
-        if not text:
-            continue
-        keys.add(text.lower())
-        phone = normalize_phone(text)
-        if phone:
-            keys.add(phone)
-    return cp_id, keys
+  cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
+  keys: set[str] = set()
+  for raw in (row.get("Наименование"), row.get("Телефон"), row.get("Код")):
+    text = str(raw or "").strip()
+    if not text:
+      continue
+    keys.add(text.lower())
+    norm = _normalize_org_name(text)
+    if norm:
+      keys.add(norm)
+    phone = normalize_phone(text)
+    if phone:
+      keys.add(phone)
+  return cp_id, keys
 
 
 def _index_orders_for_clients(
@@ -283,6 +299,9 @@ def _index_orders_for_clients(
         agent_name = str(order.get("Контрагент") or "").strip()
         if agent_name:
             _register_order(by_name, agent_name.lower(), order)
+            norm_name = _normalize_org_name(agent_name)
+            if norm_name:
+                _register_order(by_name, norm_name, order)
             phone_from_name = normalize_phone(agent_name)
             if phone_from_name:
                 _register_order(by_phone, phone_from_name, order)
@@ -299,6 +318,39 @@ def _index_orders_for_clients(
                     _register_order(by_phone, phone, order)
 
     return by_agent_id, by_name, by_phone
+
+
+def orders_for_client_row(
+    row: dict[str, Any],
+    order_rows: list[dict[str, Any]],
+    *,
+    contragent_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Найти все заказы контрагента в кэше (по id, имени, телефону)."""
+    if not order_rows:
+        return []
+
+    by_agent_id, by_name, by_phone = _index_orders_for_clients(
+        order_rows,
+        contragent_rows or [row],
+    )
+    cp_id, match_keys = _client_lookup_keys(row)
+    related: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    def _add(items: list[dict[str, Any]]) -> None:
+        for item in items:
+            oid = str(item.get("№") or item.get("_moysklad_id") or id(item))
+            if oid not in seen_ids:
+                seen_ids.add(oid)
+                related.append(item)
+
+    if cp_id:
+        _add(by_agent_id.get(cp_id, []))
+    for key in match_keys:
+        _add(by_name.get(key, []))
+        _add(by_phone.get(key, []))
+    return related
 
 
 def enrich_with_orders(
