@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
-
-from app.services.fields import sales_type_from_channel
 
 PERIOD_LABELS = {
   "day": "День",
@@ -109,7 +108,69 @@ def _month_key(dt: datetime) -> str:
   return dt.strftime("%Y-%m")
 
 
+def _month_key(dt: datetime) -> str:
+  return dt.strftime("%Y-%m")
+
+
+class _DashboardCache:
+  def __init__(self, *, ttl: float = 60.0, max_items: int = 32) -> None:
+    self._ttl = ttl
+    self._max_items = max_items
+    self._store: dict[str, tuple[float, DashboardData]] = {}
+
+  def get(self, key: str) -> DashboardData | None:
+    entry = self._store.get(key)
+    if not entry:
+      return None
+    expires_at, value = entry
+    if time.monotonic() > expires_at:
+      del self._store[key]
+      return None
+    return value
+
+  def set(self, key: str, value: DashboardData) -> None:
+    if len(self._store) >= self._max_items:
+      oldest_key = min(self._store, key=lambda item: self._store[item][0])
+      del self._store[oldest_key]
+    self._store[key] = (time.monotonic() + self._ttl, value)
+
+
 class DashboardService:
+  def __init__(self, *, cache_ttl: float = 60.0) -> None:
+    self._cache = _DashboardCache(ttl=cache_ttl)
+
+  def cache_key(
+    self,
+    *,
+    hub_version: int,
+    period: str,
+    date_from: date | None,
+    date_to: date | None,
+  ) -> str:
+    return f"{hub_version}:{period}:{date_from}:{date_to}"
+
+  def compute_cached(
+    self,
+    rows: list[dict[str, Any]],
+    *,
+    hub_version: int,
+    period: str = "month",
+    date_from: date | None = None,
+    date_to: date | None = None,
+  ) -> DashboardData:
+    key = self.cache_key(
+      hub_version=hub_version,
+      period=period,
+      date_from=date_from,
+      date_to=date_to,
+    )
+    cached = self._cache.get(key)
+    if cached is not None:
+      return cached
+    data = self.compute(rows, period=period, date_from=date_from, date_to=date_to)
+    self._cache.set(key, data)
+    return data
+
   def compute(
     self,
     rows: list[dict[str, Any]],
@@ -136,8 +197,10 @@ class DashboardService:
         return period == "all"
       return a <= dt <= b
 
-    cur_orders = [o for dt, o, _ in all_orders if in_range(dt, start, end)]
-    prev_orders = [o for dt, o, _ in all_orders if in_range(dt, prev_start, prev_end)]
+    cur_order_pairs = [(dt, o) for dt, o, _ in all_orders if in_range(dt, start, end)]
+    prev_order_pairs = [(dt, o) for dt, o, _ in all_orders if in_range(dt, prev_start, prev_end)]
+    cur_orders = [o for _, o in cur_order_pairs]
+    prev_orders = [o for _, o in prev_order_pairs]
 
     cur_clients = {str(r.get("UUID") or r.get("Наименование")) for dt, _, r in all_orders if in_range(dt, start, end)}
     prev_clients = {str(r.get("UUID") or r.get("Наименование")) for dt, _, r in all_orders if in_range(dt, prev_start, prev_end)}
@@ -162,11 +225,11 @@ class DashboardService:
           buckets[k] += 1
       return sorted(buckets.items())
 
-    def monthly_revenue(orders: list[dict]) -> list[tuple[str, float]]:
+    def monthly_revenue(order_pairs: list[tuple[datetime | None, dict[str, Any]]]) -> list[tuple[str, float]]:
       buckets: dict[str, float] = defaultdict(float)
-      for dt, o, _ in all_orders:
-        if o in orders and dt:
-          buckets[_month_key(dt)] += float(o.get("Сумма") or 0)
+      for dt, order in order_pairs:
+        if dt:
+          buckets[_month_key(dt)] += float(order.get("Сумма") or 0)
       return sorted(buckets.items())
 
     data.clients = MetricBlock(
@@ -180,14 +243,14 @@ class DashboardService:
     data.orders = MetricBlock(
       total=len(cur_orders) if cur_orders else sum(int(r.get("Всего заказов") or 0) for r in rows),
       growth_pct=_growth(len(cur_orders), len(prev_orders)),
-      monthly=monthly_revenue(cur_orders) if cur_orders else [],
+      monthly=monthly_revenue(cur_order_pairs) if cur_orders else [],
     )
     rev_cur = sum_amount(cur_orders) if cur_orders else sum(float(r.get("Средний чек") or 0) * int(r.get("Всего заказов") or 0) for r in rows)
     rev_prev = sum_amount(prev_orders)
     data.revenue = MetricBlock(
       total=round(rev_cur, 2),
       growth_pct=_growth(rev_cur, rev_prev),
-      monthly=monthly_revenue(cur_orders) if cur_orders else [],
+      monthly=monthly_revenue(cur_order_pairs) if cur_orders else [],
     )
 
     mp_clients = [r for r in rows if (r.get("Тип продаж") or "") == "маркетплейс"]

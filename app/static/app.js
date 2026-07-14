@@ -88,6 +88,16 @@
     }
   }
 
+  function fallbackNavigateFromHtmxEvent(e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.closest) return;
+    var link = elt.closest("a[href]");
+    if (!link) return;
+    var href = link.getAttribute("href");
+    if (!href || href.charAt(0) !== "/" || href.indexOf("/download/") === 0) return;
+    window.location.assign(href);
+  }
+
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
     closeModal();
@@ -119,6 +129,18 @@
   document.body.addEventListener("htmx:responseError", function () {
     document.documentElement.classList.remove("is-navigating");
   });
+
+  document.body.addEventListener("htmx:sendError", function (e) {
+    document.documentElement.classList.remove("is-navigating");
+    fallbackNavigateFromHtmxEvent(e);
+  });
+
+  document.body.addEventListener("htmx:timeout", function (e) {
+    document.documentElement.classList.remove("is-navigating");
+    fallbackNavigateFromHtmxEvent(e);
+  });
+
+  document.body.addEventListener("htmx:responseError", fallbackNavigateFromHtmxEvent);
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
     if (e.detail.target && e.detail.target.id === "page-content") {

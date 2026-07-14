@@ -15,6 +15,7 @@ from app.services.data_hub import DataHub, _row_key
 from app.services.excel_parser import AI_FILLABLE_COLUMNS, CLIENT_DISPLAY_COLUMNS
 from app.services.export_format import client_cell_state, client_cell_value, display_cell_value
 from app.services.fields import enrich_row_computed, finalize_ai_coverage_row
+from app.logging_config import pipeline_log
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,14 @@ class ConnectionManager:
         await websocket.accept()
         async with self._lock:
             self._connections.add(websocket)
+            total = len(self._connections)
+        pipeline_log("WS", "client connected total=%s", total)
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
             self._connections.discard(websocket)
+            total = len(self._connections)
+        pipeline_log("WS", "client disconnected total=%s", total)
 
     async def broadcast(self, payload: dict[str, Any]) -> None:
         if not self._connections:
@@ -70,6 +75,13 @@ class ConnectionManager:
             async with self._lock:
                 for ws in dead:
                     self._connections.discard(ws)
+        pipeline_log(
+            "WS",
+            "broadcast type=%s targets=%s dead=%s",
+            payload.get("type", "-"),
+            len(targets),
+            len(dead),
+        )
 
 
 def row_ws_patch(row: dict[str, Any]) -> dict[str, Any]:
@@ -139,6 +151,7 @@ class BackgroundJobService:
     ) -> bool:
         """Запустить lazy AI в фоне, если есть необработанные строки."""
         if not settings.ai_auto_segment:
+            pipeline_log("AI", "lazy schedule skipped ai_auto_segment=false")
             return False
         pending = self.pending_ai_rows(hub)
         if not pending:
@@ -146,9 +159,12 @@ class BackgroundJobService:
                 self.ai_progress.status = "done"
                 self.ai_progress.done = self.ai_progress.total
                 await self.broadcast_progress()
+            pipeline_log("AI", "lazy schedule skipped pending=0 status=%s", self.ai_progress.status)
             return False
         if self._ai_task and not self._ai_task.done() and not force:
+            pipeline_log("AI", "lazy schedule skipped already_running pending=%s", len(pending))
             return False
+        pipeline_log("AI", "lazy schedule start pending=%s force=%s", len(pending), force)
         self._ai_task = asyncio.create_task(
             self._run_lazy_ai(hub, settings, cache, pending, messenger_attach)
         )
@@ -171,11 +187,14 @@ class BackgroundJobService:
             self.ai_progress.total = len(rows)
             self.ai_progress.error = ""
             self.ai_progress.job = "lazy_ai"
+            pipeline_log("AI", "lazy run start rows=%s", len(rows))
             await self.broadcast_progress()
 
             try:
                 if messenger_attach:
+                    pipeline_log("AI", "lazy messenger attach start rows=%s", len(rows))
                     rows = await messenger_attach(rows)
+                    pipeline_log("AI", "lazy messenger attach done rows=%s", len(rows))
 
                 service = SegmentationService(settings)
                 batch_size = max(1, settings.ai_lazy_batch_size)
@@ -183,6 +202,13 @@ class BackgroundJobService:
 
                 for i in range(0, len(rows), batch_size):
                     chunk = rows[i : i + batch_size]
+                    pipeline_log(
+                        "AI",
+                        "lazy batch start offset=%s size=%s provider=%s",
+                        i,
+                        len(chunk),
+                        "openrouter" if settings.openrouter_api_key else "heuristic",
+                    )
                     if settings.openrouter_api_key:
                         chunk_results = await service.segment_all(chunk)
                     else:
@@ -198,6 +224,13 @@ class BackgroundJobService:
                         self.ai_progress.done + len(finalized),
                     )
                     await self._persist_and_notify(hub, cache, finalized)
+                    pipeline_log(
+                        "AI",
+                        "lazy batch done offset=%s done=%s total=%s",
+                        i,
+                        self.ai_progress.done,
+                        self.ai_progress.total,
+                    )
 
                 meta = {
                     **(hub.meta or {}),
@@ -211,11 +244,13 @@ class BackgroundJobService:
                 self.ai_progress.status = "done"
                 self.ai_progress.done = self.ai_progress.total
                 await self.broadcast_progress()
+                pipeline_log("AI", "lazy run done processed=%s hub_rows=%s", len(processed), len(hub.results))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Lazy AI failed")
                 self.ai_progress.status = "error"
                 self.ai_progress.error = str(exc)
                 await self.broadcast_progress()
+                pipeline_log("AI", "lazy run failed error=%s", exc, level=logging.ERROR)
 
     async def _persist_and_notify(
         self,
@@ -223,9 +258,11 @@ class BackgroundJobService:
         cache: Any,
         rows: list[dict[str, Any]],
     ) -> None:
+        pipeline_log("CACHE", "lazy persist start rows=%s hub_rows=%s", len(rows), len(hub.results))
         await self._save_results(hub, cache)
         await self.broadcast_progress()
         await self.broadcast_rows(rows)
+        pipeline_log("CACHE", "lazy persist done rows=%s", len(rows))
 
     async def _save_results(self, hub: DataHub, cache: Any) -> None:
         payload = {"results": hub.results, "meta": hub.meta or {}}

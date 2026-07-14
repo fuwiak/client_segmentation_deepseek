@@ -6,7 +6,14 @@ from typing import Any
 
 from app.domain import normalize_phone
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
-from app.services.export_format import merge_enriched_rows, row_has_group, row_keyword_text, row_matches_phone, sort_client_rows
+from app.services.export_format import (
+  collect_group_counts,
+  merge_enriched_rows,
+  row_has_group,
+  row_keyword_text,
+  row_matches_phone,
+  sort_client_rows,
+)
 from app.services.fields import enrich_row_computed, refresh_row_for_display
 
 
@@ -22,6 +29,14 @@ class DataHub:
     self.meta: dict[str, Any] = {}
     self.workbook_hash: str | None = None
     self.results_from_cache: bool = False
+    self.version: int = 0
+    self._active_rows_cache: tuple[int, list[dict[str, Any]]] | None = None
+    self._filter_cache: dict[str, list[dict[str, Any]]] = {}
+
+  def touch(self) -> None:
+    self.version += 1
+    self._active_rows_cache = None
+    self._filter_cache.clear()
 
   def set_workbook(
     self,
@@ -32,6 +47,7 @@ class DataHub:
     self.orders_parsed = orders
     if orders and orders.rows:
       self.parsed = enrich_with_orders(contragents, orders)
+    self.touch()
 
   def relink_orders(self) -> None:
     """Перепривязать заказы к контрагентам (обновление каналов и статистики)."""
@@ -60,21 +76,29 @@ class DataHub:
       meta=dict(self.parsed.meta),
     )
     self.parsed = enrich_with_orders(contragents, self.orders_parsed)
+    self.touch()
 
   def active_rows(self) -> list[dict[str, Any]]:
+    if self._active_rows_cache and self._active_rows_cache[0] == self.version:
+      return self._active_rows_cache[1]
     if self.parsed and self.parsed.rows:
       base = [refresh_row_for_display(r) for r in self.parsed.rows]
       if self.results:
-        return merge_enriched_rows(base, self.results, key_fn=_row_key)
-      return base
-    if self.results:
-      return self.results
-    return []
+        rows = merge_enriched_rows(base, self.results, key_fn=_row_key)
+      else:
+        rows = base
+    elif self.results:
+      rows = self.results
+    else:
+      rows = []
+    self._active_rows_cache = (self.version, rows)
+    return rows
 
   def set_results(self, results: list[dict[str, Any]], meta: dict[str, Any]) -> None:
     self.results = [enrich_row_computed(r) for r in results]
     self.meta = meta
     self.results_from_cache = False
+    self.touch()
 
   def upsert_results(self, rows: list[dict[str, Any]]) -> None:
     """Добавить или обновить AI-результаты по ключу строки (lazy evaluation)."""
@@ -85,6 +109,7 @@ class DataHub:
       by_key[_row_key(row)] = enrich_row_computed(row)
     self.results = list(by_key.values())
     self.results_from_cache = False
+    self.touch()
 
   def apply_cached_results(self, payload: dict[str, Any]) -> bool:
     results = payload.get("results")
@@ -95,6 +120,7 @@ class DataHub:
     if payload.get("workbook_key"):
       self.workbook_hash = str(payload["workbook_key"])
     self.results_from_cache = True
+    self.touch()
     return True
 
   def data_source_label(self) -> str:
@@ -135,6 +161,13 @@ class DataHub:
     sort: str = "",
     order: str = "asc",
   ) -> list[dict[str, Any]]:
+    cache_key = (
+      f"{self.version}:{sales_filter}:{tag}:{group}:{status}:{q}:{phone}:{sort}:{order}"
+    )
+    cached = self._filter_cache.get(cache_key)
+    if cached is not None:
+      return cached
+
     rows = self.active_rows()
     if sales_filter == "marketplace":
       rows = [r for r in rows if r.get("Тип продаж") == "маркетплейс"]
@@ -161,7 +194,39 @@ class DataHub:
       rows = [r for r in rows if q_l in row_keyword_text(r)]
     if phone:
       rows = [r for r in rows if row_matches_phone(r, phone)]
-    return sort_client_rows(rows, sort, order)
+    rows = sort_client_rows(rows, sort, order)
+    self._filter_cache[cache_key] = rows
+    return rows
+
+  def filter_rows_with_groups(
+    self,
+    *,
+    sales_filter: str = "all",
+    tag: str = "",
+    group: str = "",
+    status: str = "",
+    q: str = "",
+    phone: str = "",
+    sort: str = "",
+    order: str = "asc",
+  ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Отфильтровать клиентов и вернуть (строки, облако групп, всего до фильтра группы)."""
+    base_rows = self.filter_rows(
+      sales_filter=sales_filter,
+      tag=tag,
+      group="",
+      status=status,
+      q=q,
+      phone=phone,
+      sort=sort,
+      order=order,
+    )
+    group_options = collect_group_counts(base_rows)
+    if group:
+      rows = [r for r in base_rows if row_has_group(r, group)]
+    else:
+      rows = base_rows
+    return rows, group_options, len(base_rows)
 
 
 _hub: DataHub | None = None

@@ -115,3 +115,26 @@ def test_get_client_matches_normalized_phone() -> None:
     client = hub.get_client("+79603002010")
     assert client is not None
     assert client["_orders_count"] == 1
+
+
+def test_touch_bumps_version_and_clears_filter_cache() -> None:
+    hub = _sample_hub()
+    version_before = hub.version
+    rows_first = hub.filter_rows(sales_filter="all", q="анна")
+    assert len(rows_first) == 1
+    hub.touch()
+    assert hub.version == version_before + 1
+    hub.set_results([{"UUID": "9", "Наименование": "Новый"}], {"processed": 1})
+    assert hub.version == version_before + 2
+
+
+def test_filter_rows_with_groups_single_pass() -> None:
+    hub = _sample_hub()
+    rows, group_options, groups_total = hub.filter_rows_with_groups(
+        sales_filter="all",
+        group="VIP",
+    )
+    assert len(rows) == 1
+    assert rows[0]["UUID"] == "1"
+    assert groups_total == 3
+    assert any(item["name"] == "VIP" for item in group_options)

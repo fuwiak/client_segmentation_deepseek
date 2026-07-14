@@ -48,3 +48,16 @@ def test_base_template_has_htmx_app_shell() -> None:
   assert 'hx-target="#page-content"' in response.text
   assert 'id="page-content"' in response.text
   assert "nav-progress" in response.text
+
+
+def test_clients_page_skips_relink_and_lazy_ai() -> None:
+  import app.main as m
+
+  with patch.object(m.hub, "relink_orders") as relink_mock, patch.object(
+    m, "_schedule_lazy_ai", new_callable=AsyncMock
+  ) as lazy_ai_mock:
+    client = TestClient(m.app)
+    response = client.get("/clients")
+    assert response.status_code == 200
+    relink_mock.assert_not_called()
+    lazy_ai_mock.assert_not_called()

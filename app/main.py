@@ -40,7 +40,6 @@ from app.services.export_format import (
   build_clients_query,
   client_cell_state,
   client_cell_value,
-  collect_group_counts,
   compact_orders_for_display,
   display_cell_value,
   export_columns,
@@ -70,7 +69,9 @@ from app.services.telegram_export import parse_telegram_export_file
 from app.services.telegram_bot import get_telegram_client
 from app.services.db_persist import get_db_persist
 from app.services.background_jobs import get_background_jobs
+from app.logging_config import configure_logging, pipeline_log
 
+configure_logging()
 settings = get_settings()
 cache = get_cache(settings)
 db_persist = get_db_persist(settings)
@@ -98,16 +99,44 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.middleware("http")
 async def performance_middleware(request: Request, call_next):
   started = time.perf_counter()
-  response = await call_next(request)
+  request_id = request.headers.get("x-railway-request-id") or uuid.uuid4().hex[:10]
+  pipeline_log(
+    "HTTP",
+    "START id=%s method=%s path=%s query=%s htmx=%s boosted=%s ua=%s",
+    request_id,
+    request.method,
+    request.url.path,
+    request.url.query or "-",
+    request.headers.get("hx-request", "false"),
+    request.headers.get("hx-boosted", "false"),
+    (request.headers.get("user-agent") or "-")[:90],
+  )
+  try:
+    response = await call_next(request)
+  except Exception:
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    pipeline_log(
+      "HTTP",
+      "ERROR id=%s method=%s path=%s duration_ms=%.1f",
+      request_id,
+      request.method,
+      request.url.path,
+      elapsed_ms,
+      level=logging.ERROR,
+    )
+    raise
   elapsed_ms = (time.perf_counter() - started) * 1000
   response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
   response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
+  response.headers["X-Request-Id"] = request_id
   perf_logger.info(
-    "request method=%s path=%s status=%s duration_ms=%.1f",
+    "DONE id=%s method=%s path=%s status=%s duration_ms=%.1f",
+    request_id,
     request.method,
     request.url.path,
     response.status_code,
     elapsed_ms,
+    extra={"stage": "HTTP"},
   )
   return response
 
@@ -119,12 +148,15 @@ _tg_export_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, 
 
 async def _apply_tg_export_to_hub() -> int:
   """Привязать TG export ко всем клиентам в hub и сохранить в кэш."""
+  pipeline_log("TG", "apply export to hub start rows=%s", len(hub.active_rows()))
   messenger = MessengerEnrichmentService(settings, cache)
   await messenger.load_telegram_export()
   if not messenger.export_loaded:
+    pipeline_log("TG", "apply export skipped export_loaded=false")
     return 0
   rows = hub.active_rows()
   if not rows:
+    pipeline_log("TG", "apply export skipped rows=0")
     return 0
   updated = await messenger.attach_tg_export_only(rows)
   matched = sum(1 for r in updated if r.get("_tg_export_context"))
@@ -139,11 +171,13 @@ async def _apply_tg_export_to_hub() -> int:
     await cache.save_segmentation_results(hub.workbook_hash, payload)
   else:
     await cache.save_results(payload)
+  pipeline_log("TG", "apply export done matched=%s rows=%s", matched, len(updated))
   return matched
 
 
 async def _import_telegram_export_from_path(path: Path) -> dict[str, Any]:
   _tg_export_progress.update(status="running", done=0, total=1, error="", meta={})
+  pipeline_log("TG", "import file start path=%s", path)
   try:
     index = await asyncio.to_thread(parse_telegram_export_file, path)
     messenger = MessengerEnrichmentService(settings, cache)
@@ -151,9 +185,11 @@ async def _import_telegram_export_from_path(path: Path) -> dict[str, Any]:
     matched = await _apply_tg_export_to_hub()
     meta = {**(index.get("meta") or {}), "matched_clients": matched}
     _tg_export_progress.update(status="done", done=1, total=1, error="", meta=meta)
+    pipeline_log("TG", "import file done matched=%s meta=%s", matched, meta)
     return meta
   except Exception as exc:  # noqa: BLE001
     _tg_export_progress.update(status="error", error=str(exc))
+    pipeline_log("TG", "import file failed error=%s", exc, level=logging.ERROR)
     raise
 
 
@@ -216,18 +252,25 @@ async def _bootstrap_telegram_export() -> None:
 async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
   """Подгрузить результаты сегментации из Redis/Postgres в hub."""
   if hub.results:
+    pipeline_log("CACHE", "hydrate hub skipped already_loaded rows=%s", len(hub.results))
     return True
   key = workbook_key or hub.workbook_hash
+  pipeline_log("CACHE", "hydrate hub start key=%s backend=%s", key or "-", cache.backend_kind)
   cached = await cache.get_segmentation_results_with_fallback(key)
   if not cached:
+    pipeline_log("CACHE", "hydrate hub miss key=%s", key or "-")
     return False
-  return hub.apply_cached_results(cached)
+  loaded = hub.apply_cached_results(cached)
+  pipeline_log("CACHE", "hydrate hub done loaded=%s rows=%s", loaded, len(hub.results))
+  return loaded
 
 
 async def _backfill_postgres_from_redis() -> None:
   """Один раз перенести текущий Redis-снимок в Postgres (если БД пустая)."""
   if not db_persist.enabled:
+    pipeline_log("DB", "backfill skipped db_persist=false")
     return
+  pipeline_log("DB", "backfill start")
   await db_persist.init_schema()
   existing = await db_persist.load_moysklad_sync()
   if not existing:
@@ -243,14 +286,17 @@ async def _backfill_postgres_from_redis() -> None:
   tg_index = await cache.get_telegram_export_index()
   if tg_index:
     await db_persist.persist_auxiliary("telegram_export:index", tg_index)
+  pipeline_log("DB", "backfill done")
 
 
 async def _hydrate_moysklad_from_cache() -> bool:
   """Быстрая подгрузка МойСклад только из Redis/Postgres — без API."""
   client = get_moysklad_client(settings)
   if not client.enabled:
+    pipeline_log("MS", "hydrate cache skipped enabled=false")
     return False
   if hub.parsed and hub.parsed.meta.get("source") == "moysklad" and hub.parsed.rows:
+    pipeline_log("MS", "hydrate cache skipped already_loaded rows=%s", len(hub.parsed.rows))
     return True
   from app.services.moysklad.sync import _load_from_cache
 
@@ -260,6 +306,7 @@ async def _hydrate_moysklad_from_cache() -> bool:
     max_counterparties=settings.moysklad_sync_limit,
     max_orders=settings.moysklad_sync_orders_limit,
   )
+  pipeline_log("MS", "hydrate cache done success=%s rows=%s", result is not None and result.success, len(hub.active_rows()))
   return result is not None and result.success
 
 
@@ -267,10 +314,18 @@ async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
   """Подгрузить контрагентов Мой Склад из кэша или API."""
   client = get_moysklad_client(settings)
   if not client.enabled:
+    pipeline_log("MS", "ensure skipped enabled=false")
     return
 
   parsed_count = len(hub.parsed.rows) if hub.parsed and hub.parsed.rows else 0
   is_moysklad = bool(hub.parsed and hub.parsed.meta.get("source") == "moysklad")
+  pipeline_log(
+    "MS",
+    "ensure start parsed_count=%s is_moysklad=%s fetch_positions=%s",
+    parsed_count,
+    is_moysklad,
+    fetch_positions,
+  )
   if is_moysklad and parsed_count > 0:
     cached_ms = await cache.get_moysklad_sync()
     api_total = (cached_ms or {}).get("api_cp_total")
@@ -279,6 +334,7 @@ async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
     if api_total and parsed_count >= api_total:
       if fetch_positions and not (cached_ms or {}).get("positions_loaded"):
         await refresh_moysklad_positions(client, hub, cache=cache)
+      pipeline_log("MS", "ensure done from existing parsed_count=%s api_total=%s", parsed_count, api_total)
       return
 
   await sync_moysklad_to_hub(
@@ -290,6 +346,7 @@ async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
     force_refresh=False,
     fetch_positions=fetch_positions,
   )
+  pipeline_log("MS", "ensure done rows=%s", len(hub.active_rows()))
 
 
 async def _fetch_moysklad_positions_background() -> None:
@@ -312,18 +369,28 @@ async def _attach_messenger_for_ai(rows: list[dict[str, Any]]) -> list[dict[str,
 
 async def _schedule_lazy_ai(*, force: bool = False) -> None:
   if not hub.has_data():
+    pipeline_log("AI", "lazy schedule skipped has_data=false force=%s", force)
     return
-  await jobs.schedule_lazy_ai(
+  started = await jobs.schedule_lazy_ai(
     hub,
     settings,
     cache=cache,
     messenger_attach=_attach_messenger_for_ai,
     force=force,
   )
+  pipeline_log(
+    "AI",
+    "lazy schedule done started=%s force=%s pending=%s status=%s",
+    started,
+    force,
+    len(jobs.pending_ai_rows(hub)),
+    jobs.ai_snapshot().get("status"),
+  )
 
 
 async def _startup_background() -> None:
   """Тяжёлая инициализация в фоне — не блокирует healthcheck."""
+  pipeline_log("PIPE", "startup background start")
   try:
     if settings.moysklad_auto_sync:
       await _ensure_moysklad_data(fetch_positions=False)
@@ -335,15 +402,20 @@ async def _startup_background() -> None:
     await _bootstrap_telegram_export()
     await _schedule_lazy_ai()
   except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
-    pass
+    pipeline_log("PIPE", "startup background failed", level=logging.ERROR)
+    logging.getLogger(__name__).exception("Startup background failed")
+  else:
+    pipeline_log("PIPE", "startup background done")
 
 
 @app.on_event("startup")
 async def startup_hydrate_cache() -> None:
+  pipeline_log("PIPE", "startup event schedule")
   asyncio.create_task(_startup_all())
 
 
 async def _startup_all() -> None:
+  pipeline_log("PIPE", "startup all start")
   try:
     if db_persist.enabled:
       await db_persist.init_schema()
@@ -352,7 +424,10 @@ async def _startup_all() -> None:
     await _backfill_postgres_from_redis()
     await _startup_background()
   except Exception:  # noqa: BLE001
-    pass
+    pipeline_log("PIPE", "startup all failed", level=logging.ERROR)
+    logging.getLogger(__name__).exception("Startup all failed")
+  else:
+    pipeline_log("PIPE", "startup all done")
 
 
 @app.get("/health")
@@ -494,6 +569,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
 
 async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
   _enrich_progress.update(status="running", done=0, total=len(rows), error="")
+  pipeline_log("AI", "enrichment start rows=%s", len(rows))
   service = MessengerEnrichmentService(settings, cache)
   if hub.parsed and hub.parsed.rows:
     all_rows = [enrich_row_computed(r) for r in hub.parsed.rows]
@@ -502,6 +578,12 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
 
   def _bump(n: int) -> None:
     _enrich_progress["done"] = min(_enrich_progress["total"], _enrich_progress["done"] + n)
+    pipeline_log(
+      "AI",
+      "enrichment progress done=%s total=%s",
+      _enrich_progress["done"],
+      _enrich_progress["total"],
+    )
 
   try:
     enriched = await service.enrich_all(rows, progress_cb=_bump)
@@ -526,9 +608,17 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
       )
     _enrich_progress["done"] = _enrich_progress["total"]
     _enrich_progress["status"] = "done"
+    pipeline_log(
+      "AI",
+      "enrichment done rows=%s with_messages=%s ai_filled=%s",
+      len(merged),
+      with_messages,
+      ai_filled,
+    )
   except Exception as exc:  # noqa: BLE001
     _enrich_progress["status"] = "error"
     _enrich_progress["error"] = str(exc)
+    pipeline_log("AI", "enrichment failed error=%s", exc, level=logging.ERROR)
 
 
 def _export_rows() -> list[dict[str, Any]]:
@@ -567,20 +657,8 @@ def _clients_ctx(
   sort: str = "",
   order: str = "asc",
   page: int = 1,
-  clients: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-  base_rows = hub.filter_rows(
-    sales_filter=sales_filter,
-    tag=tag,
-    group="",
-    status=status,
-    q=q,
-    phone=phone,
-    sort=sort,
-    order=order,
-  )
-  group_options = collect_group_counts(base_rows)
-  rows = hub.filter_rows(
+  rows, group_options, groups_total = hub.filter_rows_with_groups(
     sales_filter=sales_filter,
     tag=tag,
     group=group,
@@ -596,7 +674,7 @@ def _clients_ctx(
   page = max(1, min(page, total_pages))
   start = (page - 1) * per_page
   end = start + per_page
-  page_clients = clients if clients is not None else rows[start:end]
+  page_clients = rows[start:end]
   tg_export_ready = _tg_export_progress.get("status") == "done"
   return _ctx(
     request,
@@ -612,7 +690,7 @@ def _clients_ctx(
     tag_filter=tag,
     group_filter=group,
     group_options=group_options,
-    groups_total=len(base_rows),
+    groups_total=groups_total,
     status_filter=status,
     q_filter=q,
     phone_filter=phone,
@@ -641,25 +719,6 @@ async def _clients_ctx_with_tg(
   order: str = "asc",
   page: int = 1,
 ) -> dict[str, Any]:
-  if hub.parsed and hub.parsed.meta.get("source") == "moysklad":
-    hub.relink_orders()
-  rows = hub.filter_rows(
-    sales_filter=sales_filter,
-    tag=tag,
-    group=group,
-    status=status,
-    q=q,
-    phone=phone,
-    sort=sort,
-    order=order,
-  )
-  per_page = max(1, settings.clients_page_size)
-  total_pages = max(1, (len(rows) + per_page - 1) // per_page)
-  page = max(1, min(page, total_pages))
-  start = (page - 1) * per_page
-  end = start + per_page
-  page_rows = rows[start:end]
-  asyncio.create_task(_schedule_lazy_ai())
   return _clients_ctx(
     request,
     sales_filter=sales_filter,
@@ -671,20 +730,29 @@ async def _clients_ctx_with_tg(
     sort=sort,
     order=order,
     page=page,
-    clients=page_rows,
   )
 
 
 async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
   _progress.update(status="running", done=0, total=len(rows), error="")
+  pipeline_log(
+    "AI",
+    "segmentation start rows=%s source_type=%s workbook=%s",
+    len(rows),
+    getattr(parsed, "source_type", "-"),
+    hub.workbook_hash or "-",
+  )
   messenger = MessengerEnrichmentService(settings, cache)
   await messenger.load_telegram_export()
   if messenger.available:
+    pipeline_log("AI", "segmentation attach messenger start rows=%s", len(rows))
     rows = await messenger.attach_messages(rows)
+    pipeline_log("AI", "segmentation attach messenger done rows=%s", len(rows))
   service = SegmentationService(settings)
 
   def _bump(n: int) -> None:
     _progress["done"] = min(_progress["total"], _progress["done"] + n)
+    pipeline_log("AI", "segmentation progress done=%s total=%s", _progress["done"], _progress["total"])
 
   try:
     results = await service.segment_all(rows, progress_cb=_bump)
@@ -708,17 +776,30 @@ async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
       await cache.save_results({"results": enriched, "meta": meta})
     _progress["done"] = _progress["total"]
     _progress["status"] = "done"
+    pipeline_log(
+      "AI",
+      "segmentation done rows=%s messenger_context=%s cached=%s",
+      len(enriched),
+      with_messages,
+      bool(hub.workbook_hash),
+    )
     asyncio.create_task(_schedule_lazy_ai(force=True))
   except Exception as exc:  # noqa: BLE001
     _progress["status"] = "error"
     _progress["error"] = str(exc)
+    pipeline_log("AI", "segmentation failed error=%s", exc, level=logging.ERROR)
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
+  pipeline_log("PIPE", "page home")
   await _hydrate_hub_from_cache()
   rows = hub.active_rows()
-  dash = dashboard_svc.compute(rows, period="month")
+  dash = dashboard_svc.compute_cached(
+    rows,
+    hub_version=hub.version,
+    period="month",
+  )
   return templates.TemplateResponse(
     "home.html",
     _ctx(
@@ -740,12 +821,17 @@ async def dashboard_page(
   date_from: str = Query(""),
   date_to: str = Query(""),
 ) -> HTMLResponse:
+  pipeline_log("PIPE", "page dashboard period=%s date_from=%s date_to=%s", period, date_from, date_to)
   await _hydrate_hub_from_cache()
   rows = hub.active_rows()
   parsed_from = _optional_query_date(date_from)
   parsed_to = _optional_query_date(date_to)
-  dash = dashboard_svc.compute(
-    rows, period=period, date_from=parsed_from, date_to=parsed_to
+  dash = dashboard_svc.compute_cached(
+    rows,
+    hub_version=hub.version,
+    period=period,
+    date_from=parsed_from,
+    date_to=parsed_to,
   )
   return templates.TemplateResponse(
     "dashboard.html",
@@ -776,6 +862,19 @@ async def clients_page(
   order: str = Query("asc"),
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
+  pipeline_log(
+    "PIPE",
+    "page clients filter=%s tag=%s group=%s status=%s q=%s phone=%s sort=%s order=%s page=%s",
+    filter,
+    tag or "-",
+    group or "-",
+    status or "-",
+    q or "-",
+    phone or "-",
+    sort or "-",
+    order,
+    page,
+  )
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
   return templates.TemplateResponse(
@@ -813,6 +912,7 @@ async def clients_table_partial(
   order: str = Query("asc"),
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
+  pipeline_log("PIPE", "partial clients_table filter=%s page=%s sort=%s order=%s", filter, page, sort or "-", order)
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
   return templates.TemplateResponse(
@@ -913,6 +1013,7 @@ async def client_orders(
 
 @app.get("/segment", response_class=HTMLResponse)
 async def segment_page(request: Request) -> HTMLResponse:
+  pipeline_log("PIPE", "page segment")
   await _hydrate_hub_from_cache()
   return templates.TemplateResponse(
     "segment.html",
@@ -927,6 +1028,7 @@ async def segment_page(request: Request) -> HTMLResponse:
 
 @app.get("/campaigns", response_class=HTMLResponse)
 async def campaigns_page(request: Request) -> HTMLResponse:
+  pipeline_log("PIPE", "page campaigns")
   campaigns = await campaign_svc.list_campaigns()
   rows = hub.active_rows()
   return templates.TemplateResponse(
@@ -969,6 +1071,7 @@ async def campaign_create(
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
+  pipeline_log("PIPE", "page settings")
   return templates.TemplateResponse(
     "settings.html",
     _ctx(
@@ -982,6 +1085,7 @@ async def settings_page(request: Request) -> HTMLResponse:
 
 @app.get("/settings/communications", response_class=HTMLResponse)
 async def communications_page(request: Request) -> HTMLResponse:
+  pipeline_log("PIPE", "page settings/communications")
   comm = get_comm_settings()
   return templates.TemplateResponse(
     "communications.html",
@@ -997,6 +1101,7 @@ async def communications_page(request: Request) -> HTMLResponse:
 
 @app.get("/settings/moysklad", response_class=HTMLResponse)
 async def moysklad_settings_page(request: Request) -> HTMLResponse:
+  pipeline_log("PIPE", "page settings/moysklad")
   await _hydrate_hub_from_cache()
   await _ensure_moysklad_data()
   return templates.TemplateResponse(
@@ -1076,6 +1181,12 @@ async def upload_preview(
   contragents_file: UploadFile = File(...),
   orders_file: UploadFile | None = File(None),
 ) -> HTMLResponse:
+  pipeline_log(
+    "PIPE",
+    "upload preview start contragents=%s orders=%s",
+    contragents_file.filename or "-",
+    orders_file.filename if orders_file and orders_file.filename else "-",
+  )
   content = await contragents_file.read()
   orders_content = b""
   if orders_file and orders_file.filename:
@@ -1087,9 +1198,11 @@ async def upload_preview(
   from_cache = parsed is not None
 
   if parsed is None:
+    pipeline_log("PIPE", "upload parse start workbook_hash=%s bytes=%s", hub.workbook_hash, len(content))
     parsed = await asyncio.to_thread(parse_workbook, content)
     orders_parsed = None
     if orders_content:
+      pipeline_log("PIPE", "upload parse orders start bytes=%s", len(orders_content))
       orders_parsed = await asyncio.to_thread(parse_workbook, orders_content)
       parsed = enrich_with_orders(parsed, orders_parsed)
     hub.set_workbook(parsed, orders_parsed)
@@ -1102,6 +1215,14 @@ async def upload_preview(
     results_from_cache = await _hydrate_hub_from_cache(hub.workbook_hash)
 
   preview_rows = [enrich_row_computed(r) for r in parsed.rows[:20]]
+  pipeline_log(
+    "PIPE",
+    "upload preview done rows=%s from_cache=%s results_from_cache=%s source=%s",
+    len(parsed.rows),
+    from_cache,
+    results_from_cache,
+    getattr(parsed, "source_type", "-"),
+  )
 
   return templates.TemplateResponse(
     "partials/preview.html",
@@ -1129,12 +1250,14 @@ async def segment_start(
 ) -> HTMLResponse:
   parsed = hub.parsed
   if not parsed:
+    pipeline_log("AI", "segment start rejected no parsed workbook", level=logging.WARNING)
     return templates.TemplateResponse(
       "partials/segment_modal.html",
       {"request": request, "error": "Сначала загрузите файл Excel."},
     )
 
   if hub.workbook_hash and not hub.results:
+    pipeline_log("CACHE", "segment start cache lookup workbook=%s", hub.workbook_hash)
     cached = await cache.get_segmentation_results(hub.workbook_hash)
     if cached and cached.get("results"):
       hub.apply_cached_results(cached)
@@ -1144,6 +1267,7 @@ async def segment_start(
         total=len(hub.results),
         error="",
       )
+      pipeline_log("CACHE", "segment start served from cache rows=%s", len(hub.results))
       return templates.TemplateResponse(
         "partials/segment_progress.html",
         {
@@ -1165,6 +1289,7 @@ async def segment_start(
 
   rows = parsed.rows[: max(1, min(limit, 500))]
   _progress.update(status="running", done=0, total=len(rows), error="")
+  pipeline_log("AI", "segment start scheduled rows=%s limit=%s", len(rows), limit)
   asyncio.create_task(_run_segmentation(rows, parsed))
 
   return templates.TemplateResponse(
@@ -1179,6 +1304,7 @@ async def segment_progress(request: Request) -> HTMLResponse:
   total = _progress["total"]
   done = _progress["done"]
   percent = int(done / total * 100) if total else 0
+  pipeline_log("AI", "segment progress poll status=%s done=%s total=%s percent=%s", status, done, total, percent)
 
   ctx: dict[str, Any] = {
     "request": request,
@@ -1204,6 +1330,7 @@ async def segment_progress(request: Request) -> HTMLResponse:
 
 @app.get("/download/xlsx")
 async def download_xlsx() -> StreamingResponse:
+  pipeline_log("PIPE", "download segmentation xlsx")
   await _hydrate_hub_from_cache()
   rows = _export_rows()
   df = pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -1220,6 +1347,7 @@ async def download_xlsx() -> StreamingResponse:
 
 @app.get("/download/clients/xlsx")
 async def download_clients_xlsx() -> StreamingResponse:
+  pipeline_log("PIPE", "download clients xlsx")
   await _hydrate_hub_from_cache()
   rows = _export_rows()
   df = pd.DataFrame(rows) if rows else pd.DataFrame()
