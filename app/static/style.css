@@ -1045,6 +1045,8 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   backdrop-filter: blur(4px);
 }
 
+.modal-overlay[hidden] { display: none !important; }
+
 .upload-modal[hidden] { display: none !important; }
 .upload-modal:not([hidden]) {
   display: flex;
