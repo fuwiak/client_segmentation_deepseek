@@ -100,11 +100,7 @@ def _sex_label(value: Any) -> str | None:
 
 
 def _counterparty_status(tags: list[str]) -> str | None:
-    joined = " ".join(tags).lower()
-    if any(w in joined for w in ("постоянный", "vip", "премиум")):
-        return "Постоянный"
-    if tags:
-        return "Новый"
+    """Статус лояльности считается по числу заказов, не по тегам МойСклад."""
     return None
 
 

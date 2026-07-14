@@ -386,7 +386,9 @@ def enrich_with_orders(
 
         if related:
             copy["_orders_context"] = related[:20]
-            copy["_orders_count"] = len(related)
+            linked_count = len(related)
+            copy["_orders_count"] = linked_count
+            copy["Всего заказов"] = linked_count
             copy["_order_channels_all"] = [
                 str(order.get("Канал продаж") or "").strip()
                 for order in related

@@ -241,16 +241,40 @@ def is_vip(row: dict[str, Any]) -> bool:
 
 
 def order_count_for_row(row: dict[str, Any]) -> int:
-  actual = len(row.get("_orders_context") or [])
-  stored = 0
-  for key in ("_orders_count", "Всего заказов"):
+  """Число заказов для статуса клиента — при расхождении доверяем привязанным заказам."""
+  context = row.get("_orders_context") or []
+  linked = len(context)
+
+  def _stored_int(key: str) -> int | None:
     val = row.get(key)
-    if val not in (None, ""):
-      try:
-        stored = max(stored, int(val))
-      except (TypeError, ValueError):
-        pass
-  return max(actual, stored)
+    if val in (None, "", "—"):
+      return None
+    try:
+      return int(val)
+    except (TypeError, ValueError):
+      return None
+
+  linked_total = _stored_int("_orders_count")
+  if linked_total is None and linked:
+    linked_total = linked
+  elif linked_total is not None and linked and linked_total < linked:
+    linked_total = linked
+
+  vsego = _stored_int("Всего заказов")
+
+  if linked > 0:
+    count = linked_total if linked_total is not None else linked
+    if vsego is not None and vsego > count:
+      return count
+    if vsego is not None:
+      return max(count, vsego)
+    return count
+
+  if vsego is not None:
+    return vsego
+  if linked_total is not None:
+    return linked_total
+  return 0
 
 
 def client_status_from_orders(row: dict[str, Any]) -> str:

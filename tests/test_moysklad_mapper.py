@@ -74,7 +74,7 @@ def test_counterparty_fixture_maps_to_excel_columns() -> None:
     assert row["Телефон"] == "+12512599293"
     assert row["Тип контрагента"] == "Физическое лицо"
     assert row["Архивный"] == "нет"
-    assert row["Статус"] == "Новый"
+    assert row["Статус"] is None
     assert "Москва" in str(row["Фактический адрес"])
 
 

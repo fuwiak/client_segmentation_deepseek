@@ -243,7 +243,12 @@ class DataHub:
       return row
     updated = dict(row)
     updated["_orders_context"] = orders[:20]
-    updated["_orders_count"] = max(order_count_for_row(updated), len(orders))
+    linked_total = int(row.get("_orders_count") or 0)
+    if linked_total < len(orders):
+      linked_total = len(orders)
+    updated["_orders_count"] = linked_total
+    if linked_total:
+      updated["Всего заказов"] = linked_total
     return updated
 
   def _order_lookup(self) -> dict[str, dict[str, Any]]:

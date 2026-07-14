@@ -126,6 +126,74 @@ def test_order_count_prefers_orders_context_over_zero_stored() -> None:
     assert order_count_for_row(row) == 1
 
 
+def test_order_count_trusts_linked_orders_over_stale_vsego() -> None:
+    row = {
+        "_orders_context": [{"№": "1"}],
+        "_orders_count": 1,
+        "Всего заказов": 8,
+    }
+    assert order_count_for_row(row) == 1
+    assert client_status_from_orders(row) == "новый"
+
+
+def test_enrich_with_orders_syncs_vsego_with_linked_count() -> None:
+    from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
+
+    contragents = ParsedWorkbook(
+        source_type="contragents",
+        rows=[{
+            "UUID": "cp-1",
+            "Наименование": "Султанова Лилия",
+            "Всего заказов": 8,
+        }],
+        context_columns=["UUID", "Наименование"],
+        segment_columns=[],
+        total_rows=1,
+        meta={},
+    )
+    orders = ParsedWorkbook(
+        source_type="orders",
+        rows=[{
+            "№": "1",
+            "Контрагент": "Султанова Лилия",
+            "_moysklad_agent_id": "cp-1",
+            "Дата": "2026-03-01",
+            "Сумма": 1000,
+        }],
+        context_columns=["№", "Контрагент"],
+        segment_columns=[],
+        total_rows=1,
+        meta={},
+    )
+    enriched = enrich_with_orders(contragents, orders)
+    row = enriched.rows[0]
+    assert row["Всего заказов"] == 1
+    assert row["_orders_count"] == 1
+    assert client_status_from_orders(row) == "новый"
+
+
+def test_merge_enriched_rows_keeps_base_order_stats_over_stale_overlay() -> None:
+    from app.services.export_format import merge_enriched_rows
+
+    base = [{
+        "UUID": "cp-1",
+        "Наименование": "Султанова Лилия",
+        "Всего заказов": 1,
+        "_orders_count": 1,
+        "_orders_context": [{"№": "1"}],
+    }]
+    overlay = [{
+        "UUID": "cp-1",
+        "Всего заказов": 8,
+        "_orders_count": 8,
+        "_ai_processed": True,
+    }]
+    merged = merge_enriched_rows(base, overlay, key_fn=lambda r: r["UUID"])
+    assert merged[0]["Всего заказов"] == 1
+    assert merged[0]["_orders_count"] == 1
+    assert merged[0]["Статус"] == "новый"
+
+
 def test_enrich_row_computed_sets_client_status() -> None:
     row = {"UUID": "1", "_orders_count": 5, "Статус": "Новый"}
     enriched = enrich_row_computed(row)

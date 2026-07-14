@@ -478,6 +478,9 @@ def merge_enriched_rows(
         "_orders_count",
         "_order_channels_all",
         "_ordered_positions",
+        "Всего заказов",
+        "Статус",
+        "Постоянный клиент",
     })
     preserve_from_base = (
         "_orders_context",
@@ -491,7 +494,6 @@ def merge_enriched_rows(
         "Баллы начисленные",
         "Канал продаж",
         "Тип канала продаж",
-        "Статус",
         "Наименование",
         "Телефон",
         "Фактический адрес",
