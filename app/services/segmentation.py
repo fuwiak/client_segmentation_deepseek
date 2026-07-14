@@ -20,6 +20,8 @@ from app.services.fields import (
   extract_tg_nick_from_messages,
   guess_gender,
   infer_gender_heuristic,
+  normalize_gender_label,
+  normalize_naimenovanie_key,
   sales_type_from_channel,
   COUNTERPARTY_COMMENT_KEYS,
 )
@@ -98,6 +100,12 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
   reasoning, confidence, references
   confidence — число от 0 до 1."""
 
+GENDER_CONFIRM_SYSTEM_PROMPT = """Ты определяешь пол человека по ФИО или имени из CRM цветочного магазина.
+Форматы: «Фамилия Имя», «Имя Фамилия», «Имя», с отчеством.
+Учитывай heuristic_guess как подсказку, но исправь если уверен в другом значении.
+Верни СТРОГО JSON {"results": [{"name": "исходное имя как во входе", "Пол": "Мужской"|"Женский"|null}]}.
+null только для явно неоднозначных имён (Саша, Женя без фамилии)."""
+
 _PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
 _TG_RE = re.compile(r"@([A-Za-z][A-Za-z0-9_]{3,31})")
 
@@ -172,6 +180,61 @@ class SegmentationService:
             merged.extend(chunk)
         return merged
 
+    async def confirm_gender_by_naimenovanie(
+        self,
+        names: list[str],
+        heuristic_map: dict[str, str],
+    ) -> dict[str, str]:
+        """AI-подтверждение пола по уникальным Наименование (после эвристики)."""
+        if not names or not self._settings.openrouter_api_key:
+            return dict(heuristic_map)
+
+        merged_map = dict(heuristic_map)
+        batch_size = 50
+        async with httpx.AsyncClient(
+            timeout=self._settings.ai_timeout_seconds
+        ) as client:
+            self._client = client
+            for offset in range(0, len(names), batch_size):
+                chunk = names[offset : offset + batch_size]
+                payload = [
+                    {
+                        "name": name,
+                        "heuristic_guess": heuristic_map.get(
+                            normalize_naimenovanie_key(name)
+                        ),
+                    }
+                    for name in chunk
+                ]
+                user_prompt = (
+                    "Определи пол по списку имён. Верни JSON {\"results\": [...]}.\n\n"
+                    f"{json.dumps(payload, ensure_ascii=False)}"
+                )
+                content = await self._call_with_retry(
+                    user_prompt,
+                    system_prompt=GENDER_CONFIRM_SYSTEM_PROMPT,
+                )
+                if content is None:
+                    continue
+                parsed = self._extract_json(content)
+                if parsed is None:
+                    continue
+                items = (
+                    parsed.get("results", parsed)
+                    if isinstance(parsed, dict)
+                    else parsed
+                )
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name") or "").strip()
+                    gender = normalize_gender_label(item.get("Пол"))
+                    if name and gender:
+                        merged_map[normalize_naimenovanie_key(name)] = gender
+        return merged_map
+
     async def _segment_batch(
         self, rows: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -195,8 +258,14 @@ class SegmentationService:
             return [self._heuristic_row(r) for r in rows]
         return self._parse_ai_response(content, rows)
 
-    async def _call_with_retry(self, user_prompt: str) -> str | None:
+    async def _call_with_retry(
+        self,
+        user_prompt: str,
+        *,
+        system_prompt: str | None = None,
+    ) -> str | None:
         last_exc: Exception | None = None
+        sys_content = system_prompt or SYSTEM_PROMPT
         for attempt in range(self._settings.ai_max_retries + 1):
             try:
                 resp = await self._client.post(
@@ -210,7 +279,7 @@ class SegmentationService:
                     json={
                         "model": self._settings.openrouter_model,
                         "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "system", "content": sys_content},
                             {"role": "user", "content": user_prompt},
                         ],
                         "temperature": self._settings.ai_temperature,

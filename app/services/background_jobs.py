@@ -226,7 +226,25 @@ class BackgroundJobService:
                         )
                     pipeline_log("AI", "lazy messenger attach done rows=%s", len(rows))
 
+                from app.services.fields import (
+                    apply_gender_map_to_rows,
+                    build_heuristic_gender_map,
+                    unique_person_naimenovanie,
+                )
+
                 service = SegmentationService(settings)
+                names = unique_person_naimenovanie(rows)
+                heuristic_gender_map = build_heuristic_gender_map(names)
+                rows = apply_gender_map_to_rows(rows, heuristic_gender_map)
+                if settings.openrouter_api_key and names:
+                    pipeline_log("AI", "gender confirm start names=%s", len(names))
+                    ai_gender_map = await service.confirm_gender_by_naimenovanie(
+                        names,
+                        heuristic_gender_map,
+                    )
+                    rows = apply_gender_map_to_rows(rows, ai_gender_map)
+                    pipeline_log("AI", "gender confirm done mapped=%s", len(ai_gender_map))
+
                 batch_size = max(1, settings.ai_lazy_batch_size)
                 processed: list[dict[str, Any]] = []
 

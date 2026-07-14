@@ -133,6 +133,7 @@ def test_apply_resolved_gender_prefers_ai_over_heuristic() -> None:
 
 def test_guess_gender() -> None:
     assert guess_gender("Иван Петров") == "Мужской"
+    assert guess_gender("Ермаков Данил") == "Мужской"
     assert guess_gender("Ольга") == "Женский"
     assert guess_gender("Саша") is None
     assert guess_gender(None) is None

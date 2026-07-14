@@ -385,21 +385,95 @@ _GENDER_LABEL_ALIASES = {
 }
 
 
-def guess_gender(name: str | None) -> str | None:
-  """Пол по первому слову имени (словари + окончания)."""
-  if not name:
-    return None
-  first = name.strip().split()[0].lower().strip(".,").replace("ё", "е")
-  if first in FEMALE_NAMES:
+def _gender_from_token(token: str) -> str | None:
+  text = token.lower().strip(".,").replace("ё", "е")
+  if text in FEMALE_NAMES:
     return "Женский"
-  if first in MALE_NAMES:
+  if text in MALE_NAMES:
     return "Мужской"
-  patronymic = gender_from_patronymic(first)
+  patronymic = gender_from_patronymic(text)
   if patronymic:
     return patronymic
-  if len(first) >= 3 and first.endswith(("а", "я")) and first not in _MALE_A_ENDING:
+  if len(text) >= 3 and text.endswith(("а", "я")) and text not in _MALE_A_ENDING:
     return "Женский"
   return None
+
+
+def _name_token_order(part_count: int) -> list[int]:
+  """Порядок проверки частей ФИО: имя, отчество, фамилия."""
+  if part_count <= 1:
+    return [0]
+  if part_count == 2:
+    return [1, 0]
+  return [1, 2, 0]
+
+
+def guess_gender(name: str | None) -> str | None:
+  """Пол по ФИО: учитывает «Фамилия Имя» и «Имя Фамилия»."""
+  if not name:
+    return None
+  parts = [part for part in name.strip().split() if part.strip()]
+  if not parts:
+    return None
+  for idx in _name_token_order(len(parts)):
+    gender = _gender_from_token(parts[idx])
+    if gender:
+      return gender
+  return None
+
+
+def normalize_naimenovanie_key(name: str) -> str:
+  return name.strip().lower().replace("ё", "е")
+
+
+def unique_person_naimenovanie(rows: list[dict[str, Any]]) -> list[str]:
+  """Уникальные Наименование, похожие на ФИО физлица."""
+  seen: set[str] = set()
+  result: list[str] = []
+  for row in rows:
+    name = str(row.get("Наименование") or "").strip()
+    if not name:
+      continue
+    key = normalize_naimenovanie_key(name)
+    if key in seen or not _looks_like_person_name(name):
+      continue
+    seen.add(key)
+    result.append(name)
+  return result
+
+
+def build_heuristic_gender_map(names: list[str]) -> dict[str, str]:
+  gender_map: dict[str, str] = {}
+  for name in names:
+    gender = guess_gender(name)
+    if gender:
+      gender_map[normalize_naimenovanie_key(name)] = gender
+  return gender_map
+
+
+def apply_gender_map_to_rows(
+  rows: list[dict[str, Any]],
+  gender_map: dict[str, str],
+) -> list[dict[str, Any]]:
+  if not gender_map:
+    return rows
+  updated: list[dict[str, Any]] = []
+  for row in rows:
+    merged = dict(row)
+    if is_empty_cell(merged.get("Пол")):
+      key = normalize_naimenovanie_key(str(merged.get("Наименование") or ""))
+      gender = gender_map.get(key)
+      if gender:
+        merged["Пол"] = gender
+    updated.append(merged)
+  return updated
+
+
+def enrich_gender_by_unique_naimenovanie(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  """Эвристика по уникальным Наименование → применить Пол ко всем строкам."""
+  names = unique_person_naimenovanie(rows)
+  gender_map = build_heuristic_gender_map(names)
+  return apply_gender_map_to_rows(rows, gender_map)
 
 
 def normalize_gender_label(value: Any) -> str | None:

@@ -16,7 +16,7 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, enrich_gender_by_unique_naimenovanie
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -127,6 +127,7 @@ class DataHub:
       rows = self.results
     else:
       rows = []
+    rows = enrich_gender_by_unique_naimenovanie(rows)
     self._active_rows_cache = (self.version, rows)
     return rows
 

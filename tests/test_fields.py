@@ -188,9 +188,25 @@ def test_order_to_row_resolves_sales_channel_by_id() -> None:
 def test_guess_gender_from_name_and_patronymic() -> None:
     assert guess_gender("Иван Петров") == "Мужской"
     assert guess_gender("Ольга") == "Женский"
+    assert guess_gender("Ермаков Данил") == "Мужской"
+    assert guess_gender("Данил Ермаков") == "Мужской"
     assert guess_gender("Петровна") == "Женский"
     assert guess_gender("Сергеевич") == "Мужской"
     assert guess_gender("Саша") is None
+
+
+def test_enrich_gender_by_unique_naimenovanie() -> None:
+    from app.services.fields import enrich_gender_by_unique_naimenovanie
+
+    rows = [
+        {"UUID": "1", "Наименование": "Ермаков Данил"},
+        {"UUID": "2", "Наименование": "Ермаков Данил"},
+        {"UUID": "3", "Наименование": "ООО Ромашка"},
+    ]
+    enriched = enrich_gender_by_unique_naimenovanie(rows)
+    assert enriched[0]["Пол"] == "Мужской"
+    assert enriched[1]["Пол"] == "Мужской"
+    assert enriched[2].get("Пол") in (None, "")
 
 
 def test_infer_gender_from_moysklad_and_patronymic() -> None:
