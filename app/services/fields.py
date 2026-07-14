@@ -211,12 +211,30 @@ def is_vip(row: dict[str, Any]) -> bool:
     return False
 
 
+def order_count_for_row(row: dict[str, Any]) -> int:
+  for key in ("_orders_count", "Всего заказов"):
+    val = row.get(key)
+    if val not in (None, ""):
+      try:
+        return max(0, int(val))
+      except (TypeError, ValueError):
+        pass
+  orders = row.get("_orders_context") or []
+  return len(orders)
+
+
+def client_status_from_orders(row: dict[str, Any]) -> str:
+  """Статус клиента по числу заказов: 1 — новый, 2 — повторный, 3+ — постоянный."""
+  count = order_count_for_row(row)
+  if count >= 3:
+    return "постоянный"
+  if count == 2:
+    return "повторный"
+  return "новый"
+
+
 def is_permanent(row: dict[str, Any]) -> bool:
-  count = row.get("_orders_count") or row.get("Всего заказов")
-  try:
-    return int(count or 0) > 2
-  except (TypeError, ValueError):
-    return False
+  return order_count_for_row(row) >= 3
 
 
 def last_order_date(row: dict[str, Any]) -> str | None:
@@ -307,6 +325,7 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   enriched["Тип продаж"] = sales_type
   enriched[SALES_CHANNEL_TYPE_KEY] = sales_type
   enriched["Статус последнего заказа"] = last_order_status(row)
+  enriched["Статус"] = client_status_from_orders(enriched)
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
   if not enriched.get("Дата последнего заказа"):

@@ -1,12 +1,16 @@
+import pytest
+
 from app.services.fields import (
     SALES_CHANNEL_TYPE_DIRECT,
     SALES_CHANNEL_TYPE_HYBRID,
     SALES_CHANNEL_TYPE_MARKETPLACE,
     apply_ai_field,
     channel_type_from_channel,
+    client_status_from_orders,
     enrich_row_computed,
     is_direct_sales_channel,
     is_marketplace_channel,
+    order_count_for_row,
     sales_channel_type_for_row,
     sales_type_from_channel,
 )
@@ -69,6 +73,29 @@ def test_sales_channel_type_hybrid_from_orders() -> None:
         ],
     }
     assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
+
+
+@pytest.mark.parametrize(
+    ("orders", "expected"),
+    [
+        (0, "новый"),
+        (1, "новый"),
+        (2, "повторный"),
+        (3, "постоянный"),
+        (10, "постоянный"),
+    ],
+)
+def test_client_status_from_orders(orders: int, expected: str) -> None:
+    row = {"Всего заказов": orders}
+    assert client_status_from_orders(row) == expected
+    assert order_count_for_row(row) == orders
+
+
+def test_enrich_row_computed_sets_client_status() -> None:
+    row = {"UUID": "1", "_orders_count": 5, "Статус": "Новый"}
+    enriched = enrich_row_computed(row)
+    assert enriched["Статус"] == "постоянный"
+    assert enriched["Постоянный клиент"] == "да"
 
 
 def test_enrich_row_computed_uses_order_sales_channel() -> None:
