@@ -252,14 +252,27 @@ def customer_row_to_db(row: dict[str, Any], *, source: str = "moysklad") -> dict
         elif db_key == "is_regular_label":
             record["is_regular"] = _parse_bool_label(val)
         else:
-            record[db_key] = str(val).strip() if val is not None else None
+            record[db_key] = _as_text(val)
 
     if row.get("_ordered_positions"):
-        record["ordered_positions_text"] = record.get("ordered_positions_text") or row.get(
-            "Заказанные позиции"
+        from app.services.moysklad.mapper import positions_label
+
+        positions_text = (
+            record.get("ordered_positions_text")
+            or row.get("Заказанные позиции")
+            or positions_label(row.get("_ordered_positions") or [])
         )
+        record["ordered_positions_text"] = _as_text(positions_text)
 
     return record
+
+
+def _as_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return str(value).strip()
 
 
 def order_row_to_db(row: dict[str, Any], *, source: str = "moysklad") -> dict[str, Any]:
@@ -282,6 +295,6 @@ def order_row_to_db(row: dict[str, Any], *, source: str = "moysklad") -> dict[st
         elif db_key == "order_date":
             record[db_key] = _parse_datetime(val)
         else:
-            record[db_key] = str(val).strip() if val is not None else None
+            record[db_key] = _as_text(val)
 
     return record

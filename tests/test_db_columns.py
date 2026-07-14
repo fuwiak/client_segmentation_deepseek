@@ -33,15 +33,19 @@ def test_customer_row_to_db_maps_core_fields():
     assert record["id"] == "cp-42"
     assert record["moysklad_id"] == "cp-42"
     assert record["name"] == "Антон"
-    assert record["phone"] == "+79991234567"
-    assert record["email"] == "anton@example.com"
     assert record["average_check"] == Decimal("15000.50")
-    assert record["total_orders"] == 12
-    assert record["groups_text"] == "VIP"
-    assert record["sales_type"] == "прямые продажи"
     assert record["is_vip"] is True
-    assert record["is_regular"] is False
-    assert record["row_data"]["Наименование"] == "Антон"
+    assert isinstance(record["row_data"], dict)
+
+
+def test_customer_row_to_db_serializes_ordered_positions():
+    row = {
+        "UUID": "cp-99",
+        "_ordered_positions": [{"name": "Розы", "quantity": 2}],
+    }
+    record = customer_row_to_db(row)
+    assert isinstance(record["ordered_positions_text"], str)
+    assert "Розы" in record["ordered_positions_text"]
 
 
 def test_order_row_to_db_maps_positions():

@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 LATEST_SEGMENTATION_KEY = "latest"
+CUSTOMER_JSONB_COLUMNS = frozenset({"row_data"})
+ORDER_JSONB_COLUMNS = frozenset({"row_data", "positions"})
 
 
 class DbPersistService:
@@ -165,29 +167,37 @@ class DbPersistService:
             logger.warning("Postgres moysklad persist failed: %s", exc)
 
     async def _insert_customers(self, conn: Any, records: list[dict[str, Any]]) -> None:
-        cols = CUSTOMER_DB_COLUMNS
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(cols)))
-        col_list = ", ".join(cols)
-        sql = f"INSERT INTO customers ({col_list}) VALUES ({placeholders})"
-        rows = [
-            tuple(self._jsonify(record.get(col)) for col in cols) for record in records
-        ]
-        await conn.executemany(sql, rows)
+        await self._insert_rows(conn, "customers", CUSTOMER_DB_COLUMNS, CUSTOMER_JSONB_COLUMNS, records)
 
     async def _insert_orders(self, conn: Any, records: list[dict[str, Any]]) -> None:
-        cols = ORDER_DB_COLUMNS
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(cols)))
+        await self._insert_rows(conn, "orders", ORDER_DB_COLUMNS, ORDER_JSONB_COLUMNS, records)
+
+    async def _insert_rows(
+        self,
+        conn: Any,
+        table: str,
+        cols: list[str],
+        jsonb_cols: frozenset[str],
+        records: list[dict[str, Any]],
+    ) -> None:
+        placeholders = ", ".join(
+            f"${i + 1}::jsonb" if col in jsonb_cols else f"${i + 1}"
+            for i, col in enumerate(cols)
+        )
         col_list = ", ".join(cols)
-        sql = f"INSERT INTO orders ({col_list}) VALUES ({placeholders})"
+        sql = f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})"
         rows = [
-            tuple(self._jsonify(record.get(col)) for col in cols) for record in records
+            tuple(self._bind_column(col, record.get(col), jsonb_cols) for col in cols)
+            for record in records
         ]
         await conn.executemany(sql, rows)
 
     @staticmethod
-    def _jsonify(value: Any) -> Any:
-        if isinstance(value, (dict, list)):
-            return json.loads(json.dumps(value, default=str))
+    def _bind_column(col: str, value: Any, jsonb_cols: frozenset[str]) -> Any:
+        if value is None:
+            return None
+        if col in jsonb_cols or isinstance(value, (dict, list)):
+            return json.dumps(value, default=str, ensure_ascii=False)
         return value
 
     async def load_moysklad_sync(self) -> dict[str, Any] | None:
