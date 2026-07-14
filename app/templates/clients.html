@@ -59,25 +59,31 @@
   </form>
   <div class="toolbar-actions">
     {% if moysklad_enabled %}
-    <button type="button" class="btn secondary small"
+    <button type="button" class="btn secondary small toolbar-action-btn"
+            hx-boost="false"
+            hx-push-url="false"
             hx-post="/moysklad/sync"
             hx-target="#clients-sync-status"
-            hx-swap="innerHTML">↻ Мой Склад</button>
+            hx-swap="innerHTML"><span class="btn-action-icon" aria-hidden="true">↻</span> Мой Склад</button>
     {% endif %}
-    <button type="button" class="btn secondary small"
+    <button type="button" class="btn secondary small toolbar-action-btn"
+            hx-boost="false"
+            hx-push-url="false"
             hx-post="/clients/ai/start"
             hx-target="#ai-progress-block"
-            hx-swap="outerHTML">⟳ Пересегментировать</button>
-    <button type="button" class="btn secondary small"
+            hx-swap="outerHTML"><span class="btn-action-icon" aria-hidden="true">⟳</span> Пересегментировать</button>
+    <button type="button" class="btn secondary small toolbar-action-btn"
+            hx-boost="false"
+            hx-push-url="false"
             hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
             hx-target="#enrich-progress-block"
             hx-swap="outerHTML"
             {% if not messenger_available %}title="Задайте GREEN_API_* или TELEGRAM_BOT_TOKEN"{% endif %}>
       Обогатить из мессенджеров
     </button>
-    <a href="/download/clients/xlsx" class="btn secondary small">Экспорт .xlsx</a>
-    <button type="button" class="btn secondary small tag-rules-btn" onclick="openTagRulesDrawer()" title="Условия AI-тегов">
-      ⓘ Правила AI
+    <a href="/download/clients/xlsx" class="btn secondary small toolbar-action-btn export-xlsx-btn">Экспорт .xlsx</a>
+    <button type="button" class="btn secondary small toolbar-action-btn tag-rules-btn" onclick="openTagRulesDrawer(event)" title="Условия AI-тегов">
+      <span class="btn-action-icon" aria-hidden="true">ⓘ</span> Правила AI
     </button>
   </div>
   <p class="result-count">

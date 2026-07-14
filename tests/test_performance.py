@@ -136,6 +136,31 @@ def test_clients_page_skips_relink_and_lazy_ai() -> None:
     lazy_ai_mock.assert_not_called()
 
 
+def test_clients_toolbar_buttons_have_click_feedback_markup() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{"UUID": "cp-toolbar", "Наименование": "Тест"}],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+  with patch.object(m, "_hydrate_hub_from_cache", new_callable=AsyncMock, return_value=False):
+    client = TestClient(m.app)
+    response = client.get("/clients")
+  assert response.status_code == 200
+  assert "toolbar-action-btn" in response.text
+  assert "export-xlsx-btn" in response.text
+  assert "btn-action-icon" in response.text
+  assert "openTagRulesDrawer(event)" in response.text
+
+
 def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook

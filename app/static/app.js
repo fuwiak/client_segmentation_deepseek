@@ -62,8 +62,19 @@
     }
   }
 
-  function openTagRulesDrawer() {
+  function flashToolbarBtn(elt, ms) {
+    if (!elt || !elt.classList) return;
+    elt.classList.add("is-busy");
+    window.setTimeout(function () {
+      elt.classList.remove("is-busy");
+    }, ms || 800);
+  }
+
+  function openTagRulesDrawer(evt) {
     closeClientDrawer();
+    if (evt && evt.currentTarget) {
+      flashToolbarBtn(evt.currentTarget, 500);
+    }
     ensureTagRulesPanel();
     var drawer = document.getElementById("tag-rules-drawer");
     var overlay = document.getElementById("tag-rules-overlay");
@@ -240,6 +251,13 @@
     closeClientDrawer();
     var drawer = document.getElementById("mobile-drawer");
     if (drawer && !drawer.hidden) toggleMobileNav();
+  });
+
+  document.body.addEventListener("click", function (e) {
+    var exportBtn = e.target.closest && e.target.closest(".export-xlsx-btn");
+    if (exportBtn) {
+      flashToolbarBtn(exportBtn, 2200);
+    }
   });
 
   document.body.addEventListener("htmx:beforeRequest", function (e) {
