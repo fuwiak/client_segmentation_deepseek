@@ -111,9 +111,26 @@ class BackgroundJobService:
         self.ai_progress = JobProgress(job="lazy_ai")
         self._ai_task: asyncio.Task[None] | None = None
         self._ai_lock = asyncio.Lock()
+        self._poll_seq = 0
+        self._poll_rows: list[dict[str, Any]] = []
 
     def ai_snapshot(self) -> dict[str, Any]:
         return self.ai_progress.to_dict()
+
+    def poll_snapshot(self, since: int = 0) -> dict[str, Any]:
+        rows = [row for seq, row in self._poll_rows if seq > since]
+        return {
+            **self.ai_progress.to_dict(),
+            "seq": self._poll_seq,
+            "rows": rows,
+        }
+
+    def _queue_row_patches(self, rows: list[dict[str, Any]]) -> None:
+        for row in rows:
+            self._poll_seq += 1
+            self._poll_rows.append((self._poll_seq, row_ws_patch(row)))
+        if len(self._poll_rows) > 2000:
+            self._poll_rows = self._poll_rows[-1000:]
 
     async def broadcast_progress(self) -> None:
         await self.ws.broadcast({"type": "ai_progress", **self.ai_progress.to_dict()})
@@ -121,6 +138,7 @@ class BackgroundJobService:
     async def broadcast_rows(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
+        self._queue_row_patches(rows)
         await self.ws.broadcast(
             {
                 "type": "ai_rows",

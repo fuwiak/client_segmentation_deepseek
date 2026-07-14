@@ -14,8 +14,21 @@
     if (root) root.innerHTML = "";
   }
 
+  function ensureTagRulesPanel() {
+    var panel = document.getElementById("tag-rules-panel");
+    if (!panel || panel.dataset.loaded === "1") return;
+    panel.dataset.loaded = "1";
+    if (typeof htmx !== "undefined") {
+      htmx.ajax("GET", "/clients/tag-rules/panel", {
+        target: "#tag-rules-panel",
+        swap: "innerHTML",
+      });
+    }
+  }
+
   function openTagRulesDrawer() {
     closeClientDrawer();
+    ensureTagRulesPanel();
     var drawer = document.getElementById("tag-rules-drawer");
     var overlay = document.getElementById("tag-rules-overlay");
     if (drawer) drawer.hidden = false;
@@ -111,6 +124,10 @@
     var target = e.detail.target;
     if (target && (target.id === "page-content" || target.id === "clients-live-region")) {
       document.documentElement.classList.add("is-navigating");
+    }
+    if (target && target.id === "page-content") {
+      closeTagRulesDrawer();
+      closeClientDrawer();
     }
     if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest(".upload-form")) {
       var modal = document.getElementById("upload-modal");

@@ -105,18 +105,5 @@
 {% endif %}
 </div>
 
-<div id="tag-rules-overlay" class="rules-drawer-overlay" hidden onclick="closeTagRulesDrawer()"></div>
-<aside id="tag-rules-drawer" class="rules-drawer" hidden aria-label="Правила AI-тегов">
-  <div id="tag-rules-panel"
-       hx-get="/clients/tag-rules/panel"
-       hx-trigger="load"
-       hx-swap="innerHTML"></div>
-</aside>
-
-<div id="client-drawer-overlay" class="rules-drawer-overlay" hidden onclick="closeClientDrawer()"></div>
-<aside id="client-drawer" class="rules-drawer client-drawer" hidden aria-label="Карточка клиента">
-  <div id="client-drawer-panel"></div>
-</aside>
-
 {% endif %}
 {% endblock %}

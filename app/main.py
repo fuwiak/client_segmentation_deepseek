@@ -479,6 +479,12 @@ async def clients_ai_status() -> JSONResponse:
   return JSONResponse({**jobs.ai_snapshot(), "pending": pending})
 
 
+@app.get("/clients/ai/poll")
+async def clients_ai_poll(since: int = Query(0, ge=0)) -> JSONResponse:
+  pending = len(jobs.pending_ai_rows(hub)) if hub.has_data() else 0
+  return JSONResponse({**jobs.poll_snapshot(since), "pending": pending})
+
+
 @app.post("/clients/ai/start", response_class=HTMLResponse)
 async def clients_ai_start(request: Request) -> HTMLResponse:
   await _hydrate_hub_from_cache()

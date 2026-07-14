@@ -1,8 +1,7 @@
 (function () {
-  var wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/clients";
-  var socket = null;
-  var reconnectMs = 1500;
-  var reconnectTimer = null;
+  var pollTimer = null;
+  var sinceSeq = 0;
+  var pollIntervalMs = 2500;
 
   function esc(text) {
     var d = document.createElement("div");
@@ -52,57 +51,56 @@
     }
   }
 
-  function onMessage(event) {
-    var data;
-    try {
-      data = JSON.parse(event.data);
-    } catch (e) {
-      return;
+  function scheduleNextPoll(delayMs) {
+    if (pollTimer) {
+      clearTimeout(pollTimer);
     }
-    if (data.type === "ai_progress") {
-      updateProgress(data);
-    } else if (data.type === "ai_rows" && Array.isArray(data.rows)) {
-      data.rows.forEach(updateRow);
+    pollTimer = setTimeout(pollOnce, delayMs);
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
     }
   }
 
-  function disconnect() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (!socket) return;
-    socket.onclose = null;
-    socket.onerror = null;
-    socket.onmessage = null;
-    try {
-      socket.close();
-    } catch (e) {}
-    socket = null;
-  }
-
-  function connect() {
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+  function pollOnce() {
+    if (!document.getElementById("clients-table-block")) {
+      stopPolling();
       return;
     }
-    socket = new WebSocket(wsUrl);
-    socket.onmessage = onMessage;
-    socket.onclose = function () {
-      if (document.getElementById("clients-table-block")) {
-        reconnectTimer = setTimeout(connect, reconnectMs);
-      }
-    };
-    socket.onerror = function () {
-      try {
-        socket.close();
-      } catch (e) {}
-    };
+    fetch("/clients/ai/poll?since=" + encodeURIComponent(String(sinceSeq)), {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("poll failed");
+        return resp.json();
+      })
+      .then(function (data) {
+        if (typeof data.seq === "number" && data.seq > sinceSeq) {
+          sinceSeq = data.seq;
+        }
+        updateProgress(data);
+        if (Array.isArray(data.rows)) {
+          data.rows.forEach(updateRow);
+        }
+        var delay = data.status === "running" ? 1500 : 4000;
+        scheduleNextPoll(delay);
+      })
+      .catch(function () {
+        scheduleNextPoll(5000);
+      });
   }
 
   window.initClientsPage = function () {
-    disconnect();
     if (document.getElementById("clients-table-block")) {
-      connect();
+      if (!pollTimer) {
+        pollOnce();
+      }
+    } else {
+      stopPolling();
     }
   };
 

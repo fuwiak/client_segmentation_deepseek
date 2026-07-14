@@ -100,8 +100,18 @@
     </div>
   </div>
 
-  <script src="/static/clients_ws.js?v=2"></script>
-  <script src="/static/app.js?v=3"></script>
+  <div id="tag-rules-overlay" class="rules-drawer-overlay" hidden onclick="closeTagRulesDrawer()"></div>
+  <aside id="tag-rules-drawer" class="rules-drawer" hidden aria-label="Правила AI-тегов">
+    <div id="tag-rules-panel"></div>
+  </aside>
+
+  <div id="client-drawer-overlay" class="rules-drawer-overlay" hidden onclick="closeClientDrawer()"></div>
+  <aside id="client-drawer" class="rules-drawer client-drawer" hidden aria-label="Карточка клиента">
+    <div id="client-drawer-panel"></div>
+  </aside>
+
+  <script src="/static/clients_ws.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
