@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import json
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -138,26 +140,55 @@ def get_tag_rule_map() -> dict[str, TagRule]:
     return {r.key: r for r in _rules}
 
 
-def _normalize_tag(tag: str) -> str:
-    tag = tag.strip()
+def _strip_tag_token(tag: str) -> str:
+    tag = str(tag).strip()
     if not tag:
         return ""
-    return tag if tag.startswith("#") else f"#{tag}"
+    tag = tag.strip("[]")
+    tag = tag.strip().strip("'\"")
+    return tag.rstrip(",").strip()
+
+
+def _normalize_tag(tag: str) -> str:
+    tag = _strip_tag_token(tag)
+    if not tag:
+        return ""
+    slug = tag.lstrip("#").strip()
+    if not slug:
+        return ""
+    return f"#{slug}"
+
+
+def _tag_tokens_from_value(value: Any) -> list[str]:
+    """Развернуть значение AI (строка, список, JSON-массив) в список токенов."""
+    if value in (None, "", "null"):
+        return []
+    if isinstance(value, (list, tuple, set)):
+        tokens: list[str] = []
+        for item in value:
+            tokens.extend(_tag_tokens_from_value(item))
+        return tokens
+    raw = str(value).strip()
+    if not raw:
+        return []
+    if raw[0] in "[{":
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(raw)
+            except (SyntaxError, ValueError):
+                parsed = None
+        if isinstance(parsed, (list, tuple, set)):
+            return _tag_tokens_from_value(parsed)
+    return [part for part in re.split(r"[\s,;]+", raw) if part.strip()]
 
 
 def normalize_tags_field(value: Any) -> str | None:
     """Несколько тегов через пробел: #nik1 #nik2 #nik3."""
-    if value in (None, "", "null"):
-        return None
-    raw = str(value).strip()
-    if not raw:
-        return None
     tokens: list[str] = []
     seen: set[str] = set()
-    for part in re.split(r"[\s,;]+", raw):
-        part = part.strip()
-        if not part:
-            continue
+    for part in _tag_tokens_from_value(value):
         tag = _normalize_tag(part)
         if not tag:
             continue

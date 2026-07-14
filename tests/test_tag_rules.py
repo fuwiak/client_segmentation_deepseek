@@ -29,6 +29,16 @@ def test_normalize_tags_field() -> None:
     assert normalize_tags_field("") is None
 
 
+def test_normalize_tags_field_accepts_ai_list_value() -> None:
+    assert normalize_tags_field(["#vip", "#постоянный_клиент", "#8марта"]) == (
+        "#vip #постоянный_клиент #8марта"
+    )
+    assert normalize_tags_field("['#vip', '#постоянный_клиент', '#8марта']") == (
+        "#vip #постоянный_клиент #8марта"
+    )
+    assert normalize_tags_field("##vip #vip") == "#vip"
+
+
 def test_evaluate_vip_from_avg_check() -> None:
     tags, reasons = evaluate_tags_for_row({"Средний чек": 20000, "Всего заказов": 1})
     assert "#vip" in (tags or "")
