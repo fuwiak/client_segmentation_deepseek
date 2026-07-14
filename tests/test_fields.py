@@ -42,6 +42,8 @@ def test_marketplace_channels() -> None:
         "FLOW WOW",
         "Flawery",
         "Флавери",
+        "Wildberries",
+        "Авито",
     ):
         assert is_marketplace_channel(channel) is True
         assert is_direct_sales_channel(channel) is False
@@ -54,12 +56,13 @@ def test_direct_sales_channels() -> None:
         "Витрина",
         "Telegram",
         "WhatsApp",
+        "WhatsApp/MAX",
+        "Прямые продажи",
+        "Сайт vereskflowers.ru",
         "https://vereskflowers.ru/",
-        "Wildberries",
-        "Авито",
     ):
-        assert is_marketplace_channel(channel) is False
         assert is_direct_sales_channel(channel) is True
+        assert is_marketplace_channel(channel) is False
         assert channel_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
         assert sales_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
 

@@ -63,15 +63,20 @@ def apply_name_parts(merged: dict[str, Any], full_name: str, ai_fields: list[str
       apply_ai_field(merged, "Фамилия (для ИП и физ. лиц)", parts[1], ai_fields)
 
 
-MARKETPLACE_CHANNEL_KEYWORDS = (
-  "flowwow",
-  "flow wow",
-  "ozon",
-  "яндекс",
-  "yandex",
-  "флавери",
-  "flawery",
-  "flaweri",
+DIRECT_SALES_CHANNEL_EXACT = frozenset({
+  "telegram",
+  "whatsapp/max",
+  "whatsapp",
+  "max",
+  "витрина",
+  "прямые продажи",
+  "сайт vereskflowers.ru",
+})
+
+DIRECT_SALES_CHANNEL_SUBSTRINGS = (
+  "vereskflowers.ru",
+  "telegram",
+  "whatsapp",
 )
 
 SALES_CHANNEL_TYPE_MARKETPLACE = "маркетплейс"
@@ -87,24 +92,28 @@ def _normalize_channel(channel: str) -> str:
   return channel.strip().lower().replace("ё", "е")
 
 
-def is_marketplace_channel(channel: str | None) -> bool:
-  """Маркетплейс: Flowwow, Ozon, Яндекс, Flawery и их варианты написания."""
+def is_direct_sales_channel(channel: str | None) -> bool:
+  """Прямые продажи: Telegram, WhatsApp/MAX, Витрина, Прямые продажи, vereskflowers.ru."""
   if not channel or not str(channel).strip():
     return False
   text = _normalize_channel(str(channel))
-  return any(keyword in text for keyword in MARKETPLACE_CHANNEL_KEYWORDS)
+  if text in DIRECT_SALES_CHANNEL_EXACT:
+    return True
+  return any(part in text for part in DIRECT_SALES_CHANNEL_SUBSTRINGS)
 
 
-def is_direct_sales_channel(channel: str | None) -> bool:
-  """Прямые продажи: любой канал, который не маркетплейс."""
+def is_marketplace_channel(channel: str | None) -> bool:
+  """Маркетплейс: любой канал, не входящий в список прямых продаж."""
   if not channel or not str(channel).strip():
     return False
-  return not is_marketplace_channel(str(channel))
+  return not is_direct_sales_channel(channel)
 
 
 def channel_type_from_channel(channel: str | None) -> str:
   """Классификация одного канала продаж из МойСклад."""
-  if is_marketplace_channel(channel):
+  if is_direct_sales_channel(channel):
+    return SALES_CHANNEL_TYPE_DIRECT
+  if channel and str(channel).strip():
     return SALES_CHANNEL_TYPE_MARKETPLACE
   return SALES_CHANNEL_TYPE_DIRECT
 
