@@ -979,6 +979,14 @@ async def _ensure_hub_ready() -> None:
   await _ensure_moysklad_data(fetch_positions=False)
 
 
+async def _ensure_hub_cache_only() -> None:
+  """Быстрая подгрузка hub только из Redis/Postgres — без API МойСклад."""
+  if hub.has_parsed_data() or hub.has_data():
+    return
+  await _hydrate_hub_from_cache()
+  await _hydrate_moysklad_from_cache()
+
+
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
 async def client_card(
   request: Request,
@@ -1008,16 +1016,15 @@ async def client_orders(
 ) -> HTMLResponse:
   if collapsed:
     return HTMLResponse("")
-  client = hub.get_client(client_id)
-  if not client:
-    await _ensure_hub_ready()
-    client = hub.get_client(client_id)
-  if not client:
+  pipeline_log("PIPE", "partial client_orders client_id=%s", client_id)
+  client, raw_orders, total = hub.get_client_orders(client_id)
+  if client is None:
+    await _ensure_hub_cache_only()
+    client, raw_orders, total = hub.get_client_orders(client_id)
+  if client is None:
     return HTMLResponse(
       '<div class="orders-nested orders-nested-empty">Клиент не найден</div>'
     )
-  raw_orders = client.get("_orders_context") or []
-  total = int(client.get("_orders_count") or len(raw_orders))
   orders = compact_orders_for_display(raw_orders)
   return templates.TemplateResponse(
     "partials/client_orders.html",

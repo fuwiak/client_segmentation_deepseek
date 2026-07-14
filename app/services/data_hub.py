@@ -21,6 +21,28 @@ def _row_key(row: dict[str, Any]) -> str:
   return str(row.get("UUID") or row.get("uuid") or row.get("Наименование") or "")
 
 
+def _register_client_index_keys(
+  row: dict[str, Any],
+  index: dict[str, dict[str, Any]],
+) -> None:
+  uid = str(row.get("UUID") or row.get("uuid") or "").strip().lower()
+  if uid:
+    index[uid] = row
+  ms_id = str(row.get("_moysklad_id") or "").strip().lower()
+  if ms_id:
+    index[ms_id] = row
+  name = str(row.get("Наименование") or "").strip().lower()
+  if name:
+    index[name] = row
+  phone_text = str(row.get("Телефон") or "").strip().lower()
+  if phone_text:
+    index[phone_text] = row
+  for raw in (row.get("Телефон"), row.get("Наименование"), row.get("Код")):
+    phone = normalize_phone(str(raw) if raw else None)
+    if phone:
+      index[phone] = row
+
+
 class DataHub:
   def __init__(self) -> None:
     self.parsed: ParsedWorkbook | None = None
@@ -32,11 +54,17 @@ class DataHub:
     self.version: int = 0
     self._active_rows_cache: tuple[int, list[dict[str, Any]]] | None = None
     self._filter_cache: dict[str, list[dict[str, Any]]] = {}
+    self._client_index: dict[str, dict[str, Any]] | None = None
+    self._client_index_version: int = -1
+    self._results_by_key: dict[str, dict[str, Any]] | None = None
+    self._results_index_version: int = -1
 
   def touch(self) -> None:
     self.version += 1
     self._active_rows_cache = None
     self._filter_cache.clear()
+    self._client_index = None
+    self._results_by_key = None
 
   def set_workbook(
     self,
@@ -136,19 +164,97 @@ class DataHub:
   def has_data(self) -> bool:
     return bool(self.results) or self.has_parsed_data()
 
-  def get_client(self, client_id: str) -> dict[str, Any] | None:
+  def _ensure_client_index(self) -> dict[str, dict[str, Any]]:
+    if self._client_index is not None and self._client_index_version == self.version:
+      return self._client_index
+    index: dict[str, dict[str, Any]] = {}
+    if self.parsed and self.parsed.rows:
+      for row in self.parsed.rows:
+        _register_client_index_keys(row, index)
+    elif self.results:
+      for row in self.results:
+        _register_client_index_keys(row, index)
+    self._client_index = index
+    self._client_index_version = self.version
+    return index
+
+  def _ensure_results_index(self) -> dict[str, dict[str, Any]]:
+    if self._results_by_key is not None and self._results_index_version == self.version:
+      return self._results_by_key
+    self._results_by_key = {_row_key(row): row for row in self.results}
+    self._results_index_version = self.version
+    return self._results_by_key
+
+  def lookup_client_row(self, client_id: str) -> dict[str, Any] | None:
+    """O(1) поиск строки клиента без полного active_rows()."""
+    index = self._ensure_client_index()
     key = client_id.strip().lower()
+    row = index.get(key)
+    if row is not None:
+      return row
     key_phone = normalize_phone(client_id)
-    for row in self.active_rows():
-      uid = str(row.get("UUID") or row.get("uuid") or "").lower()
-      name = str(row.get("Наименование") or "").strip().lower()
-      phone_text = str(row.get("Телефон") or "").strip().lower()
-      row_phone = normalize_phone(row.get("Телефон") or row.get("Наименование"))
-      if uid == key or name == key or phone_text == key:
-        return row
-      if key_phone and row_phone and key_phone == row_phone:
-        return row
+    if key_phone:
+      return index.get(key_phone)
     return None
+
+  def get_client(self, client_id: str) -> dict[str, Any] | None:
+    row = self.lookup_client_row(client_id)
+    if not row:
+      return None
+    display = refresh_row_for_display(dict(row))
+    if not self.results:
+      return display
+    overlay = self._ensure_results_index().get(_row_key(row))
+    if not overlay:
+      return display
+    merged = merge_enriched_rows([display], [overlay], key_fn=_row_key)
+    return merged[0] if merged else display
+
+  def get_client_orders(
+    self,
+    client_id: str,
+  ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], int]:
+    """Быстрый путь для HTMX-раскрытия заказов в таблице."""
+    row = self.lookup_client_row(client_id)
+    if not row:
+      return None, [], 0
+    orders = row.get("_orders_context") or []
+    total = int(row.get("_orders_count") or len(orders))
+    return row, orders, total
+
+  def sync_orders_context_from_order_rows(self) -> None:
+    """Обновить _orders_context у клиентов после догрузки позиций без enrich_with_orders."""
+    if not self.parsed or not self.parsed.rows or not self.orders_parsed:
+      return
+    order_rows = self.orders_parsed.rows or []
+    order_by_key: dict[str, dict[str, Any]] = {}
+    for order in order_rows:
+      for key in (order.get("_moysklad_id"), order.get("№"), order.get("Номер")):
+        text = str(key or "").strip()
+        if text:
+          order_by_key[text] = order
+
+    for cp_row in self.parsed.rows:
+      ctx = cp_row.get("_orders_context")
+      if not ctx:
+        continue
+      updated: list[dict[str, Any]] = []
+      seen: set[str] = set()
+      for order in ctx:
+        lookup_key = str(
+          order.get("_moysklad_id") or order.get("№") or order.get("Номер") or ""
+        ).strip()
+        source = order_by_key.get(lookup_key) if lookup_key else None
+        item = source or order
+        item_key = str(
+          item.get("_moysklad_id") or item.get("№") or item.get("Номер") or id(item)
+        )
+        if item_key in seen:
+          continue
+        seen.add(item_key)
+        updated.append(item)
+      cp_row["_orders_context"] = updated[:20]
+    self.touch()
 
   def filter_rows(
     self,

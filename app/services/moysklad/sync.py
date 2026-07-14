@@ -135,25 +135,13 @@ async def refresh_moysklad_positions(
         return False
 
     order_rows = [dict(row) for row in hub.orders_parsed.rows]
-    counterparty_rows = [
-        {
-            k: v
-            for k, v in dict(row).items()
-            if k
-            not in (
-                "_orders_context",
-                "_orders_count",
-                "_ordered_positions",
-                "Заказанные позиции",
-            )
-        }
-        for row in hub.parsed.rows
-    ]
     apply_positions_to_orders(order_rows, positions_by_order_id)
-    _apply_rows_to_hub(hub, counterparty_rows, order_rows)
+    hub.orders_parsed.rows = order_rows
+    hub.sync_orders_context_from_order_rows()
 
     if cache:
         cached = await cache.get_moysklad_sync() or {}
+        counterparty_rows = [dict(row) for row in hub.parsed.rows] if hub.parsed else []
         await cache.save_moysklad_sync(
             {
                 **cached,

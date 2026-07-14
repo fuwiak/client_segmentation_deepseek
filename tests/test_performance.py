@@ -61,3 +61,39 @@ def test_clients_page_skips_relink_and_lazy_ai() -> None:
     assert response.status_code == 200
     relink_mock.assert_not_called()
     lazy_ai_mock.assert_not_called()
+
+
+def test_client_orders_uses_cache_only_hydrate() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  hub = m.hub
+  hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "UUID": "cp-orders-endpoint",
+        "Наименование": "Тест",
+        "_orders_context": [{"№": "42", "Дата": "2026-03-01", "Сумма": 1000, "Статус": "OK"}],
+        "_orders_count": 1,
+      }],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+  with patch.object(m, "_ensure_hub_ready", new_callable=AsyncMock) as ready_mock, patch.object(
+    m, "_ensure_moysklad_data", new_callable=AsyncMock
+  ) as ensure_ms_mock:
+    client = TestClient(m.app)
+    response = client.get(
+      "/clients/cp-orders-endpoint/orders",
+      headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    ready_mock.assert_not_called()
+    ensure_ms_mock.assert_not_called()
+    assert "orders-compact" in response.text
+    assert "42" in response.text

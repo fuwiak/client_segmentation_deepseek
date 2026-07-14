@@ -117,6 +117,38 @@ def test_get_client_matches_normalized_phone() -> None:
     assert client["_orders_count"] == 1
 
 
+def test_lookup_client_row_is_o1_indexed() -> None:
+    hub = _sample_hub()
+    row = hub.lookup_client_row("1")
+    assert row is not None
+    assert row["Наименование"] == "Анна"
+    assert hub.lookup_client_row("missing-id") is None
+
+
+def test_get_client_orders_returns_context_without_active_rows_scan() -> None:
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[{
+                "UUID": "cp-orders",
+                "Наименование": "Клиент",
+                "_orders_context": [{"№": "100", "Дата": "2026-03-01", "Сумма": 5000}],
+                "_orders_count": 3,
+            }],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=1,
+            meta={"source": "moysklad"},
+        ),
+        None,
+    )
+    client, orders, total = hub.get_client_orders("cp-orders")
+    assert client is not None
+    assert len(orders) == 1
+    assert total == 3
+
+
 def test_touch_bumps_version_and_clears_filter_cache() -> None:
     hub = _sample_hub()
     version_before = hub.version
