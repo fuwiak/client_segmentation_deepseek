@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     enrichment_concurrency: int = 3
     messenger_cache_limit: int = 5000
 
+    telegram_export_path: str = "data/telegram_export.json"
+    telegram_export_auto_import: bool = True
+    telegram_export_max_mb: int = 50
+
 
 @lru_cache
 def get_settings() -> Settings:

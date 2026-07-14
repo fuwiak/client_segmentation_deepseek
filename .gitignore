@@ -6,3 +6,5 @@ venv/
 .DS_Store
 *.xlsx
 .~lock.*
+data/telegram_export.json
+data/*.json

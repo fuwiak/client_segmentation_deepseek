@@ -1,0 +1,54 @@
+import json
+from pathlib import Path
+
+from app.services.telegram_export import (
+    build_export_index,
+    messages_for_row,
+    normalize_export_phone,
+    parse_telegram_export_file,
+    tg_conversation_label,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "telegram_export_sample.json"
+
+
+def test_normalize_export_phone_formats() -> None:
+    assert normalize_export_phone("0079163649615") == "9163649615"
+    assert normalize_export_phone("+7 916 364-96-15") == "9163649615"
+    assert normalize_export_phone("89163649615") == "9163649615"
+
+
+def test_build_export_index_links_chat_by_phone() -> None:
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    index = build_export_index(data)
+    assert index["meta"]["chats_with_phone"] == 1
+    assert "9163649615" in index["by_phone"]
+    assert len(index["by_phone"]["9163649615"]) == 3
+
+
+def test_messages_for_row_matches_client_phone() -> None:
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    index = build_export_index(data)
+    row = {"Телефон": "+79163649615", "Наименование": "Юлия Зейналова"}
+    msgs = messages_for_row(index, row)
+    assert len(msgs) == 3
+    assert msgs[0]["source"] == "telegram_export"
+
+
+def test_tg_conversation_label() -> None:
+    row = {
+        "_tg_export_context": [
+            {"text": "Привет, хочу букет"},
+            {"text": "Добрый день"},
+        ]
+    }
+    label = tg_conversation_label(row)
+    assert "✓ 2 сообщ." in label
+    assert "Добрый день" in label
+
+
+def test_parse_telegram_export_file(tmp_path: Path) -> None:
+    target = tmp_path / "export.json"
+    target.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    index = parse_telegram_export_file(target)
+    assert index["meta"]["phones_indexed"] == 1

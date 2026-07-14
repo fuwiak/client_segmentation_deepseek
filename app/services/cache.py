@@ -196,6 +196,19 @@ class CacheService:
         except Exception:  # noqa: BLE001
             return None
 
+    async def save_telegram_export_index(self, payload: dict[str, Any]) -> None:
+        try:
+            await self._backend.set("telegram_export:index", payload, self._ttl)
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def get_telegram_export_index(self) -> dict[str, Any] | None:
+        try:
+            hit = await self._backend.get("telegram_export:index")
+            return hit if isinstance(hit, dict) else None
+        except Exception:  # noqa: BLE001
+            return None
+
 
 _cache_service: CacheService | None = None
 

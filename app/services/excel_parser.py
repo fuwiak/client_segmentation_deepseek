@@ -113,6 +113,7 @@ CLIENT_DISPLAY_COLUMNS = [
     "Пол",
     "E-mail",
     "ТГ ник",
+    "TG conversation",
 ]
 
 CONTRAGENT_MARKERS = {"UUID", "Наименование", "Тип контрагента"}

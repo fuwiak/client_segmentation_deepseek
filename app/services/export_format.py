@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.telegram_export import tg_conversation_label
 from app.services.fields import AI_NO_DATA_LABEL
 
 from app.services.excel_parser import (
@@ -102,6 +103,8 @@ def _cell_value(row: dict[str, Any], col: str) -> Any:
         return _resolve_aliases(row, "ТГ ник")
     if col == "История переписки":
         return format_messenger_history(row.get("_messenger_context") or [])
+    if col == "TG conversation":
+        return tg_conversation_label(row)
     if col == "Группы":
         return row.get("Группы") or row.get("_moysklad_tags_display")
     if col in COLUMN_ALIASES:

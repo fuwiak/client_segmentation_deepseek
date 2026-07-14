@@ -4,6 +4,7 @@ import asyncio
 import io
 import uuid
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -47,6 +48,7 @@ from app.services.tag_rules import (
   save_tag_rules,
 )
 from app.services.tag_explanations import explain_tags_for_row
+from app.services.telegram_export import parse_telegram_export_file
 from app.services.telegram_bot import get_telegram_client
 
 settings = get_settings()
@@ -67,6 +69,68 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
 _enrich_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
+_tg_export_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": "", "meta": {}}
+
+
+async def _apply_tg_export_to_hub() -> int:
+  """Привязать TG export ко всем клиентам в hub и сохранить в кэш."""
+  messenger = MessengerEnrichmentService(settings, cache)
+  await messenger.load_telegram_export()
+  if not messenger.export_loaded:
+    return 0
+  rows = hub.active_rows()
+  if not rows:
+    return 0
+  updated = await messenger.attach_tg_export_only(rows)
+  matched = sum(1 for r in updated if r.get("_tg_export_context"))
+  meta = {
+    **(hub.meta or {}),
+    "tg_export_matched": matched,
+    "tg_export_meta": messenger.export_stats,
+  }
+  hub.set_results(updated, meta)
+  payload = {"results": updated, "meta": meta}
+  if hub.workbook_hash:
+    await cache.save_segmentation_results(hub.workbook_hash, payload)
+  else:
+    await cache.save_results(payload)
+  return matched
+
+
+async def _import_telegram_export_from_path(path: Path) -> dict[str, Any]:
+  _tg_export_progress.update(status="running", done=0, total=1, error="", meta={})
+  try:
+    index = await asyncio.to_thread(parse_telegram_export_file, path)
+    messenger = MessengerEnrichmentService(settings, cache)
+    await messenger.save_telegram_export(index)
+    matched = await _apply_tg_export_to_hub()
+    meta = {**(index.get("meta") or {}), "matched_clients": matched}
+    _tg_export_progress.update(status="done", done=1, total=1, error="", meta=meta)
+    return meta
+  except Exception as exc:  # noqa: BLE001
+    _tg_export_progress.update(status="error", error=str(exc))
+    raise
+
+
+async def _bootstrap_telegram_export() -> None:
+  messenger = MessengerEnrichmentService(settings, cache)
+  cached = await messenger.load_telegram_export()
+  if cached:
+    _tg_export_progress.update(
+      status="done",
+      done=1,
+      total=1,
+      meta={**(cached.get("meta") or {}), "from_cache": True},
+    )
+    if hub.active_rows() and not any(r.get("_tg_export_context") for r in hub.active_rows()[:50]):
+      asyncio.create_task(_apply_tg_export_to_hub())
+    return
+  if not settings.telegram_export_auto_import:
+    return
+  path = Path(settings.telegram_export_path)
+  if not path.is_file():
+    return
+  asyncio.create_task(_import_telegram_export_from_path(path))
 
 
 async def _hydrate_hub_from_cache(workbook_key: str | None = None) -> bool:
@@ -115,6 +179,7 @@ async def startup_hydrate_cache() -> None:
   messenger = MessengerEnrichmentService(settings, cache)
   if messenger.telegram_enabled:
     await messenger.sync_telegram_inbox()
+  await _bootstrap_telegram_export()
 
 
 def _workflow_ctx() -> dict[str, Any]:
@@ -266,6 +331,7 @@ def _clients_ctx(
   tag: str = "",
   status: str = "",
   page: int = 1,
+  clients: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
   rows = hub.filter_rows(sales_filter=sales_filter, tag=tag, status=status)
   per_page = max(1, settings.clients_page_size)
@@ -274,9 +340,11 @@ def _clients_ctx(
   page = max(1, min(page, total_pages))
   start = (page - 1) * per_page
   end = start + per_page
+  page_clients = clients if clients is not None else rows[start:end]
+  tg_export_ready = _tg_export_progress.get("status") == "done"
   return _ctx(
     request,
-    clients=rows[start:end],
+    clients=page_clients,
     total=total,
     page=page,
     per_page=per_page,
@@ -291,12 +359,43 @@ def _clients_ctx(
     messenger_available=settings.messenger_enabled and (
       get_green_api_client(settings).enabled or get_telegram_client(settings).enabled
     ),
+    tg_export_ready=tg_export_ready,
+    tg_export_progress=_tg_export_progress,
+  )
+
+
+async def _clients_ctx_with_tg(
+  request: Request,
+  *,
+  sales_filter: str = "direct",
+  tag: str = "",
+  status: str = "",
+  page: int = 1,
+) -> dict[str, Any]:
+  rows = hub.filter_rows(sales_filter=sales_filter, tag=tag, status=status)
+  per_page = max(1, settings.clients_page_size)
+  total = len(rows)
+  total_pages = max(1, (total + per_page - 1) // per_page)
+  page = max(1, min(page, total_pages))
+  start = (page - 1) * per_page
+  end = start + per_page
+  page_rows = rows[start:end]
+  messenger = MessengerEnrichmentService(settings, cache)
+  page_rows = await messenger.attach_tg_export_only(page_rows)
+  return _clients_ctx(
+    request,
+    sales_filter=sales_filter,
+    tag=tag,
+    status=status,
+    page=page,
+    clients=page_rows,
   )
 
 
 async def _run_segmentation(rows: list[dict[str, Any]], parsed: Any) -> None:
   _progress.update(status="running", done=0, total=len(rows), error="")
   messenger = MessengerEnrichmentService(settings, cache)
+  await messenger.load_telegram_export()
   if messenger.available:
     rows = await messenger.attach_messages(rows)
   service = SegmentationService(settings)
@@ -393,7 +492,7 @@ async def clients_page(
   return templates.TemplateResponse(
     "clients.html",
     {
-      **_clients_ctx(request, sales_filter=filter, tag=tag, status=status, page=page),
+      **(await _clients_ctx_with_tg(request, sales_filter=filter, tag=tag, status=status, page=page)),
       "active_page": "clients",
       "page_title": "Клиенты",
       "subtitle": "AI-база с фильтрами и раскрытием заказов",
@@ -413,7 +512,7 @@ async def clients_table_partial(
   await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "partials/clients_table.html",
-    _clients_ctx(request, sales_filter=filter, tag=tag, status=status, page=page),
+    await _clients_ctx_with_tg(request, sales_filter=filter, tag=tag, status=status, page=page),
   )
 
 
@@ -841,6 +940,28 @@ async def enrich_start(
       sales_filter=filter,
       tag_filter=tag,
       status_filter=status,
+    ),
+  )
+
+
+@app.post("/telegram/export/import", response_class=HTMLResponse)
+async def telegram_export_import(request: Request, file: UploadFile = File(...)) -> HTMLResponse:
+  max_bytes = settings.telegram_export_max_mb * 1024 * 1024
+  content = await file.read()
+  if len(content) > max_bytes:
+    return templates.TemplateResponse(
+      "partials/error.html",
+      _ctx(request, message=f"Файл больше {settings.telegram_export_max_mb} МБ"),
+    )
+  path = Path(settings.telegram_export_path)
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_bytes(content)
+  asyncio.create_task(_import_telegram_export_from_path(path))
+  return templates.TemplateResponse(
+    "partials/error.html",
+    _ctx(
+      request,
+      message="Telegram export загружен, импорт запущен в фоне. Обновите страницу клиентов через минуту.",
     ),
   )
 

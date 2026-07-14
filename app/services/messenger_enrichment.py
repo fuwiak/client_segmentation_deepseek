@@ -22,6 +22,7 @@ from app.services.fields import (
 from app.services.tag_rules import evaluate_tags_for_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_store import MessengerMessageStore
+from app.services.telegram_export import messages_for_row as export_messages_for_row
 from app.services.segmentation import SegmentationService, guess_gender
 from app.services.telegram_bot import get_telegram_client
 
@@ -84,9 +85,16 @@ class MessengerEnrichmentService:
         self._tg = get_telegram_client(settings)
         self._segmentation = SegmentationService(settings)
         self._store = MessengerMessageStore(settings, self._cache)
+        self._export_index: dict[str, Any] | None = None
+
+    @property
+    def export_loaded(self) -> bool:
+        return bool(self._export_index and self._export_index.get("by_phone"))
 
     @property
     def available(self) -> bool:
+        if self._export_index:
+            return True
         if not self._settings.messenger_enabled:
             return False
         return self._wa.enabled or self._tg.enabled
@@ -102,11 +110,41 @@ class MessengerEnrichmentService:
     async def sync_telegram_inbox(self) -> int:
         return await self._store.sync_telegram()
 
+    async def load_telegram_export(self) -> dict[str, Any] | None:
+        cached = await self._cache.get_telegram_export_index()
+        if isinstance(cached, dict) and cached.get("by_phone") is not None:
+            self._export_index = cached
+            return cached
+        self._export_index = None
+        return None
+
+    async def save_telegram_export(self, index: dict[str, Any]) -> None:
+        self._export_index = index
+        await self._cache.save_telegram_export_index(index)
+
+    @property
+    def export_stats(self) -> dict[str, Any]:
+        meta = (self._export_index or {}).get("meta") or {}
+        return {
+            "loaded": bool(self._export_index),
+            **meta,
+        }
+
+    def _export_messages_for_row(self, row: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self._export_index:
+            return []
+        return export_messages_for_row(
+            self._export_index,
+            row,
+            limit=self._settings.enrichment_chat_limit,
+        )
+
     async def attach_messages(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not self.available:
             return rows
 
         await self._store.load()
+        await self.load_telegram_export()
         if self._tg.enabled:
             await self.sync_telegram_inbox()
 
@@ -116,6 +154,9 @@ class MessengerEnrichmentService:
             async with semaphore:
                 copy = dict(row)
                 messages = await self.fetch_client_messages(copy)
+                export_msgs = self._export_messages_for_row(copy)
+                if export_msgs:
+                    copy["_tg_export_context"] = export_msgs
                 copy["_messenger_context"] = messages
                 copy["_messenger_sources"] = sorted(
                     {m.get("channel") for m in messages if m.get("channel")}
@@ -123,6 +164,33 @@ class MessengerEnrichmentService:
                 return copy
 
         return list(await asyncio.gather(*(_attach(row) for row in rows)))
+
+    async def attach_tg_export_only(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        await self.load_telegram_export()
+        if not self.export_loaded:
+            return rows
+        updated: list[dict[str, Any]] = []
+        for row in rows:
+            copy = dict(row)
+            export_msgs = self._export_messages_for_row(copy)
+            if not export_msgs:
+                updated.append(copy)
+                continue
+            copy["_tg_export_context"] = export_msgs
+            combined = list(copy.get("_messenger_context") or [])
+            seen = {f"{m.get('date')}:{m.get('text')}" for m in combined}
+            for msg in export_msgs:
+                key = f"{msg.get('date')}:{msg.get('text')}"
+                if key not in seen:
+                    seen.add(key)
+                    combined.append(msg)
+            combined.sort(key=lambda m: m.get("date") or "")
+            copy["_messenger_context"] = combined[-self._settings.enrichment_chat_limit :]
+            sources = set(copy.get("_messenger_sources") or [])
+            sources.add("telegram")
+            copy["_messenger_sources"] = sorted(sources)
+            updated.append(copy)
+        return updated
 
     async def fetch_whatsapp_history(
         self, phone: str, *, count: int | None = None
@@ -192,6 +260,8 @@ class MessengerEnrichmentService:
 
     async def fetch_client_messages(self, row: dict[str, Any]) -> list[dict[str, Any]]:
         await self._store.load()
+        if self._export_index is None:
+            await self.load_telegram_export()
         combined: list[dict[str, Any]] = []
         seen: set[str] = set()
 
@@ -202,6 +272,7 @@ class MessengerEnrichmentService:
                     seen.add(key)
                     combined.append(item)
 
+        _add(self._export_messages_for_row(row))
         _add(self._store.messages_for_row(row))
 
         phone = row.get("Телефон")
@@ -255,6 +326,9 @@ class MessengerEnrichmentService:
         messages: list[dict[str, Any]],
     ) -> dict[str, Any]:
         row["_messenger_context"] = messages
+        export_msgs = self._export_messages_for_row(row)
+        if export_msgs:
+            row["_tg_export_context"] = export_msgs
         row["_messenger_sources"] = sorted(
             {m.get("channel") for m in messages if m.get("channel")}
         )

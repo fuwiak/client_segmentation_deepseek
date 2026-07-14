@@ -1,0 +1,55 @@
+{
+  "personal_information": {
+    "user_id": 1952349227,
+    "first_name": "Veresk",
+    "last_name": "цветочная студия"
+  },
+  "contacts": {
+    "list": [
+      {
+        "phone_number": "0079163649615"
+      }
+    ]
+  },
+  "chats": {
+    "list": [
+      {
+        "name": "Юлия Зейналова",
+        "type": "personal_chat",
+        "id": 1001,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2026-06-23T19:04:00",
+            "from": "Юлия Зейналова",
+            "from_id": "user1001",
+            "text": "Здравствуйте, хочу букет на день рождения"
+          },
+          {
+            "id": 2,
+            "type": "message",
+            "date": "2026-06-23T19:05:00",
+            "from": "Veresk цветочная студия",
+            "from_id": "user1952349227",
+            "text": "Добрый день! Подскажите номер телефона"
+          },
+          {
+            "id": 3,
+            "type": "message",
+            "date": "2026-06-23T19:06:00",
+            "from": "Юлия Зейналова",
+            "from_id": "user1001",
+            "text": [
+              "Мой номер ",
+              {
+                "type": "phone",
+                "text": "+79163649615"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
