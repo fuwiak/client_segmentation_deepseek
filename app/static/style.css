@@ -1408,6 +1408,8 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 
 .client-meta, .tags-row, .kpi-inline { display: flex; flex-wrap: wrap; gap: var(--sm); margin-bottom: var(--lg); }
 .client-section { margin-bottom: var(--lg); padding-top: var(--md); border-top: 1px solid var(--hairline-soft); }
+.client-orders-list:not([hidden]) { margin-top: var(--sm); }
+.client-orders-expand-btn.is-open { opacity: 0.85; }
 
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator { display: flex; gap: var(--sm); color: var(--muted); }

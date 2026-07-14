@@ -108,8 +108,8 @@
     if (!panel || !xhr || !xhr.responseText) return;
     if (!panel.querySelector(".rules-drawer-header")) {
       panel.innerHTML = xhr.responseText;
-      processHtmxRegion(panel);
     }
+    processHtmxRegion(panel);
     openClientDrawer();
   }
 
@@ -320,6 +320,14 @@
       hideClientDrawerLoading();
       openClientDrawer();
       processHtmxRegion(target);
+    } else if (target && target.id === "client-orders-list") {
+      target.hidden = false;
+      processHtmxRegion(target);
+      var elt = e.detail.elt;
+      if (elt && elt.classList && elt.classList.contains("client-orders-expand-btn")) {
+        elt.setAttribute("aria-expanded", "true");
+        elt.classList.add("is-open");
+      }
     } else if (target && target.id === "modal-root") {
       hideOrdersModalLoading();
       processHtmxRegion(target);

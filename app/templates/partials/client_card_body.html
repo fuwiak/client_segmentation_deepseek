@@ -49,11 +49,15 @@
   {% if last.get('Позиции') %}
   <p class="hint">Позиции: {{ last.get('Позиции') }}</p>
   {% endif %}
-  <button class="btn secondary small"
+  <button type="button" class="btn secondary small client-orders-expand-btn"
+          hx-boost="false"
+          hx-push-url="false"
           hx-get="/clients/{{ client_id }}/orders"
           hx-target="#client-orders-list"
-          hx-swap="innerHTML">Все заказы ({{ orders_total|default(0) }})</button>
-  <div id="client-orders-list"></div>
+          hx-swap="innerHTML"
+          aria-expanded="false"
+          aria-controls="client-orders-list">Все заказы ({{ orders_total|default(0) }})</button>
+  <div id="client-orders-list" class="client-orders-list" hidden></div>
 </section>
 {% endif %}
 

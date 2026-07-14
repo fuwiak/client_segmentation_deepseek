@@ -297,22 +297,21 @@ class DataHub:
     self,
     client_id: str,
   ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], int]:
-    """Быстрый путь для HTMX-раскрытия заказов в таблице."""
+    """Быстрый путь для HTMX-раскрытия заказов в карточке клиента."""
     row = self.lookup_client_row(client_id)
     if not row:
       return None, [], 0
-    orders = self.resolve_order_entities(row.get("_orders_context") or [])
-    if not orders and self.orders_parsed and self.orders_parsed.rows:
+    row = dict(row)
+    orders: list[dict[str, Any]] = []
+    if self.orders_parsed and self.orders_parsed.rows:
       found = orders_for_client_row(
         row,
         self.orders_parsed.rows,
         contragent_rows=self.parsed.rows if self.parsed else None,
       )
       orders = self.resolve_order_entities(found)
-      if orders:
-        row["_orders_context"] = orders[:20]
-        row["_orders_count"] = len(orders)
-        self.touch()
+    if not orders:
+      orders = self.resolve_order_entities(row.get("_orders_context") or [])
     total = order_count_for_row(row)
     if len(orders) > total:
       total = len(orders)

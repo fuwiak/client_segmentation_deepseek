@@ -1062,7 +1062,7 @@ async def client_orders(
     return HTMLResponse(
       '<div class="orders-nested orders-nested-empty">Клиент не найден</div>'
     )
-  orders = compact_orders_for_display(raw_orders)
+  orders = compact_orders_for_display(raw_orders, limit=min(max(total, 20), 100))
   if modal:
     return templates.TemplateResponse(
       "partials/client_orders_modal.html",

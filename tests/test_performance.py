@@ -164,6 +164,8 @@ def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
     )
   assert response.status_code == 200
   assert "Все заказы (1)" in response.text
+  assert 'hx-target="#client-orders-list"' in response.text
+  assert 'class="btn secondary small client-orders-expand-btn"' in response.text
   assert "rules-drawer-header" in response.text
 
 
@@ -288,3 +290,53 @@ def test_client_orders_uses_cache_only_hydrate() -> None:
     ensure_ms_mock.assert_not_awaited()
     assert "orders-compact" in response.text
     assert "42" in response.text
+    assert response.text.count("orders-compact-item") == 1
+
+
+def test_client_orders_expand_shows_all_cached_orders() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  orders_rows = [
+    {
+      "№": f"{i:05d}",
+      "Контрагент": "VIP",
+      "_moysklad_agent_id": "cp-expand",
+      "Дата": f"2026-01-{(i % 28) + 1:02d}",
+      "Сумма": 1000 * i,
+      "Статус": "OK",
+    }
+    for i in range(1, 28)
+  ]
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "UUID": "cp-expand",
+        "Наименование": "VIP",
+        "Всего заказов": 27,
+        "_orders_context": orders_rows[:1],
+        "_orders_count": 27,
+      }],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=1,
+      meta={"source": "moysklad"},
+    ),
+    ParsedWorkbook(
+      source_type="orders",
+      rows=orders_rows,
+      context_columns=["№", "Контрагент"],
+      segment_columns=[],
+      total_rows=len(orders_rows),
+      meta={},
+    ),
+  )
+  with patch.object(m, "_ensure_hub_cache_only", new_callable=AsyncMock):
+    client = TestClient(m.app)
+    response = client.get(
+      "/clients/cp-expand/orders",
+      headers={"HX-Request": "true"},
+    )
+  assert response.status_code == 200
+  assert response.text.count("orders-compact-item") == 27
