@@ -207,3 +207,57 @@ def test_filter_rows_with_groups_single_pass() -> None:
     assert rows[0]["UUID"] == "1"
     assert groups_total == 3
     assert any(item["name"] == "VIP" for item in group_options)
+
+
+def test_filter_rows_with_groups_includes_sales_channels() -> None:
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[
+                {
+                    "UUID": "cp-1",
+                    "Наименование": "Анна",
+                    "Группы": "VIP",
+                },
+                {
+                    "UUID": "cp-2",
+                    "Наименование": "Борис",
+                    "Группы": "новый",
+                },
+            ],
+            context_columns=["UUID", "Наименование", "Группы"],
+            segment_columns=[],
+            total_rows=2,
+            meta={"source": "moysklad"},
+        ),
+        ParsedWorkbook(
+            source_type="orders",
+            rows=[
+                {
+                    "№": "100",
+                    "Контрагент": "Анна",
+                    "_moysklad_agent_id": "cp-1",
+                    "Канал продаж": "Flowwow",
+                },
+                {
+                    "№": "101",
+                    "Контрагент": "Борис",
+                    "_moysklad_agent_id": "cp-2",
+                    "Канал продаж": "Ozon",
+                },
+            ],
+            context_columns=[],
+            segment_columns=[],
+            total_rows=2,
+            meta={},
+        ),
+    )
+    rows, group_options, groups_total = hub.filter_rows_with_groups(sales_filter="all")
+    names = {item["name"] for item in group_options}
+    assert "Flowwow" in names
+    assert "Ozon" in names
+    assert "VIP" in names
+    filtered, _, _ = hub.filter_rows_with_groups(sales_filter="all", group="Flowwow")
+    assert len(filtered) == 1
+    assert filtered[0]["UUID"] == "cp-1"

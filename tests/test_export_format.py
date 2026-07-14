@@ -79,6 +79,48 @@ def test_collect_group_counts() -> None:
     assert names == {"VIP", "постоянный", "новый"}
 
 
+def test_collect_group_counts_includes_sales_channels() -> None:
+    rows = [
+        {
+            "UUID": "cp-1",
+            "Группы": "VIP",
+            "_orders_context": [{"Канал продаж": "Flowwow"}],
+        },
+        {
+            "UUID": "cp-2",
+            "Группы": "новый",
+            "_orders_context": [{"Канал продаж": "Ozon"}],
+        },
+        {
+            "UUID": "cp-3",
+            "_orders_context": [{"Канал продаж": "Flowwow"}],
+        },
+    ]
+    agent_channels = {
+        "cp-1": {"Flowwow", "Витрина"},
+        "cp-2": {"Ozon"},
+        "cp-3": {"Flowwow"},
+    }
+    counts = collect_group_counts(rows, agent_channels=agent_channels)
+    names = {item["name"] for item in counts}
+    assert names == {"VIP", "новый", "Flowwow", "Ozon", "Витрина"}
+    flowwow = next(item for item in counts if item["name"] == "Flowwow")
+    assert flowwow["count"] == 2
+
+
+def test_row_has_group_matches_sales_channel() -> None:
+    from app.services.export_format import row_has_group
+
+    row = {
+        "UUID": "cp-1",
+        "Группы": "VIP",
+        "_orders_context": [{"Канал продаж": "Flowwow"}],
+    }
+    assert row_has_group(row, "Flowwow") is True
+    assert row_has_group(row, "VIP") is True
+    assert row_has_group(row, "Ozon") is False
+
+
 def test_sort_client_rows_numeric() -> None:
     rows = [
         {"Наименование": "A", "Всего заказов": 5},

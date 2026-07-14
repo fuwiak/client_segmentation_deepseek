@@ -129,6 +129,18 @@ def _order_channels(row: dict[str, Any]) -> list[str]:
   return channels
 
 
+def unique_sales_channels(row: dict[str, Any]) -> list[str]:
+  """Уникальные каналы продаж клиента (из заказов и поля строки)."""
+  seen: set[str] = set()
+  result: list[str] = []
+  for ch in _order_channels(row):
+    key = ch.lower()
+    if key not in seen and not _looks_like_sales_type_label(ch):
+      seen.add(key)
+      result.append(ch)
+  return result
+
+
 def sales_channel_type_for_row(row: dict[str, Any]) -> str:
   """Тип канала продаж по всем заказам контрагента."""
   explicit = (

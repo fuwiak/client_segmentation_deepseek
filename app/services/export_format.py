@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from app.services.telegram_export import tg_conversation_label
-from app.services.fields import AI_NO_DATA_LABEL, is_empty_cell, refresh_row_for_display
+from app.services.fields import AI_NO_DATA_LABEL, is_empty_cell, refresh_row_for_display, unique_sales_channels
 
 from app.services.excel_parser import (
     AI_EXTRA_COLUMNS,
@@ -265,19 +265,66 @@ def row_groups(row: dict[str, Any]) -> list[str]:
     return groups
 
 
-def row_has_group(row: dict[str, Any], group: str) -> bool:
+def sales_channels_index(order_rows: list[dict[str, Any]]) -> dict[str, set[str]]:
+    """Каналы продаж по контрагенту из всех заказов (agent_id → названия)."""
+    from app.services.fields import _looks_like_sales_type_label
+
+    index: dict[str, set[str]] = {}
+    for order in order_rows:
+        agent_id = str(order.get("_moysklad_agent_id") or "").strip()
+        if not agent_id:
+            continue
+        channel = str(order.get("Канал продаж") or "").strip()
+        if not channel or _looks_like_sales_type_label(channel):
+            continue
+        index.setdefault(agent_id, set()).add(channel)
+    return index
+
+
+def row_segment_names(
+    row: dict[str, Any],
+    *,
+    agent_channels: dict[str, set[str]] | None = None,
+) -> list[str]:
+    """Сегменты для фильтра «Группы»: теги + каналы продаж."""
+    seen: set[str] = set()
+    names: list[str] = []
+    candidates = list(row_groups(row))
+    candidates.extend(unique_sales_channels(row))
+    if agent_channels:
+        cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
+        candidates.extend(agent_channels.get(cp_id, ()))
+    for name in candidates:
+        text = str(name).strip()
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            names.append(text)
+    return names
+
+
+def row_has_group(
+    row: dict[str, Any],
+    group: str,
+    *,
+    agent_channels: dict[str, set[str]] | None = None,
+) -> bool:
     target = group.strip().lower()
     if not target:
         return True
-    return any(g.lower() == target for g in row_groups(row))
+    return any(n.lower() == target for n in row_segment_names(row, agent_channels=agent_channels))
 
 
-def collect_group_counts(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Уникальные группы с числом клиентов, по убыванию."""
+def collect_group_counts(
+    rows: list[dict[str, Any]],
+    *,
+    agent_channels: dict[str, set[str]] | None = None,
+) -> list[dict[str, Any]]:
+    """Уникальные группы и каналы продаж с числом клиентов, по убыванию."""
     counter: Counter[str] = Counter()
     display: dict[str, str] = {}
     for row in rows:
-        for name in row_groups(row):
+        for name in row_segment_names(row, agent_channels=agent_channels):
             key = name.lower()
             counter[key] += 1
             display.setdefault(key, name)
