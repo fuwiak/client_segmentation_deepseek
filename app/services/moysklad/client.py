@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from abc import ABC, abstractmethod
 from typing import Any
@@ -44,6 +45,16 @@ class MoySkladClientBase(ABC):
 
     @abstractmethod
     async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    async def get_customer_order_positions(self, order_id: str) -> list[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    async def fetch_positions_for_orders(
+        self, orders: list[dict[str, Any]], *, concurrency: int = 10
+    ) -> dict[str, list[dict[str, Any]]]:
         ...
 
 
@@ -152,6 +163,36 @@ class MoySkladClient(MoySkladClientBase):
             extra_params={"expand": "agent,state,salesChannel"},
         )
 
+    async def get_customer_order_positions(self, order_id: str) -> list[dict[str, Any]]:
+        if not self._enabled or not order_id:
+            return []
+        rows, _ = await self._get_page(
+            f"/entity/customerorder/{order_id}/positions",
+            limit=1000,
+            offset=0,
+            extra_params={"expand": "assortment"},
+            timeout=30,
+        )
+        return rows
+
+    async def fetch_positions_for_orders(
+        self, orders: list[dict[str, Any]], *, concurrency: int = 10
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not self._enabled:
+            return {}
+        order_ids = [str(o.get("id")) for o in orders if o.get("id")]
+        if not order_ids:
+            return {}
+
+        sem = asyncio.Semaphore(max(1, concurrency))
+
+        async def _fetch(order_id: str) -> tuple[str, list[dict[str, Any]]]:
+            async with sem:
+                return order_id, await self.get_customer_order_positions(order_id)
+
+        pairs = await asyncio.gather(*(_fetch(oid) for oid in order_ids))
+        return dict(pairs)
+
     async def update_counterparty_groups(
         self, counterparty_id: str, groups: list[str]
     ) -> dict[str, Any]:
@@ -212,6 +253,14 @@ class MoySkladStub(MoySkladClientBase):
 
     async def fetch_all_customer_orders(self, max_rows: int = 2000) -> list[dict[str, Any]]:
         return []
+
+    async def get_customer_order_positions(self, order_id: str) -> list[dict[str, Any]]:
+        return []
+
+    async def fetch_positions_for_orders(
+        self, orders: list[dict[str, Any]], *, concurrency: int = 10
+    ) -> dict[str, list[dict[str, Any]]]:
+        return {}
 
 
 def get_moysklad_client(settings: Settings) -> MoySkladClientBase:

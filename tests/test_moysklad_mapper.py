@@ -7,7 +7,13 @@ from pathlib import Path
 
 from app.services.export_format import MOYSKLAD_EXCEL_COLUMNS, export_columns, row_for_export
 from app.services.excel_parser import ParsedWorkbook
-from app.services.moysklad.mapper import counterparty_to_row
+from app.services.moysklad.mapper import (
+    aggregate_client_positions,
+    apply_positions_to_orders,
+    counterparty_to_row,
+    position_to_item,
+    positions_label,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "moysklad_counterparty.json"
 
@@ -129,3 +135,47 @@ def test_row_for_export_preserves_excel_structure() -> None:
     assert exported["Заказчик или получатель"] == "Мария"
     assert exported["Пол"] == "Женский"
     assert exported["Ник в тг/вк"] == "@maria"
+
+
+def test_position_to_item_uses_assortment_name_and_code() -> None:
+    item = position_to_item(
+        {
+            "quantity": 2,
+            "price": 150000,
+            "assortment": {
+                "code": "00279",
+                "name": "Хамелациум белый/розовый",
+            },
+        }
+    )
+    assert item["name"] == "00279 Хамелациум белый/розовый"
+    assert item["quantity"] == 2
+    assert item["price"] == 1500.0
+
+
+def test_apply_positions_to_orders_sets_label() -> None:
+    order_rows = [{"_moysklad_id": "order-1", "№": "00001"}]
+    apply_positions_to_orders(
+        order_rows,
+        {
+            "order-1": [
+                {
+                    "quantity": 1,
+                    "price": 50000,
+                    "assortment": {"code": "00279", "name": "Хамелациум белый/розовый"},
+                }
+            ]
+        },
+    )
+    assert order_rows[0]["Позиции"] == "00279 Хамелациум белый/розовый"
+    assert len(order_rows[0]["_positions"]) == 1
+
+
+def test_aggregate_client_positions_sums_quantities() -> None:
+    orders = [
+        {"_positions": [{"name": "00279 Хамелациум белый/розовый", "quantity": 1}]},
+        {"_positions": [{"name": "00279 Хамелациум белый/розовый", "quantity": 2}]},
+    ]
+    aggregated = aggregate_client_positions(orders)
+    assert aggregated == [{"name": "00279 Хамелациум белый/розовый", "quantity": 3.0}]
+    assert positions_label(aggregated) == "00279 Хамелациум белый/розовый (×3)"

@@ -777,6 +777,7 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .tags-cell { white-space: normal; max-width: 180px; }
 .orders-expand-row td { padding: 0; border: none; }
 .orders-nested { padding: var(--md); background: var(--canvas); }
+.positions-cell, .positions-summary { font-size: 13px; line-height: 1.45; max-width: 280px; }
 
 /* ---- Modals ------------------------------------------------------------- */
 

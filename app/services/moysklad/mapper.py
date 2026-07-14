@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from app.domain import Customer, Order, SourceType, normalize_phone
+from app.domain import Customer, Order, OrderItem, SourceType, normalize_phone
 
 COMPANY_TYPE_LABELS = {
     "legal": "Юридическое лицо",
@@ -189,6 +189,67 @@ def _sales_channel_from_order(order: dict[str, Any]) -> str | None:
     return None
 
 
+def position_to_item(position: dict[str, Any]) -> dict[str, Any]:
+    """Маппинг позиции заказа Remap 1.2 → dict для CRM."""
+    assortment = position.get("assortment") or {}
+    name = str(assortment.get("name") or position.get("name") or "").strip()
+    code = str(assortment.get("code") or "").strip()
+    if code and code not in name:
+        name = f"{code} {name}".strip() if name else code
+    return {
+        "name": name,
+        "quantity": position.get("quantity"),
+        "price": _minor_to_rub(position.get("price")),
+    }
+
+
+def positions_label(positions: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for item in positions:
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        qty = item.get("quantity")
+        try:
+            qty_val = float(qty) if qty is not None else 1.0
+        except (TypeError, ValueError):
+            qty_val = 1.0
+        if qty_val != 1:
+            parts.append(f"{name} (×{qty_val:g})")
+        else:
+            parts.append(name)
+    return ", ".join(parts)
+
+
+def apply_positions_to_orders(
+    order_rows: list[dict[str, Any]],
+    positions_by_order_id: dict[str, list[dict[str, Any]]],
+) -> None:
+    for row in order_rows:
+        order_id = str(row.get("_moysklad_id") or "")
+        raw_positions = positions_by_order_id.get(order_id) or []
+        items = [position_to_item(p) for p in raw_positions if isinstance(p, dict)]
+        row["_positions"] = items
+        if items:
+            row["Позиции"] = positions_label(items)
+
+
+def aggregate_client_positions(orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Суммирует позиции по всем заказам клиента."""
+    totals: dict[str, float] = {}
+    for order in orders:
+        for item in order.get("_positions") or []:
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                qty = float(item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                qty = 1.0
+            totals[name] = totals.get(name, 0.0) + qty
+    return [{"name": name, "quantity": qty} for name, qty in totals.items()]
+
+
 def order_to_row(
     order: dict[str, Any],
     agents_by_id: dict[str, str],
@@ -275,6 +336,7 @@ def customer_from_counterparty(counterparty: dict[str, Any]) -> Customer:
 def order_from_customerorder(
     order: dict[str, Any],
     agents_by_id: dict[str, str] | None = None,
+    positions: list[dict[str, Any]] | None = None,
 ) -> Order:
     agents_by_id = agents_by_id or {}
     agent = order.get("agent") or {}
@@ -290,6 +352,15 @@ def order_from_customerorder(
         except ValueError:
             parsed_date = None
 
+    items = [
+        OrderItem(
+            name=str(p.get("name") or ""),
+            quantity=p.get("quantity"),
+            price=p.get("price"),
+        )
+        for p in (positions or [])
+    ]
+
     return Order(
         id=str(order.get("id") or order.get("name") or uuid.uuid4()),
         customer_id=agent_id or None,
@@ -299,5 +370,6 @@ def order_from_customerorder(
         sales_channel="Мой Склад",
         comment=order.get("description"),
         recipient=agent_name or None,
+        items=items,
         raw=order,
     )

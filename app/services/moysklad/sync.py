@@ -11,6 +11,7 @@ from app.services.excel_parser import ParsedWorkbook, SEGMENT_COLUMNS
 from app.services.moysklad.client import MoySkladClientBase
 from app.services.moysklad.mapper import (
     apply_order_stats,
+    apply_positions_to_orders,
     compute_order_stats,
     counterparty_to_row,
     order_to_row,
@@ -19,7 +20,7 @@ from app.services.moysklad.mapper import (
 if TYPE_CHECKING:
     from app.services.cache import CacheService
 
-MOYSKLAD_SYNC_SCHEMA_VERSION = 3
+MOYSKLAD_SYNC_SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -57,6 +58,7 @@ def _apply_rows_to_hub(
             "Статус",
             "Комментарий",
             "Канал продаж",
+            "Позиции",
         ],
         segment_columns=[],
         total_rows=len(order_rows),
@@ -158,6 +160,13 @@ async def sync_moysklad_to_hub(
 
     counterparty_rows = [counterparty_to_row(cp) for cp in counterparties_raw]
     order_rows = [order_to_row(order, agents_by_id) for order in orders_raw]
+
+    try:
+        positions_by_order_id = await client.fetch_positions_for_orders(orders_raw)
+        apply_positions_to_orders(order_rows, positions_by_order_id)
+    except Exception:  # noqa: BLE001 — позиции не блокируют синк шапок заказов
+        pass
+
     apply_order_stats(counterparty_rows, compute_order_stats(order_rows))
 
     _apply_rows_to_hub(hub, counterparty_rows, order_rows)

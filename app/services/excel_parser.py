@@ -206,6 +206,8 @@ def parse_workbook(content: bytes) -> ParsedWorkbook:
 def enrich_with_orders(
     contragents: ParsedWorkbook, orders: ParsedWorkbook
 ) -> ParsedWorkbook:
+    from app.services.moysklad.mapper import aggregate_client_positions, positions_label
+
     if not orders.rows:
         return contragents
 
@@ -246,6 +248,10 @@ def enrich_with_orders(
         if related:
             copy["_orders_context"] = related[:20]
             copy["_orders_count"] = len(related)
+            aggregated = aggregate_client_positions(related)
+            if aggregated:
+                copy["_ordered_positions"] = aggregated
+                copy["Заказанные позиции"] = positions_label(aggregated)
         enriched_rows.append(copy)
 
     contragents.rows = enriched_rows

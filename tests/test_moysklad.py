@@ -46,6 +46,12 @@ SAMPLE_ORDER = {
     "state": {"name": "Новый"},
 }
 
+SAMPLE_POSITION = {
+    "quantity": 1,
+    "price": 150000,
+    "assortment": {"code": "00279", "name": "Хамелациум белый/розовый"},
+}
+
 
 def test_counterparty_to_row_maps_fields() -> None:
     row = counterparty_to_row(SAMPLE_CP)
@@ -133,6 +139,9 @@ async def test_sync_moysklad_to_hub_populates_data_hub() -> None:
     client.get_entity_count = AsyncMock(return_value=1)
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
     client.fetch_all_customer_orders = AsyncMock(return_value=[SAMPLE_ORDER])
+    client.fetch_positions_for_orders = AsyncMock(
+        return_value={"order-uuid-1": [SAMPLE_POSITION]}
+    )
 
     hub = DataHub()
     result = await sync_moysklad_to_hub(client, hub, max_counterparties=10, max_orders=10)
@@ -146,9 +155,11 @@ async def test_sync_moysklad_to_hub_populates_data_hub() -> None:
     assert hub.parsed.rows[0]["Наименование"] == "Иван Петров"
     assert hub.parsed.rows[0]["Всего заказов"] == 1
     assert hub.parsed.rows[0]["Средний чек"] == 1500.0
+    assert hub.parsed.rows[0]["Заказанные позиции"] == "00279 Хамелациум белый/розовый"
     assert hub.parsed.meta["source"] == "moysklad"
     assert hub.orders_parsed is not None
     assert len(hub.orders_parsed.rows) == 1
+    assert hub.orders_parsed.rows[0]["Позиции"] == "00279 Хамелациум белый/розовый"
 
 
 @pytest.mark.asyncio
@@ -211,6 +222,7 @@ async def test_sync_moysklad_rejects_stale_partial_cache() -> None:
     client.get_entity_count = AsyncMock(side_effect=[9850, 100])
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
     client.fetch_all_customer_orders = AsyncMock(return_value=[])
+    client.fetch_positions_for_orders = AsyncMock(return_value={})
 
     hub = DataHub()
     result = await sync_moysklad_to_hub(
@@ -236,6 +248,7 @@ async def test_sync_moysklad_saves_to_cache_after_api() -> None:
     client.get_entity_count = AsyncMock(side_effect=[9850, 100])
     client.fetch_all_counterparties = AsyncMock(return_value=[SAMPLE_CP])
     client.fetch_all_customer_orders = AsyncMock(return_value=[SAMPLE_ORDER])
+    client.fetch_positions_for_orders = AsyncMock(return_value={})
 
     hub = DataHub()
     await sync_moysklad_to_hub(client, hub, cache=cache, force_refresh=True)

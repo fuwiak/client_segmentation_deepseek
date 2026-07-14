@@ -14,6 +14,7 @@
         <th>Сумма</th>
         <th>Статус</th>
         <th>Канал</th>
+        <th>Позиции</th>
         <th>Комментарий</th>
       </tr>
     </thead>
@@ -25,6 +26,7 @@
         <td>{{ order.get('Сумма') or '—' }}</td>
         <td>{{ order.get('Статус') or order.get('Отгружено') or '—' }}</td>
         <td>{{ order.get('Канал продаж') or '—' }}</td>
+        <td class="positions-cell">{{ order.get('Позиции') or '—' }}</td>
         <td class="comment-cell">{{ order.get('Комментарий') or '—' }}</td>
       </tr>
       {% endfor %}
