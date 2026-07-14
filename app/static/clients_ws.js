@@ -2,6 +2,7 @@
   var pollTimer = null;
   var sinceSeq = 0;
   var pollIntervalMs = 2500;
+  var COLUMN_ORDER_KEY = "clients_table_column_order";
 
   function esc(text) {
     var d = document.createElement("div");
@@ -95,8 +96,142 @@
       });
   }
 
+  function currentColumnOrder(table) {
+    return Array.prototype.map.call(
+      table.querySelectorAll("thead th[data-col]"),
+      function (th) {
+        return th.getAttribute("data-col");
+      }
+    );
+  }
+
+  function loadColumnOrder() {
+    try {
+      var raw = localStorage.getItem(COLUMN_ORDER_KEY);
+      if (!raw) return null;
+      var order = JSON.parse(raw);
+      return Array.isArray(order) ? order : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function saveColumnOrder(order) {
+    try {
+      localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(order));
+    } catch (_err) {
+      /* ignore quota / private mode */
+    }
+  }
+
+  function mergeColumnOrder(saved, current) {
+    var merged = saved.filter(function (col) {
+      return current.indexOf(col) >= 0;
+    });
+    current.forEach(function (col) {
+      if (merged.indexOf(col) < 0) merged.push(col);
+    });
+    return merged;
+  }
+
+  function moveColumnNode(row, col, beforeNode) {
+    var cell = row.querySelector('th[data-col="' + CSS.escape(col) + '"], td[data-col="' + CSS.escape(col) + '"]');
+    if (!cell) return;
+    if (beforeNode) {
+      row.insertBefore(cell, beforeNode);
+    } else {
+      row.appendChild(cell);
+    }
+  }
+
+  function applyColumnOrder(table, order) {
+    var current = currentColumnOrder(table);
+    if (!current.length) return;
+    var next = mergeColumnOrder(order, current);
+    var theadRow = table.querySelector("thead tr");
+    if (!theadRow) return;
+    var actionsTh = theadRow.querySelector("th.actions-col");
+    next.forEach(function (col) {
+      moveColumnNode(theadRow, col, actionsTh);
+    });
+    table.querySelectorAll("tbody tr").forEach(function (row) {
+      var actionsTd = row.querySelector("td.actions-cell");
+      next.forEach(function (col) {
+        moveColumnNode(row, col, actionsTd);
+      });
+    });
+  }
+
+  function initColumnDragDrop(table) {
+    var saved = loadColumnOrder();
+    if (saved && saved.length) {
+      applyColumnOrder(table, saved);
+    }
+
+    table.querySelectorAll(".col-drag-handle").forEach(function (handle) {
+      if (handle.dataset.dragInit === "1") return;
+      handle.dataset.dragInit = "1";
+      var th = handle.closest("th[data-col]");
+      if (!th) return;
+      var col = th.getAttribute("data-col");
+
+      handle.addEventListener("dragstart", function (e) {
+        e.stopPropagation();
+        e.dataTransfer.setData("text/plain", col);
+        e.dataTransfer.effectAllowed = "move";
+        th.classList.add("col-dragging");
+      });
+
+      handle.addEventListener("dragend", function () {
+        th.classList.remove("col-dragging");
+        table.querySelectorAll("th.col-drag-over").forEach(function (el) {
+          el.classList.remove("col-drag-over");
+        });
+      });
+    });
+
+    table.querySelectorAll("thead th[data-col]").forEach(function (th) {
+      if (th.dataset.dropInit === "1") return;
+      th.dataset.dropInit = "1";
+
+      th.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        th.classList.add("col-drag-over");
+      });
+
+      th.addEventListener("dragleave", function () {
+        th.classList.remove("col-drag-over");
+      });
+
+      th.addEventListener("drop", function (e) {
+        e.preventDefault();
+        th.classList.remove("col-drag-over");
+        var fromCol = e.dataTransfer.getData("text/plain");
+        var toCol = th.getAttribute("data-col");
+        if (!fromCol || !toCol || fromCol === toCol) return;
+        var order = currentColumnOrder(table);
+        var fromIdx = order.indexOf(fromCol);
+        var toIdx = order.indexOf(toCol);
+        if (fromIdx < 0 || toIdx < 0) return;
+        order.splice(fromIdx, 1);
+        order.splice(toIdx, 0, fromCol);
+        applyColumnOrder(table, order);
+        saveColumnOrder(order);
+      });
+    });
+  }
+
+  function initClientsTable() {
+    var block = document.getElementById("clients-table-block");
+    if (!block) return;
+    var table = block.querySelector(".clients-table");
+    if (table) initColumnDragDrop(table);
+  }
+
   window.initClientsPage = function () {
     if (document.getElementById("clients-table-block")) {
+      initClientsTable();
       if (!pollTimer) {
         pollOnce();
       }

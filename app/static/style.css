@@ -1503,6 +1503,23 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .clients-table-wide .tg-conv-cell { max-width: 220px; white-space: normal; }
 
 .sortable-th { padding: 0; }
+.col-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2px;
+  padding: 10px 2px 10px 6px;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  vertical-align: middle;
+}
+.col-drag-handle:hover { color: var(--muted); }
+.col-drag-handle:active { cursor: grabbing; }
+th.col-dragging { opacity: 0.55; }
+th.col-drag-over { box-shadow: inset 3px 0 0 var(--primary); }
 .sortable-th-link {
   display: inline-flex;
   align-items: center;

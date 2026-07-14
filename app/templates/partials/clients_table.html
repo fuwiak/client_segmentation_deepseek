@@ -5,7 +5,8 @@
       <tr>
         {% for col in client_columns %}
         {% set next_order = 'desc' if sort_col == col and sort_order == 'asc' else 'asc' %}
-        <th{% if col == 'Группы' %} class="tags-col-head sortable-th"{% else %} class="sortable-th"{% endif %}>
+        <th{% if col == 'Группы' %} class="tags-col-head sortable-th draggable-col"{% else %} class="sortable-th draggable-col"{% endif %} data-col="{{ col }}">
+          <span class="col-drag-handle" draggable="true" title="Перетащите для изменения порядка колонок" aria-hidden="true">⠿</span>
           <a href="/clients?{{ build_clients_query(
             sales_filter=sales_filter,
             tag=tag_filter,

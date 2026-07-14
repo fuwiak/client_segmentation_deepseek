@@ -328,6 +328,9 @@
       processHtmxRegion(target);
     } else if (target && target.id === "clients-table-block") {
       processHtmxRegion(target);
+      if (typeof window.initClientsPage === "function") {
+        window.initClientsPage();
+      }
     }
     if (isLiveSwapTarget(target)) {
       updateActiveNav();
