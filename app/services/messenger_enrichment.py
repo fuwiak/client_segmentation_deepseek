@@ -17,7 +17,9 @@ from app.services.cache import CacheService
 from app.services.excel_parser import AI_COLUMNS, AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 from app.services.fields import (
   apply_ai_field,
+  apply_ai_client_summary,
   apply_resolved_gender,
+  build_client_history_summary,
   collect_client_comments,
   empty_fillable_columns,
   extract_tg_nick_from_messages,
@@ -44,14 +46,13 @@ SYSTEM_PROMPT = """Ты — CRM-аналитик цветочного бизне
 4. "ТГ ник" — @username только если явно есть в переписке, комментариях или профиле
 5. "Теги" — одна строка с хэштегами через пробел: #деньрождения #vip #доволен (не массив JSON).
 6. "Саммари" — 2–3 предложения о МОТИВАЦИИ покупки (intent), не о профиле клиента.
-   НЕ пиши «постоянный покупатель», «высокий чек», «настроение не определено».
-   Фокус: СОБЫТИЕ/ПОВОД (день рождения, 8 марта, годовщина, свадьба…) и INTENT (подарок кому, для себя, срочно, корпоратив).
-   Если повод не ясен — «повод не определён из переписки/заказов».
-7. "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)" — из ФИО в данных
-8. "E-mail" — только если явно указан
-9. "Дата рождения" — только если явно указана (ДД.ММ.ГГГГ)
+7. "Саммари клиента" — 4–6 предложений: профиль и история клиента в CRM (не рекомендация оператору).
+8. "Рекомендация" — 1–2 предложения: что предложить клиенту сейчас (действие оператору).
+9. "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)" — из ФИО в данных
+10. "E-mail" — только если явно указан
+11. "Дата рождения" — только если явно указана (ДД.ММ.ГГГГ)
 
-10. Для каждого поля из empty_fields — попробуй заполнить по переписке, комментариям и заказам.
+12. Для каждого поля из empty_fields — попробуй заполнить по переписке, комментариям и заказам.
     Юридические и банковские реквизиты — только при явном указании. Нет данных → null.
 
 ВАЖНО:
@@ -528,6 +529,16 @@ class MessengerEnrichmentService:
         merged["_reasoning"] = ai.get("reasoning") or merged.get("_reasoning") or ""
         merged["_confidence"] = ai.get("confidence")
         merged["_ai_refs"] = ai.get("references") or merged.get("_ai_refs") or {}
+        client_summary = ai.get("Саммари клиента") or ai.get("client_summary")
+        if client_summary not in (None, "", "null"):
+            apply_ai_client_summary(merged, client_summary)
+        elif not merged.get("_ai_client_summary"):
+            hist = build_client_history_summary(merged)
+            if hist:
+                merged["_ai_client_summary"] = hist
+        recommendation = ai.get("Рекомендация") or ai.get("recommendation")
+        if recommendation not in (None, "", "null"):
+            merged["_ai_recommendation"] = str(recommendation).strip()
         merged["_ai_processed"] = True
         merged["_ai_fields"] = list(dict.fromkeys(ai_fields))
         merged["_enrichment_fields"] = list(dict.fromkeys(enrichment_fields))
@@ -571,6 +582,11 @@ class MessengerEnrichmentService:
         rec = self._segmentation._heuristic_recommendation(merged)
         if rec:
             merged["_ai_recommendation"] = rec
+
+        if not merged.get("_ai_client_summary"):
+            hist = build_client_history_summary(merged)
+            if hist:
+                merged["_ai_client_summary"] = hist
 
         merged["_reasoning"] = "Эвристика по переписке (без AI или API недоступен)"
         merged["_ai_processed"] = True

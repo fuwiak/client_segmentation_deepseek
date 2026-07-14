@@ -262,7 +262,7 @@ def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
   assert "rules-drawer-header" in response.text
 
 
-def test_client_card_drawer_shows_ai_recommendation() -> None:
+def test_client_card_drawer_shows_ai_summary_and_recommendation() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook
 
@@ -271,10 +271,16 @@ def test_client_card_drawer_shows_ai_recommendation() -> None:
       source_type="contragents",
       rows=[{
         "UUID": "cp-rec",
-        "Наименование": "Аренда",
-        "Тип контрагента": "Юридическое лицо",
+        "Наименование": "Султанова Лилия",
+        "Тип контрагента": "Физическое лицо",
         "Телефон": "+79001234567",
-        "Всего заказов": 0,
+        "Всего заказов": 3,
+        "_orders_count": 3,
+        "Средний чек": 10000,
+        "Группы": "премиум",
+        "Теги": "#vip",
+        "Саммари": "Поводы: 8 марта. Intent: подарок.",
+        "_orders_context": [{"№": "1", "Дата": "2026-03-01", "Сумма": 10000, "Статус": "OK"}],
       }],
       context_columns=["UUID", "Наименование"],
       segment_columns=[],
@@ -290,6 +296,10 @@ def test_client_card_drawer_shows_ai_recommendation() -> None:
       headers={"HX-Request": "true"},
     )
   assert response.status_code == 200
+  assert "Саммари AI" in response.text
+  assert "ai-client-summary" in response.text
+  assert "История и профиль клиента" in response.text
+  assert "Повод и intent покупки" in response.text
   assert "Рекомендация AI" in response.text
   assert "ai-recommendation" in response.text
 

@@ -194,6 +194,38 @@ def test_merge_enriched_rows_keeps_base_order_stats_over_stale_overlay() -> None
     assert merged[0]["Статус"] == "новый"
 
 
+def test_build_client_history_summary_includes_profile_and_orders() -> None:
+    from app.services.fields import build_client_history_summary, ensure_ai_client_summary
+
+    row = {
+        "Наименование": "Султанова Лилия",
+        "Заказчик или получатель": "получатель",
+        "Пол": "Женский",
+        "Группы": "премиум, постоянный клиент",
+        "Теги": "#vip #8марта",
+        "ВИП": "да",
+        "Всего заказов": 8,
+        "_orders_count": 8,
+        "Средний чек": 12000,
+        "Статус": "постоянный",
+        "_orders_context": [
+            {"№": "100", "Дата": "2026-03-01", "Сумма": 15000, "Канал продаж": "Telegram"},
+            {"№": "101", "Дата": "2026-02-01", "Сумма": 9000, "Канал продаж": "Витрина"},
+        ],
+        "Заказанные позиции": "Розы ×15",
+    }
+    summary = build_client_history_summary(row)
+    assert summary is not None
+    assert "Султанова Лилия" in summary
+    assert "8 заказов" in summary
+    assert "постоянный" in summary
+    assert "История заказов" in summary
+    assert "Розы" in summary
+
+    enriched = ensure_ai_client_summary(row)
+    assert enriched["_ai_client_summary"] == summary
+
+
 def test_enrich_row_computed_sets_client_status() -> None:
     row = {"UUID": "1", "_orders_count": 5, "Статус": "Новый"}
     enriched = enrich_row_computed(row)

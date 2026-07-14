@@ -16,7 +16,7 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, enrich_gender_by_unique_naimenovanie, enrich_tg_nick_by_phone
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, ensure_ai_client_summary, enrich_gender_by_unique_naimenovanie, enrich_tg_nick_by_phone
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -228,7 +228,7 @@ class DataHub:
         merged = merge_enriched_rows([display], [overlay], key_fn=_row_key)
         client = merged[0] if merged else display
     client = self._ensure_client_orders_context(client)
-    return ensure_ai_recommendation(client)
+    return ensure_ai_client_summary(ensure_ai_recommendation(client))
 
   def _ensure_client_orders_context(self, row: dict[str, Any]) -> dict[str, Any]:
     orders = self.resolve_order_entities(row.get("_orders_context") or [])

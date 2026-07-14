@@ -68,21 +68,27 @@
 </section>
 {% endif %}
 
-{% if client.get('_ai_recommendation') or client.get('Саммари') or client.get('_reasoning') %}
+{% if client.get('_ai_client_summary') or client.get('Саммари') %}
 <section class="client-section ai-block">
-  <h4>Рекомендация AI</h4>
-  {% if client.get('_ai_recommendation') %}
-  <p class="ai-recommendation">{{ client.get('_ai_recommendation') }}</p>
+  <h4>Саммари AI</h4>
+  {% if client.get('_ai_client_summary') %}
+  <p class="hint">История и профиль клиента</p>
+  <p class="ai-client-summary">{{ client.get('_ai_client_summary') }}</p>
   {% endif %}
   {% if client.get('Саммари') %}
   <p class="hint">Повод и intent покупки</p>
   <p class="ai-summary">{{ client.get('Саммари') }}</p>
-  {% elif client.get('_reasoning') and not client.get('_ai_recommendation') %}
-  <p class="ai-summary">{{ client.get('_reasoning') }}</p>
   {% endif %}
   {% if client.get('_enrichment_fields') %}
   <p class="hint">Обогащено: {{ client.get('_enrichment_fields')|join(', ') }}</p>
   {% endif %}
+</section>
+{% endif %}
+
+{% if client.get('_ai_recommendation') %}
+<section class="client-section ai-block ai-block-recommendation">
+  <h4>Рекомендация AI</h4>
+  <p class="ai-recommendation">{{ client.get('_ai_recommendation') }}</p>
 </section>
 {% endif %}
 

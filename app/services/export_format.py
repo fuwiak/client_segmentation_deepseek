@@ -468,6 +468,7 @@ def merge_enriched_rows(
         "_ai_processed",
         "_ai_original",
         "_ai_recommendation",
+        "_ai_client_summary",
         "_reasoning",
         "_messenger_context",
         "_tg_export_context",

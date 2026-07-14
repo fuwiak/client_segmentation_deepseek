@@ -1118,6 +1118,121 @@ def ensure_ai_recommendation(row: dict[str, Any]) -> dict[str, Any]:
   return updated
 
 
+def _format_rub_short(value: Any) -> str:
+  try:
+    num = float(value)
+  except (TypeError, ValueError):
+    return "—"
+  if num == int(num):
+    return f"{int(num):,}".replace(",", " ") + " р."
+  return f"{num:,.0f}".replace(",", " ") + " р."
+
+
+def build_client_history_summary(row: dict[str, Any]) -> str | None:
+  """Развёрнутое саммари истории клиента (профиль и заказы), не рекомендация оператору."""
+  parts: list[str] = []
+  name = str(row.get("Наименование") or "Клиент").strip()
+  orders_n = order_count_for_row(row)
+  status = row.get("Статус") or client_status_from_orders(row)
+
+  profile_bits = [name]
+  role = row.get("Заказчик или получатель")
+  if role:
+    profile_bits.append(f"роль: {role}")
+  gender = row.get("Пол")
+  if gender and gender != GENDER_NOT_APPLICABLE:
+    profile_bits.append(f"пол: {gender}")
+  parts.append(" · ".join(profile_bits) + ".")
+
+  loyalty_bits = [f"статус {status}", f"{orders_n} заказов"]
+  if row.get("ВИП") == "да":
+    loyalty_bits.append("VIP")
+  if row.get("Постоянный клиент") == "да":
+    loyalty_bits.append("постоянный клиент")
+  if not is_empty_cell(row.get("Средний чек")):
+    loyalty_bits.append(f"средний чек {_format_rub_short(row.get('Средний чек'))}")
+  if not is_empty_cell(row.get("Баллы начисленные")):
+    loyalty_bits.append(f"баллы {row.get('Баллы начисленные')}")
+  if row.get("Дата последнего заказа"):
+    loyalty_bits.append(f"последний заказ {row.get('Дата последнего заказа')}")
+  parts.append("Лояльность: " + ", ".join(loyalty_bits) + ".")
+
+  groups = str(row.get("Группы") or "").strip()
+  if groups:
+    parts.append(f"Сегменты: {groups}.")
+  tags = str(row.get("Теги") or "").strip()
+  if tags:
+    parts.append(f"Теги: {tags}.")
+
+  sales_bits = [
+    str(row.get("Тип продаж") or row.get("Тип канала продаж") or "").strip(),
+    str(row.get("Канал продаж") or "").strip(),
+  ]
+  sales_bits = [bit for bit in sales_bits if bit]
+  if sales_bits:
+    parts.append("Каналы: " + " / ".join(dict.fromkeys(sales_bits)) + ".")
+
+  orders = row.get("_orders_context") or []
+  if orders:
+    order_lines: list[str] = []
+    for order in orders[-4:]:
+      num = order.get("№") or order.get("Номер") or "—"
+      date = str(order.get("Дата") or order.get("Момент времени") or "")[:10] or "—"
+      amount = _format_rub_short(order.get("Сумма"))
+      channel = str(order.get("Канал продаж") or "").strip()
+      line = f"№{num} ({date}, {amount}"
+      if channel:
+        line += f", {channel}"
+      line += ")"
+      order_lines.append(line)
+    if order_lines:
+      parts.append("История заказов: " + "; ".join(order_lines) + ".")
+
+  positions = str(row.get("Заказанные позиции") or "").strip()
+  if positions:
+    parts.append(f"Позиции: {positions[:220]}{'…' if len(positions) > 220 else ''}.")
+
+  messages = row.get("_messenger_context") or []
+  if messages:
+    inbound = sum(1 for m in messages if m.get("direction") == "in")
+    outbound = sum(1 for m in messages if m.get("direction") == "out")
+    parts.append(
+      f"Переписка: {len(messages)} сообщений"
+      f" (входящих {inbound}, исходящих {outbound})."
+    )
+    last_text = str(messages[-1].get("text") or "").strip()
+    if last_text:
+      parts.append(f"Последнее сообщение: «{last_text[:160]}{'…' if len(last_text) > 160 else ''}».")
+
+  comments = collect_client_comments(row).strip()
+  if comments:
+    parts.append(
+      f"Комментарии: {comments[:200]}{'…' if len(comments) > 200 else ''}."
+    )
+
+  if len(parts) < 2:
+    return None
+  return " ".join(parts)
+
+
+def apply_ai_client_summary(merged: dict[str, Any], value: Any) -> None:
+  text = str(value or "").strip()
+  if text:
+    merged["_ai_client_summary"] = text
+
+
+def ensure_ai_client_summary(row: dict[str, Any]) -> dict[str, Any]:
+  """Подставить саммари истории клиента, если AI ещё не заполнил."""
+  if row.get("_ai_client_summary"):
+    return row
+  summary = build_client_history_summary(row)
+  if not summary:
+    return row
+  updated = dict(row)
+  updated["_ai_client_summary"] = summary
+  return updated
+
+
 AI_NO_DATA_LABEL = "no data"
 
 

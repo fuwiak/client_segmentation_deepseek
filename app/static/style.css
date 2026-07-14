@@ -1408,6 +1408,27 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 
 .client-meta, .tags-row, .kpi-inline { display: flex; flex-wrap: wrap; gap: var(--sm); margin-bottom: var(--lg); }
 .client-section { margin-bottom: var(--lg); padding-top: var(--md); border-top: 1px solid var(--hairline-soft); }
+.ai-block h4 { margin-bottom: var(--sm); }
+.ai-client-summary,
+.ai-summary,
+.ai-recommendation {
+  margin: 0 0 var(--sm);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.ai-client-summary {
+  padding: var(--md);
+  background: var(--canvas);
+  border-radius: var(--r-md);
+  border-left: 3px solid var(--primary);
+}
+.ai-block-recommendation .ai-recommendation {
+  padding: var(--md);
+  background: rgba(93, 184, 114, 0.08);
+  border-radius: var(--r-md);
+  border-left: 3px solid var(--success, #5db872);
+}
 .client-orders-list:not([hidden]) { margin-top: var(--sm); }
 .client-orders-expand-btn.is-open { opacity: 0.85; }
 
