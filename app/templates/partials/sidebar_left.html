@@ -16,6 +16,8 @@
     <ul class="sidebar-status" id="messenger-sidebar-status"
         hx-get="/messenger/sidebar"
         hx-trigger="load"
+        hx-boost="false"
+        hx-push-url="false"
         hx-swap="innerHTML">
       <li><span class="status-key">Загрузка…</span></li>
     </ul>

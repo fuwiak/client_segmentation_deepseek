@@ -48,6 +48,8 @@ def test_base_template_has_htmx_app_shell() -> None:
   assert 'hx-target="#page-content"' in response.text
   assert 'id="page-content"' in response.text
   assert "nav-progress" in response.text
+  assert 'hx-get="/messenger/sidebar"' in response.text
+  assert 'hx-push-url="false"' in response.text
 
 
 def test_clients_page_skips_relink_and_lazy_ai() -> None:
