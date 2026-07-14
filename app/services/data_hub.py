@@ -13,6 +13,7 @@ from app.services.export_format import (
   row_keyword_text,
   row_matches_phone,
   sales_channels_index,
+  sales_channel_types_index,
   sort_client_rows,
 )
 from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value
@@ -61,7 +62,7 @@ class DataHub:
     self._results_index_version: int = -1
     self._order_lookup_cache: dict[str, dict[str, Any]] | None = None
     self._order_lookup_version: int = -1
-    self._agent_channels_cache: tuple[int, dict[str, set[str]]] | None = None
+    self._agent_segment_cache: tuple[int, tuple[dict[str, set[str]], dict[str, str]]] | None = None
 
   def touch(self) -> None:
     self.version += 1
@@ -70,7 +71,7 @@ class DataHub:
     self._client_index = None
     self._results_by_key = None
     self._order_lookup_cache = None
-    self._agent_channels_cache = None
+    self._agent_segment_cache = None
 
   def set_workbook(
     self,
@@ -233,13 +234,13 @@ class DataHub:
     self._order_lookup_version = self.version
     return order_by_key
 
-  def _agent_sales_channels(self) -> dict[str, set[str]]:
-    if self._agent_channels_cache and self._agent_channels_cache[0] == self.version:
-      return self._agent_channels_cache[1]
+  def _agent_segment_indexes(self) -> tuple[dict[str, set[str]], dict[str, str]]:
+    if self._agent_segment_cache and self._agent_segment_cache[0] == self.version:
+      return self._agent_segment_cache[1]
     order_rows = self.orders_parsed.rows if self.orders_parsed else []
-    index = sales_channels_index(order_rows)
-    self._agent_channels_cache = (self.version, index)
-    return index
+    indexes = (sales_channels_index(order_rows), sales_channel_types_index(order_rows))
+    self._agent_segment_cache = (self.version, indexes)
+    return indexes
 
   def resolve_order_entities(self, orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Подтянуть полные строки заказов из orders_parsed (позиции, канал, статус)."""
@@ -305,7 +306,7 @@ class DataHub:
       return cached
 
     rows = self.active_rows()
-    agent_channels = self._agent_sales_channels()
+    agent_channels, agent_channel_types = self._agent_segment_indexes()
     if sales_filter == "marketplace":
       rows = [r for r in rows if "маркетплейс" in row_sales_type_filter_value(r)]
     elif sales_filter == "direct":
@@ -314,7 +315,15 @@ class DataHub:
         if "прямы" in row_sales_type_filter_value(r)
       ]
     if group:
-      rows = [r for r in rows if row_has_group(r, group, agent_channels=agent_channels)]
+      rows = [
+        r for r in rows
+        if row_has_group(
+          r,
+          group,
+          agent_channels=agent_channels,
+          agent_channel_types=agent_channel_types,
+        )
+      ]
     if tag:
       tag_l = tag.lower().lstrip("#")
       rows = [
@@ -361,10 +370,22 @@ class DataHub:
       sort=sort,
       order=order,
     )
-    agent_channels = self._agent_sales_channels()
-    group_options = collect_group_counts(base_rows, agent_channels=agent_channels)
+    agent_channels, agent_channel_types = self._agent_segment_indexes()
+    group_options = collect_group_counts(
+      base_rows,
+      agent_channels=agent_channels,
+      agent_channel_types=agent_channel_types,
+    )
     if group:
-      rows = [r for r in base_rows if row_has_group(r, group, agent_channels=agent_channels)]
+      rows = [
+        r for r in base_rows
+        if row_has_group(
+          r,
+          group,
+          agent_channels=agent_channels,
+          agent_channel_types=agent_channel_types,
+        )
+      ]
     else:
       rows = base_rows
     return rows, group_options, len(base_rows)

@@ -261,3 +261,51 @@ def test_filter_rows_with_groups_includes_sales_channels() -> None:
     filtered, _, _ = hub.filter_rows_with_groups(sales_filter="all", group="Flowwow")
     assert len(filtered) == 1
     assert filtered[0]["UUID"] == "cp-1"
+
+
+def test_filter_rows_with_groups_includes_sales_channel_types() -> None:
+    from app.services.fields import SALES_CHANNEL_TYPE_MARKETPLACE
+
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[
+                {"UUID": "cp-1", "Наименование": "Анна"},
+                {"UUID": "cp-2", "Наименование": "Борис"},
+            ],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=2,
+            meta={"source": "moysklad"},
+        ),
+        ParsedWorkbook(
+            source_type="orders",
+            rows=[
+                {
+                    "№": "100",
+                    "_moysklad_agent_id": "cp-1",
+                    "Канал продаж": "Flowwow",
+                },
+                {
+                    "№": "101",
+                    "_moysklad_agent_id": "cp-2",
+                    "Канал продаж": "Витрина",
+                },
+            ],
+            context_columns=[],
+            segment_columns=[],
+            total_rows=2,
+            meta={},
+        ),
+    )
+    _, group_options, _ = hub.filter_rows_with_groups(sales_filter="all")
+    names = {item["name"] for item in group_options}
+    assert SALES_CHANNEL_TYPE_MARKETPLACE in names
+    assert "прямые продажи" in names
+    filtered, _, _ = hub.filter_rows_with_groups(
+        sales_filter="all",
+        group=SALES_CHANNEL_TYPE_MARKETPLACE,
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["UUID"] == "cp-1"

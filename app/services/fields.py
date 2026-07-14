@@ -141,6 +141,20 @@ def unique_sales_channels(row: dict[str, Any]) -> list[str]:
   return result
 
 
+def unique_sales_channel_types(row: dict[str, Any]) -> list[str]:
+  """Тип канала продаж клиента (если есть данные для определения)."""
+  explicit = (
+    row.get(SALES_CHANNEL_TYPE_KEY)
+    or row.get(LEGACY_SALES_CHANNEL_TYPE_KEY)
+    or row.get("Тип продаж")
+  )
+  if explicit and str(explicit).strip():
+    return [sales_channel_type_for_row(row)]
+  if _order_channels(row):
+    return [sales_channel_type_for_row(row)]
+  return []
+
+
 def sales_channel_type_for_row(row: dict[str, Any]) -> str:
   """Тип канала продаж по всем заказам контрагента."""
   explicit = (

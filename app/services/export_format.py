@@ -9,7 +9,13 @@ from typing import Any
 from urllib.parse import urlencode
 
 from app.services.telegram_export import tg_conversation_label
-from app.services.fields import AI_NO_DATA_LABEL, is_empty_cell, refresh_row_for_display, unique_sales_channels
+from app.services.fields import (
+    AI_NO_DATA_LABEL,
+    is_empty_cell,
+    refresh_row_for_display,
+    unique_sales_channel_types,
+    unique_sales_channels,
+)
 
 from app.services.excel_parser import (
     AI_EXTRA_COLUMNS,
@@ -281,19 +287,45 @@ def sales_channels_index(order_rows: list[dict[str, Any]]) -> dict[str, set[str]
     return index
 
 
+def sales_channel_types_index(order_rows: list[dict[str, Any]]) -> dict[str, str]:
+    """Тип канала продаж по контрагенту из всех заказов (agent_id → тип)."""
+    from collections import defaultdict
+
+    from app.services.fields import sales_channel_type_for_row
+
+    orders_by_agent: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for order in order_rows:
+        agent_id = str(order.get("_moysklad_agent_id") or "").strip()
+        if agent_id:
+            orders_by_agent[agent_id].append(order)
+
+    index: dict[str, str] = {}
+    for agent_id, orders in orders_by_agent.items():
+        label = sales_channel_type_for_row({"_orders_context": orders})
+        if label:
+            index[agent_id] = label
+    return index
+
+
 def row_segment_names(
     row: dict[str, Any],
     *,
     agent_channels: dict[str, set[str]] | None = None,
+    agent_channel_types: dict[str, str] | None = None,
 ) -> list[str]:
-    """Сегменты для фильтра «Группы»: теги + каналы продаж."""
+    """Сегменты для фильтра «Группы»: теги, каналы и типы канала продаж."""
     seen: set[str] = set()
     names: list[str] = []
     candidates = list(row_groups(row))
     candidates.extend(unique_sales_channels(row))
-    if agent_channels:
-        cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
+    candidates.extend(unique_sales_channel_types(row))
+    cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
+    if agent_channels and cp_id:
         candidates.extend(agent_channels.get(cp_id, ()))
+    if agent_channel_types and cp_id:
+        channel_type = agent_channel_types.get(cp_id)
+        if channel_type:
+            candidates.append(channel_type)
     for name in candidates:
         text = str(name).strip()
         key = text.lower()
@@ -308,23 +340,36 @@ def row_has_group(
     group: str,
     *,
     agent_channels: dict[str, set[str]] | None = None,
+    agent_channel_types: dict[str, str] | None = None,
 ) -> bool:
     target = group.strip().lower()
     if not target:
         return True
-    return any(n.lower() == target for n in row_segment_names(row, agent_channels=agent_channels))
+    return any(
+        n.lower() == target
+        for n in row_segment_names(
+            row,
+            agent_channels=agent_channels,
+            agent_channel_types=agent_channel_types,
+        )
+    )
 
 
 def collect_group_counts(
     rows: list[dict[str, Any]],
     *,
     agent_channels: dict[str, set[str]] | None = None,
+    agent_channel_types: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Уникальные группы и каналы продаж с числом клиентов, по убыванию."""
+    """Уникальные группы, каналы и типы канала продаж с числом клиентов."""
     counter: Counter[str] = Counter()
     display: dict[str, str] = {}
     for row in rows:
-        for name in row_segment_names(row, agent_channels=agent_channels):
+        for name in row_segment_names(
+            row,
+            agent_channels=agent_channels,
+            agent_channel_types=agent_channel_types,
+        ):
             key = name.lower()
             counter[key] += 1
             display.setdefault(key, name)

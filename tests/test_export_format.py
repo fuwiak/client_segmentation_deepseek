@@ -103,7 +103,7 @@ def test_collect_group_counts_includes_sales_channels() -> None:
     }
     counts = collect_group_counts(rows, agent_channels=agent_channels)
     names = {item["name"] for item in counts}
-    assert names == {"VIP", "новый", "Flowwow", "Ozon", "Витрина"}
+    assert names == {"VIP", "новый", "Flowwow", "Ozon", "Витрина", "маркетплейс"}
     flowwow = next(item for item in counts if item["name"] == "Flowwow")
     assert flowwow["count"] == 2
 
@@ -119,6 +119,44 @@ def test_row_has_group_matches_sales_channel() -> None:
     assert row_has_group(row, "Flowwow") is True
     assert row_has_group(row, "VIP") is True
     assert row_has_group(row, "Ozon") is False
+
+
+def test_collect_group_counts_includes_sales_channel_types() -> None:
+    from app.services.fields import SALES_CHANNEL_TYPE_MARKETPLACE
+
+    rows = [
+        {
+            "UUID": "cp-1",
+            "Группы": "VIP",
+            "_orders_context": [{"Канал продаж": "Flowwow"}],
+        },
+        {
+            "UUID": "cp-2",
+            "_orders_context": [{"Канал продаж": "Витрина"}],
+        },
+    ]
+    agent_channel_types = {
+        "cp-1": SALES_CHANNEL_TYPE_MARKETPLACE,
+        "cp-2": "прямые продажи",
+    }
+    counts = collect_group_counts(rows, agent_channel_types=agent_channel_types)
+    names = {item["name"] for item in counts}
+    assert SALES_CHANNEL_TYPE_MARKETPLACE in names
+    assert "прямые продажи" in names
+
+
+def test_row_has_group_matches_sales_channel_type() -> None:
+    from app.services.export_format import row_has_group
+    from app.services.fields import SALES_CHANNEL_TYPE_HYBRID
+
+    row = {
+        "UUID": "cp-1",
+        "_orders_context": [
+            {"Канал продаж": "Flowwow"},
+            {"Канал продаж": "Витрина"},
+        ],
+    }
+    assert row_has_group(row, SALES_CHANNEL_TYPE_HYBRID) is True
 
 
 def test_sort_client_rows_numeric() -> None:
