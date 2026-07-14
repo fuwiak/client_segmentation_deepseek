@@ -1,5 +1,6 @@
 <nav class="settings-tabs" aria-label="Разделы настроек">
   <a href="/settings"
+     preload="mouseover"
      hx-boost="false"
      hx-get="/settings"
      hx-target="#settings-live-region"
@@ -8,6 +9,7 @@
      hx-push-url="true"
      class="filter-tab {% if active_page == 'settings' %}active{% endif %}">Интеграции</a>
   <a href="/settings/communications"
+     preload="mouseover"
      hx-boost="false"
      hx-get="/settings/communications"
      hx-target="#settings-live-region"
@@ -16,6 +18,7 @@
      hx-push-url="true"
      class="filter-tab {% if active_page == 'communications' %}active{% endif %}">Автокоммуникация</a>
   <a href="/settings/moysklad"
+     preload="mouseover"
      hx-boost="false"
      hx-get="/settings/moysklad"
      hx-target="#settings-live-region"

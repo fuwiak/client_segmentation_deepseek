@@ -38,6 +38,18 @@ def test_static_assets_can_be_cached_with_versioned_urls() -> None:
   vendor_response = client.get(m.static_asset("vendor/htmx.min.js"))
   assert vendor_response.status_code == 200
   assert vendor_response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+  preload_response = client.get(m.static_asset("vendor/htmx-ext-preload.js"))
+  assert preload_response.status_code == 200
+  assert preload_response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+
+def test_large_static_assets_are_gzipped() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get(m.static_asset("style.css"), headers={"Accept-Encoding": "gzip"})
+  assert response.status_code == 200
+  assert response.headers["Content-Encoding"] == "gzip"
 
 
 def test_settings_page_renders_without_blocking_health() -> None:
@@ -69,8 +81,8 @@ def test_home_page_shows_title_and_active_nav() -> None:
   response = client.get("/")
   assert response.status_code == 200
   assert "<h1>Главная</h1>" in response.text
-  assert 'data-nav-path="/" class="nav-item active"' in response.text
-  assert 'data-nav-path="/" class="bottom-nav-item active"' in response.text
+  assert 'data-nav-path="/" preload="mouseover" class="nav-item active"' in response.text
+  assert 'data-nav-path="/" preload="mouseover" class="bottom-nav-item active"' in response.text
 
 
 def test_home_recent_clients_open_uses_drawer() -> None:
@@ -137,13 +149,16 @@ def test_base_template_has_htmx_app_shell() -> None:
   client = TestClient(m.app)
   response = client.get("/")
   assert response.status_code == 200
-  assert '<meta name="htmx-config" content=\'{"historyCacheSize":0}\'>' in response.text
+  assert '<meta name="htmx-config" content=\'{"historyCacheSize":6}\'>' in response.text
   assert '/static/vendor/htmx.min.js?v=' in response.text
+  assert '/static/vendor/htmx-ext-preload.js?v=' in response.text
   assert "unpkg.com/htmx" not in response.text
   assert '/static/app.js?v=' in response.text
   assert '/static/clients_ws.js?v=' in response.text
   assert '/static/style.css?v=' in response.text
   assert 'hx-boost="true"' in response.text
+  assert 'hx-ext="preload"' in response.text
+  assert 'preload="mouseover"' in response.text
   assert 'hx-target="#page-content"' in response.text
   assert 'id="page-content"' in response.text
   assert "nav-progress" in response.text
@@ -151,6 +166,18 @@ def test_base_template_has_htmx_app_shell() -> None:
   assert 'hx-push-url="false"' in response.text
   assert 'id="orders-modal-loading"' in response.text
   assert 'id="orders-modal-loading" class="modal-overlay orders-modal-loading-overlay" hidden' in response.text
+
+
+def test_boosted_navigation_returns_page_content_fragment() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get("/dashboard", headers={"HX-Boosted": "true", "HX-Request": "true"})
+  assert response.status_code == 200
+  assert response.text.lstrip().startswith('<main id="page-content"')
+  assert 'class="site-header"' not in response.text
+  assert '<script src=' not in response.text
+  assert "<h1>Дашборд</h1>" in response.text
 
 
 def test_clients_page_skips_relink_and_lazy_ai() -> None:

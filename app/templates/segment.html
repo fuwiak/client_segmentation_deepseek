@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends layout_template|default("base.html") %}
 
 {% block content %}
 {% include 'partials/workflow.html' %}

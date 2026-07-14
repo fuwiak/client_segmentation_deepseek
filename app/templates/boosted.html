@@ -1,0 +1,21 @@
+<main id="page-content" class="main-content">
+  <div class="container">
+    {% block page_header %}
+    <header class="page-header">
+      <div>
+        <h1>{{ page_title|default(title) }}</h1>
+        {% if subtitle %}<p class="subtitle">{{ subtitle }}</p>{% endif %}
+      </div>
+    </header>
+    {% endblock %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>Client CRM</span>
+      <span>{{ model }} · {% if has_api_key %}AI активен{% else %}Нужен API-ключ{% endif %}</span>
+    </div>
+  </footer>
+</main>

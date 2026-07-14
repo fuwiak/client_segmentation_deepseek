@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import logging
 import time
@@ -15,6 +16,7 @@ from fastapi import FastAPI, File, Form, Query, Request, UploadFile, WebSocket, 
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.config import get_settings
 from app.connectors.messenger import MessengerConnector
@@ -88,6 +90,7 @@ campaign_svc = CampaignService(repo)
 lead_svc = LeadService(repo)
 
 app = FastAPI(title=settings.app_title)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 perf_logger = logging.getLogger("performance")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["tag_reasons"] = explain_tags_for_row
@@ -100,11 +103,18 @@ templates.env.globals["build_clients_query"] = build_clients_query
 templates.env.globals["client_url_id"] = client_url_id
 templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+_static_asset_versions: dict[str, str] = {}
 
 
 def static_asset(filename: str) -> str:
   path = Path("app/static") / filename
-  version = int(path.stat().st_mtime) if path.exists() else int(time.time())
+  version = _static_asset_versions.get(filename)
+  if version is None:
+    if path.exists():
+      version = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    else:
+      version = "missing"
+    _static_asset_versions[filename] = version
   return f"/static/{filename}?v={version}"
 
 
@@ -622,8 +632,10 @@ def _segment_results_ctx() -> dict[str, Any]:
 
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
+  layout_template = "boosted.html" if request.headers.get("hx-boosted") else "base.html"
   return {
     "request": request,
+    "layout_template": layout_template,
     "title": settings.app_title,
     "segment_columns": SEGMENT_COLUMNS,
     "ai_extra_columns": AI_EXTRA_COLUMNS,

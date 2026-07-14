@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="htmx-config" content='{"historyCacheSize":0}'>
+  <meta name="htmx-config" content='{"historyCacheSize":6}'>
   <title>{% block title %}{{ page_title|default(title) }}{% endblock %} · Client CRM</title>
   <script src="{{ static_asset('vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ static_asset('vendor/htmx-ext-preload.js') }}" defer></script>
   <link rel="stylesheet" href="{{ static_asset('style.css') }}">
 </head>
 <body hx-boost="true"
+      hx-ext="preload"
       hx-target="#page-content"
       hx-select="#page-content"
       hx-swap="innerHTML show:top"
@@ -78,23 +80,23 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Быстрая навигация">
-    <a href="/" data-nav-path="/" class="bottom-nav-item {% if active_page|default('') == 'home' %}active{% endif %}">
+    <a href="/" data-nav-path="/" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'home' %}active{% endif %}">
       <span class="bottom-nav-icon">⌂</span>
       <span>Главная</span>
     </a>
-    <a href="/clients" data-nav-path="/clients" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
+    <a href="/clients" data-nav-path="/clients" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
       <span class="bottom-nav-icon">👥</span>
       <span>Клиенты</span>
     </a>
-    <a href="/segment" data-nav-path="/segment" class="bottom-nav-item {% if active_page|default('') == 'segment' %}active{% endif %}">
+    <a href="/segment" data-nav-path="/segment" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'segment' %}active{% endif %}">
       <span class="bottom-nav-icon">↑</span>
       <span>Импорт</span>
     </a>
-    <a href="/dashboard" data-nav-path="/dashboard" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
+    <a href="/dashboard" data-nav-path="/dashboard" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
       <span class="bottom-nav-icon">▦</span>
       <span>Дашборд</span>
     </a>
-    <a href="/settings" data-nav-path="/settings" class="bottom-nav-item {% if active_page in ['settings', 'communications', 'moysklad'] %}active{% endif %}">
+    <a href="/settings" data-nav-path="/settings" preload="mouseover" class="bottom-nav-item {% if active_page in ['settings', 'communications', 'moysklad'] %}active{% endif %}">
       <span class="bottom-nav-icon">⚙</span>
       <span>Ещё</span>
     </a>
