@@ -11,11 +11,57 @@ from app.services.moysklad.mapper import (
     aggregate_client_positions,
     apply_positions_to_orders,
     counterparty_to_row,
+    entity_ref_id,
+    order_to_row,
     position_to_item,
     positions_label,
+    resolve_counterparty_phone,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "moysklad_counterparty.json"
+
+
+def test_counterparty_phone_from_code_when_phone_empty() -> None:
+    row = counterparty_to_row(
+        {
+            "id": "cp-code-phone",
+            "name": "sdy7DN-SGPz1f-MQIU-Umd1",
+            "code": "+79991234567",
+            "phone": "",
+        }
+    )
+    assert row["Телефон"] == "+79991234567"
+    assert row["Код"] == "+79991234567"
+
+
+def test_resolve_counterparty_phone_prefers_phone_field() -> None:
+    assert resolve_counterparty_phone({"phone": "+79991112233", "code": "+79990000000"}) == "+79991112233"
+
+
+def test_entity_ref_id_uses_expanded_id() -> None:
+    assert entity_ref_id({"id": "cp-uuid-1", "name": "Клиент"}) == "cp-uuid-1"
+    assert entity_ref_id(
+        {
+            "meta": {
+                "href": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/cp-from-href",
+            }
+        }
+    ) == "cp-from-href"
+
+
+def test_order_to_row_uses_expanded_agent_id() -> None:
+    row = order_to_row(
+        {
+            "id": "order-2",
+            "name": "00002",
+            "sum": 100000,
+            "agent": {"id": "cp-uuid-2", "name": "+79991234567", "phone": "+79991234567"},
+            "state": {"name": "Новый"},
+        },
+        {},
+    )
+    assert row["_moysklad_agent_id"] == "cp-uuid-2"
+    assert row["_moysklad_agent_phone"] == "+79991234567"
 
 
 def test_counterparty_fixture_maps_to_excel_columns() -> None:

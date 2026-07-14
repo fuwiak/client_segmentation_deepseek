@@ -63,6 +63,42 @@ def test_heuristic_from_messages_fills_tags() -> None:
     assert result.get("_enrichment_source") == "messenger_heuristic"
 
 
+def test_enrich_with_orders_matches_phone_in_code_field() -> None:
+    contragents = ParsedWorkbook(
+        source_type="contragents",
+        rows=[
+            {
+                "UUID": "cp-other",
+                "Наименование": "hash-name",
+                "Код": "+79991234567",
+                "Телефон": "+79991234567",
+            }
+        ],
+        context_columns=["UUID", "Наименование", "Телефон", "Код"],
+        segment_columns=[],
+        total_rows=1,
+    )
+    orders = ParsedWorkbook(
+        source_type="orders",
+        rows=[
+            {
+                "№": "200",
+                "Контрагент": "+79991234567",
+                "_moysklad_agent_id": "",
+                "_moysklad_agent_phone": "+79991234567",
+                "Сумма": 2000,
+            }
+        ],
+        context_columns=["№", "Контрагент"],
+        segment_columns=[],
+        total_rows=1,
+    )
+    enriched = enrich_with_orders(contragents, orders)
+    row = enriched.rows[0]
+    assert row["_orders_count"] == 1
+    assert row["_orders_context"][0]["№"] == "200"
+
+
 def test_enrich_with_orders_matches_moysklad_agent_id() -> None:
     contragents = ParsedWorkbook(
         source_type="contragents",
