@@ -27,6 +27,7 @@
     Object.keys(cells).forEach(function (col) {
       var td = row.querySelector('td[data-col="' + CSS.escape(col) + '"]');
       if (!td) return;
+      if (col === "Наименование" && td.querySelector(".client-name-link")) return;
       var info = cells[col];
       td.innerHTML = renderAiCell(info.state, info.text);
     });

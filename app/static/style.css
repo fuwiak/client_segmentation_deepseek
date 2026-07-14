@@ -955,7 +955,20 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 
 .reasoning { white-space: normal; max-width: 280px; color: var(--muted); font-size: 14px; }
 .tags-cell { white-space: normal; max-width: 180px; }
-.orders-expand-row td { padding: 0; border: none; }
+.orders-expand-row td {
+  padding: 0;
+  border: none;
+}
+
+.clients-table-wide .orders-expand-row td {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+}
+
+.orders-expand-row.is-open td {
+  padding: 0;
+}
 .orders-nested { padding: var(--md); background: var(--canvas); }
 .orders-compact-list {
   list-style: none;

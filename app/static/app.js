@@ -94,9 +94,14 @@
     });
   }
 
-  function activateLazyWidgets(root) {
+  function processHtmxRegion(root) {
     if (typeof htmx === "undefined" || !root) return;
     htmx.process(root);
+  }
+
+  function activateLazyWidgets(root) {
+    if (!root) return;
+    processHtmxRegion(root);
     root.querySelectorAll("[hx-get][hx-trigger]").forEach(function (el) {
       var trigger = el.getAttribute("hx-trigger") || "";
       if (!/\b(load|revealed)\b/.test(trigger)) return;
@@ -118,6 +123,9 @@
     if (typeof htmx === "undefined") return;
     if (swapTarget) {
       activateLazyWidgets(swapTarget);
+    } else {
+      var page = document.getElementById("page-content");
+      if (page) activateLazyWidgets(page);
     }
     if (!document.body.dataset.headerWidgetsInit) {
       document.body.dataset.headerWidgetsInit = "1";
@@ -194,10 +202,21 @@
   document.body.addEventListener("htmx:responseError", fallbackNavigateFromHtmxEvent);
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
-    if (isLiveSwapTarget(e.detail.target)) {
+    var target = e.detail.target;
+    if (target && target.id === "client-drawer-panel") {
+      openClientDrawer();
+      processHtmxRegion(target);
+    } else if (target && target.id && target.id.indexOf("orders-") === 0) {
+      var row = target.closest(".orders-expand-row");
+      if (row) {
+        row.classList.add("is-open");
+        processHtmxRegion(target);
+      }
+    }
+    if (isLiveSwapTarget(target)) {
       updateActiveNav();
       updateDocumentTitle();
-      initPageScripts(e.detail.target);
+      initPageScripts(target);
       var drawer = document.getElementById("mobile-drawer");
       if (drawer && !drawer.hidden) toggleMobileNav();
     }
