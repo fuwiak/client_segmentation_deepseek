@@ -1,0 +1,6 @@
+<div class="rules-drawer-header">
+  <h3>{{ client.get('Наименование') or 'Клиент' }}</h3>
+  <button type="button" class="modal-close" onclick="closeClientDrawer()" aria-label="Закрыть">×</button>
+</div>
+
+{% include 'partials/client_card_body.html' %}

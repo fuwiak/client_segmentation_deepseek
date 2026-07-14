@@ -1067,6 +1067,26 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   vertical-align: middle;
 }
 
+.client-drawer {
+  width: min(480px, 100vw);
+}
+
+.client-name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(92, 107, 192, 0.35);
+  text-underline-offset: 2px;
+}
+.client-name-link:hover {
+  text-decoration-color: var(--primary);
+}
+
 .moysklad-push-area { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sm); }
 .moysklad-push-area.inline-push { margin: 0; }
 .moysklad-push-area .hint { flex-basis: 100%; margin: 0; }

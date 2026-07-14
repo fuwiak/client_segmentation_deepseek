@@ -6,7 +6,12 @@
       <tr>
         <th></th>
         {% for col in client_columns %}
-        <th>{{ col }}</th>
+        <th{% if col == 'Группы' %} class="tags-col-head"{% endif %}>
+          {{ col }}
+          {% if col == 'Группы' %}
+          <button type="button" class="btn-text tag-rules-btn" onclick="openTagRulesDrawer()" title="Условия AI-тегов">ⓘ</button>
+          {% endif %}
+        </th>
         {% endfor %}
         <th></th>
       </tr>
@@ -24,7 +29,13 @@
         {% for col in client_columns %}
         <td{% if col == 'Группы' %} class="tags-cell"{% endif %}>
           {% set value = client_cell_value(row, col) %}
-          {% if col in ai_fillable_columns %}
+          {% if col == 'Наименование' %}
+          <button type="button" class="client-name-link"
+                  hx-get="/clients/{{ cid }}?drawer=1"
+                  hx-target="#client-drawer-panel"
+                  hx-swap="innerHTML"
+                  onclick="openClientDrawer()">{{ value or '—' }}</button>
+          {% elif col in ai_fillable_columns %}
             {{ ai_cell(row, col, value) }}
           {% else %}
             {{ value or '—' }}
@@ -32,10 +43,11 @@
         </td>
         {% endfor %}
         <td>
-          <button class="btn-text"
-                  hx-get="/clients/{{ cid }}"
-                  hx-target="#modal-root"
-                  hx-swap="innerHTML">Карточка</button>
+          <button class="btn-text client-name-link"
+                  hx-get="/clients/{{ cid }}?drawer=1"
+                  hx-target="#client-drawer-panel"
+                  hx-swap="innerHTML"
+                  onclick="openClientDrawer()">Карточка</button>
         </td>
       </tr>
       <tr class="orders-expand-row">

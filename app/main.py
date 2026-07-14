@@ -436,7 +436,11 @@ async def tag_rules_save(request: Request) -> HTMLResponse:
 
 
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
-async def client_card(request: Request, client_id: str) -> HTMLResponse:
+async def client_card(
+  request: Request,
+  client_id: str,
+  drawer: bool = Query(False),
+) -> HTMLResponse:
   client = hub.get_client(client_id)
   if not client:
     return templates.TemplateResponse(
@@ -444,8 +448,9 @@ async def client_card(request: Request, client_id: str) -> HTMLResponse:
       _ctx(request, message="Клиент не найден"),
     )
   orders = client.get("_orders_context") or []
+  template = "partials/client_card_drawer.html" if drawer else "partials/client_card.html"
   return templates.TemplateResponse(
-    "partials/client_card.html",
+    template,
     _ctx(request, client=client, orders=orders),
   )
 
