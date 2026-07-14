@@ -91,9 +91,21 @@ def _location_label(addr_full: dict[str, Any]) -> str | None:
     return joined or None
 
 
+def _accounts_list(counterparty: dict[str, Any]) -> list[dict[str, Any]]:
+    """accounts в Remap 1.2 — list или MetaArray {meta, rows}."""
+    raw = counterparty.get("accounts")
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, dict):
+        items = raw.get("rows") or []
+    else:
+        items = []
+    return [a for a in items if isinstance(a, dict)]
+
+
 def _bank_fields(counterparty: dict[str, Any]) -> dict[str, Any]:
-    accounts = counterparty.get("accounts") or []
-    account = accounts[0] if accounts and isinstance(accounts[0], dict) else {}
+    accounts = _accounts_list(counterparty)
+    account = accounts[0] if accounts else {}
     return {
         "БИК": account.get("bic"),
         "Банк": account.get("bankName"),

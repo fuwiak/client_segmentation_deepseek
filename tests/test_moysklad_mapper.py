@@ -26,6 +26,51 @@ def test_counterparty_fixture_maps_to_excel_columns() -> None:
     assert "Москва" in str(row["Фактический адрес"])
 
 
+def test_bank_fields_from_accounts_meta_array() -> None:
+    """accounts без expand — MetaArray dict; с expand — rows."""
+    row = counterparty_to_row(
+        {
+            "id": "cp-1",
+            "name": "ООО Ромашка",
+            "accounts": {"meta": {"size": 1}},
+        }
+    )
+    assert row["БИК"] is None
+    assert row["Р/с"] is None
+
+    row = counterparty_to_row(
+        {
+            "id": "cp-2",
+            "name": "ООО Ромашка",
+            "accounts": {
+                "meta": {"size": 1},
+                "rows": [
+                    {
+                        "bic": "044525225",
+                        "bankName": "Сбербанк",
+                        "correspondentAccount": "30101810400000000225",
+                        "accountNumber": "40702810123456789012",
+                    }
+                ],
+            },
+        }
+    )
+    assert row["БИК"] == "044525225"
+    assert row["Банк"] == "Сбербанк"
+    assert row["К/с"] == "30101810400000000225"
+    assert row["Р/с"] == "40702810123456789012"
+
+    row = counterparty_to_row(
+        {
+            "id": "cp-3",
+            "name": "ООО Ромашка",
+            "accounts": [{"bic": "044525999", "accountNumber": "40702810999"}],
+        }
+    )
+    assert row["БИК"] == "044525999"
+    assert row["Р/с"] == "40702810999"
+
+
 def test_export_columns_for_moysklad_matches_excel_plus_ai() -> None:
     parsed = ParsedWorkbook(
         source_type="contragents",
