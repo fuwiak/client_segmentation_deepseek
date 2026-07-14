@@ -16,7 +16,7 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, enrich_gender_by_unique_naimenovanie
+from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, enrich_gender_by_unique_naimenovanie, enrich_tg_nick_by_phone
 
 
 def _row_key(row: dict[str, Any]) -> str:
@@ -63,6 +63,15 @@ class DataHub:
     self._order_lookup_cache: dict[str, dict[str, Any]] | None = None
     self._order_lookup_version: int = -1
     self._agent_segment_cache: tuple[int, tuple[dict[str, set[str]], dict[str, str]]] | None = None
+    self._phone_username_map: dict[str, str] = {}
+
+  @property
+  def phone_username_map(self) -> dict[str, str]:
+    return self._phone_username_map
+
+  def set_phone_username_map(self, phone_username_map: dict[str, str]) -> None:
+    self._phone_username_map = dict(phone_username_map)
+    self.touch()
 
   def touch(self) -> None:
     self.version += 1
@@ -128,6 +137,7 @@ class DataHub:
     else:
       rows = []
     rows = enrich_gender_by_unique_naimenovanie(rows)
+    rows = enrich_tg_nick_by_phone(rows, self._phone_username_map)
     self._active_rows_cache = (self.version, rows)
     return rows
 

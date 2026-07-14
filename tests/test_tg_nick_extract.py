@@ -41,3 +41,31 @@ def test_enrich_row_computed_sets_tg_nick_from_naimenovanie() -> None:
     row = {"Наименование": "@sigrifmeow"}
     enriched = enrich_row_computed(row)
     assert enriched["ТГ ник"] == "@sigrifmeow"
+
+
+def test_tg_nick_from_phone_map() -> None:
+    from app.services.fields import (
+        enrich_row_computed,
+        extract_tg_nick_from_row,
+        tg_nick_from_phone_map,
+    )
+
+    phone_map = {"9163649615": "yulia_flowers"}
+    assert tg_nick_from_phone_map("+79163649615", phone_map) == "@yulia_flowers"
+    row = {"Телефон": "+79163649615", "ТГ ник": ""}
+    assert extract_tg_nick_from_row(row, phone_username_map=phone_map) == "@yulia_flowers"
+    enriched = enrich_row_computed(row, phone_username_map=phone_map)
+    assert enriched["ТГ ник"] == "@yulia_flowers"
+
+
+def test_enrich_tg_nick_by_phone_batch() -> None:
+    from app.services.fields import enrich_tg_nick_by_phone
+
+    phone_map = {"9163649615": "yulia_flowers"}
+    rows = [
+        {"UUID": "1", "Телефон": "+79163649615"},
+        {"UUID": "2", "Телефон": "+79163649615"},
+    ]
+    enriched = enrich_tg_nick_by_phone(rows, phone_map)
+    assert enriched[0]["ТГ ник"] == "@yulia_flowers"
+    assert enriched[1]["ТГ ник"] == "@yulia_flowers"

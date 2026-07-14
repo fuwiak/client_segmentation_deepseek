@@ -767,19 +767,113 @@ def extract_tg_nick_from_messages(messages: list[dict[str, Any]]) -> str | None:
   return None
 
 
-def extract_tg_nick_from_row(row: dict[str, Any]) -> str | None:
-  """ТГ ник из Наименования, комментариев и переписки."""
-  for key in ("ТГ ник", "Наименование", *COUNTERPARTY_COMMENT_KEYS):
+def tg_nick_from_phone_map(
+  phone: Any,
+  phone_username_map: dict[str, str] | None,
+) -> str | None:
+  """@username по телефону из TG Data Export или кэша Bot API (не lookup по API)."""
+  if not phone_username_map:
+    return None
+  from app.services.telegram_export import normalize_export_phone
+
+  key = normalize_export_phone(str(phone or ""))
+  if not key:
+    return None
+  username = phone_username_map.get(key)
+  if not username:
+    return None
+  clean = str(username).strip().lstrip("@")
+  if _TG_USERNAME_RE.match(clean):
+    return f"@{clean}"
+  return None
+
+
+def extract_tg_nick_from_row(
+  row: dict[str, Any],
+  *,
+  phone_username_map: dict[str, str] | None = None,
+) -> str | None:
+  """ТГ ник из телефона, Наименования, комментариев и переписки."""
+  for key in ("ТГ ник",):
     nick = extract_tg_nick_from_text(row.get(key))
     if nick:
       return nick
+  for key in ("Телефон",):
+    nick = extract_tg_nick_from_text(row.get(key))
+    if nick:
+      return nick
+    nick = tg_nick_from_phone_map(row.get(key), phone_username_map)
+    if nick:
+      return nick
+  for key in ("Наименование", *COUNTERPARTY_COMMENT_KEYS):
+    nick = extract_tg_nick_from_text(row.get(key))
+    if nick:
+      return nick
+  nick = tg_nick_from_phone_map(row.get("Наименование"), phone_username_map)
+  if nick:
+    return nick
   return extract_tg_nick_from_messages(
     list(row.get("_messenger_context") or [])
     + list(row.get("_tg_export_context") or [])
   )
 
 
-def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
+def enrich_tg_nick_by_phone(
+  rows: list[dict[str, Any]],
+  phone_username_map: dict[str, str] | None,
+) -> list[dict[str, Any]]:
+  """Подставить ТГ ник по телефону для всех строк без ника."""
+  if not phone_username_map:
+    return rows
+  updated: list[dict[str, Any]] = []
+  for row in rows:
+    merged = dict(row)
+    if is_empty_cell(merged.get("ТГ ник")):
+      nick = extract_tg_nick_from_row(merged, phone_username_map=phone_username_map)
+      if nick:
+        merged["ТГ ник"] = nick
+    updated.append(merged)
+  return updated
+
+
+def apply_tg_nick_by_phone_to_hub(hub: Any) -> list[dict[str, Any]]:
+  """Записать ТГ ник в parsed/results по индексу телефон→username на hub."""
+  phone_map = getattr(hub, "phone_username_map", None) or {}
+  if not phone_map:
+    return []
+  if getattr(hub, "parsed", None) and hub.parsed and hub.parsed.rows:
+    hub.parsed.rows = enrich_tg_nick_by_phone(hub.parsed.rows, phone_map)
+    hub.touch()
+  updated: list[dict[str, Any]] = []
+  for row in hub.results or []:
+    if not is_empty_cell(row.get("ТГ ник")):
+      continue
+    nick = extract_tg_nick_from_row(dict(row), phone_username_map=phone_map)
+    if not nick:
+      continue
+    merged = dict(row)
+    merged["ТГ ник"] = nick
+    ai_fields = list(merged.get("_ai_fields") or [])
+    if "ТГ ник" not in ai_fields:
+      ai_fields.append("ТГ ник")
+    merged["_ai_fields"] = ai_fields
+    unknown = list(merged.get("_ai_unknown_fields") or [])
+    if "ТГ ник" in unknown:
+      unknown = [col for col in unknown if col != "ТГ ник"]
+      merged["_ai_unknown_fields"] = unknown or None
+      if merged["_ai_unknown_fields"] is None:
+        merged.pop("_ai_unknown_fields", None)
+    updated.append(enrich_row_computed(merged, phone_username_map=phone_map))
+  if updated:
+    hub.upsert_results(updated)
+  return updated
+
+
+def enrich_row_computed(
+  row: dict[str, Any],
+  *,
+  phone_username_map: dict[str, str] | None = None,
+) -> dict[str, Any]:
   """Добавляет вычисляемые поля к строке клиента."""
   enriched = dict(row)
   channel = sales_channel_for_row(row)
@@ -795,7 +889,7 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   if not enriched.get("Дата последнего заказа"):
     enriched["Дата последнего заказа"] = last_order_date(row)
   if is_empty_cell(enriched.get("ТГ ник")):
-    tg = extract_tg_nick_from_row(enriched)
+    tg = extract_tg_nick_from_row(enriched, phone_username_map=phone_username_map)
     if tg:
       enriched["ТГ ник"] = tg
   if is_empty_cell(enriched.get("Пол")):

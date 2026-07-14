@@ -66,6 +66,35 @@ def test_tg_nick_for_row_from_phone_username_map() -> None:
     assert nick == "@yulia_flowers"
 
 
+def test_build_phone_username_lookup_messenger() -> None:
+    from app.services.telegram_export import build_phone_username_lookup
+
+    messenger_index = {
+        "by_phone": {
+            "9163649615": [
+                {"channel": "telegram", "username": "danil_e", "text": "hi"},
+            ]
+        }
+    }
+    assert build_phone_username_lookup(None, messenger_index) == {"9163649615": "danil_e"}
+
+
+def test_build_phone_username_lookup_merges_export_and_messenger() -> None:
+    from app.services.telegram_export import build_phone_username_lookup
+
+    export_index = {"phone_username": {"9163649615": "from_export"}}
+    messenger_index = {
+        "by_phone": {
+            "9991112233": [
+                {"channel": "telegram", "username": "other_user", "text": "hi"},
+            ]
+        }
+    }
+    merged = build_phone_username_lookup(export_index, messenger_index)
+    assert merged["9163649615"] == "from_export"
+    assert merged["9991112233"] == "other_user"
+
+
 def test_parse_telegram_export_file(tmp_path: Path) -> None:
     target = tmp_path / "export.json"
     target.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")

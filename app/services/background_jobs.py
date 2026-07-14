@@ -208,6 +208,21 @@ class BackgroundJobService:
             pipeline_log("AI", "gender fill applied rows=%s names=%s", len(updated), len(names))
         return updated
 
+    async def fill_missing_tg_nick(
+        self,
+        hub: DataHub,
+        cache: Any,
+    ) -> list[dict[str, Any]]:
+        """ТГ ник по телефону из TG export и кэша Bot API."""
+        from app.services.fields import apply_tg_nick_by_phone_to_hub
+
+        updated = apply_tg_nick_by_phone_to_hub(hub)
+        if updated:
+            await self._save_results(hub, cache)
+            await self.broadcast_rows(updated)
+            pipeline_log("TG", "tg nick fill applied rows=%s", len(updated))
+        return updated
+
     async def schedule_lazy_ai(
         self,
         hub: DataHub,

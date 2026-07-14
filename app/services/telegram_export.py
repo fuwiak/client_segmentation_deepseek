@@ -252,14 +252,40 @@ def tg_nick_for_row(index: dict[str, Any], row: dict[str, Any]) -> str | None:
     tg = _normalize_tg(row.get("ТГ ник"))
     if tg:
         return f"@{tg}"
-    phone = normalize_export_phone(str(row.get("Телефон") or ""))
-    if not phone:
-        phone = _normalize_phone(str(row.get("Телефон") or ""))
-    if phone:
-        username = (index.get("phone_username") or {}).get(phone)
-        if username:
-            return f"@{username}"
+    phone_map = index.get("phone_username") or {}
+    if phone_map:
+        from app.services.fields import tg_nick_from_phone_map
+
+        for field in ("Телефон", "Наименование"):
+            nick = tg_nick_from_phone_map(row.get(field), phone_map)
+            if nick:
+                return nick
     return None
+
+
+def build_phone_username_lookup(
+    export_index: dict[str, Any] | None = None,
+    messenger_index: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Телефон (10 цифр) → username из TG Data Export и кэша Bot API (getUpdates)."""
+    merged: dict[str, str] = {}
+    if export_index:
+        for phone, username in (export_index.get("phone_username") or {}).items():
+            key = normalize_export_phone(str(phone))
+            clean = str(username or "").strip().lstrip("@").lower()
+            if key and clean:
+                merged[key] = clean
+    if messenger_index:
+        for phone, messages in (messenger_index.get("by_phone") or {}).items():
+            key = normalize_export_phone(str(phone)) or _normalize_phone(str(phone))
+            if not key or key in merged:
+                continue
+            for msg in messages or []:
+                username = msg.get("username")
+                if username:
+                    merged[key] = str(username).strip().lstrip("@").lower()
+                    break
+    return merged
 
 
 def messages_for_row(index: dict[str, Any], row: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:

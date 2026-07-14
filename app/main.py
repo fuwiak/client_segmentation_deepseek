@@ -150,6 +150,17 @@ _enrich_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "er
 _tg_export_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": "", "meta": {}}
 
 
+async def _refresh_phone_username_map() -> None:
+  """Индекс телефон→@username из TG Data Export и кэша Bot API (getUpdates)."""
+  from app.services.telegram_export import build_phone_username_lookup
+
+  export_index = await cache.get_telegram_export_index()
+  messenger_index = await cache.get_messenger_index()
+  phone_map = build_phone_username_lookup(export_index, messenger_index)
+  hub.set_phone_username_map(phone_map)
+  pipeline_log("TG", "phone_username_map size=%s", len(phone_map))
+
+
 async def _apply_tg_export_to_hub() -> int:
   """Привязать TG export ко всем клиентам в hub и сохранить в кэш."""
   pipeline_log("TG", "apply export to hub start rows=%s", len(hub.active_rows()))
@@ -170,7 +181,11 @@ async def _apply_tg_export_to_hub() -> int:
     "tg_export_meta": messenger.export_stats,
   }
   hub.set_results(updated, meta)
-  payload = {"results": updated, "meta": meta}
+  await _refresh_phone_username_map()
+  from app.services.fields import apply_tg_nick_by_phone_to_hub
+
+  apply_tg_nick_by_phone_to_hub(hub)
+  payload = {"results": hub.results or updated, "meta": meta}
   if hub.workbook_hash:
     await cache.save_segmentation_results(hub.workbook_hash, payload)
   else:
@@ -415,7 +430,9 @@ async def _startup_background() -> None:
       except httpx.HTTPError as exc:
         pipeline_log("PIPE", "startup telegram sync skipped: %s", exc, level=logging.WARNING)
     await _bootstrap_telegram_export()
+    await _refresh_phone_username_map()
     if hub.has_data():
+      await jobs.fill_missing_tg_nick(hub, cache)
       await jobs.fill_missing_gender(hub, settings, cache)
     await _schedule_lazy_ai()
   except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
@@ -495,6 +512,8 @@ async def clients_ai_poll(since: int = Query(0, ge=0)) -> JSONResponse:
 async def clients_ai_start(request: Request) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
+  await _refresh_phone_username_map()
+  await jobs.fill_missing_tg_nick(hub, cache)
   await jobs.fill_missing_gender(hub, settings, cache)
   started = await jobs.schedule_lazy_ai(
     hub,
