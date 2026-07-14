@@ -7,20 +7,24 @@
   {% set sales_filter = sales_filter|default('direct') %}
   {% set tag_filter = tag_filter|default('') %}
   {% set status_filter = status_filter|default('') %}
+  {% set q_filter = q_filter|default('') %}
+  {% set phone_filter = phone_filter|default('') %}
+  {% set sort_col = sort_col|default('') %}
+  {% set sort_order = sort_order|default('asc') %}
   {% if status == 'running' %}
     <p class="hint">Обогащение из WhatsApp/Telegram… {{ done }}/{{ total }} ({{ percent }}%)</p>
     <div class="progress-bar"><div class="progress-fill" style="width: {{ percent }}%"></div></div>
-    <div hx-get="/enrich/progress?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}" hx-trigger="every 2s" hx-target="#enrich-progress-block" hx-swap="outerHTML"></div>
+    <div hx-get="/enrich/progress?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, status=status_filter, q=q_filter, phone=phone_filter, sort=sort_col, order=sort_order) }}" hx-trigger="every 2s" hx-target="#enrich-progress-block" hx-swap="outerHTML"></div>
   {% elif status == 'done' %}
     <p class="hint ok">Обогащение завершено: {{ total }} клиентов. Таблица обновлена.</p>
     <a href="/download/clients/xlsx" class="btn secondary small">Скачать таблицу (.xlsx)</a>
-    <div hx-get="/clients/table?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}"
+    <div hx-get="/clients/table?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, status=status_filter, q=q_filter, phone=phone_filter, sort=sort_col, order=sort_order, page=page|default(1)) }}"
          hx-trigger="load"
          hx-target="#clients-table-block"
          hx-swap="innerHTML"></div>
   {% elif status == 'error' %}
     <p class="hint warn">Ошибка: {{ error }}</p>
   {% else %}
-    <p class="hint muted">Нажмите «Обогатить из мессенджеров», чтобы подтянуть переписку и заполнить поля AI (Группы, Пол, ТГ ник…).</p>
+    <p class="hint muted">Нажмите «Обогатить из мессенджеров», чтобы подтянуть переписку и заполнить поля AI (Группы, Пол, ТГ ник…). Пустые AI-поля до обработки помечены как <span class="ai-cell-running">running</span>.</p>
   {% endif %}
 </div>

@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from app.services.excel_parser import ParsedWorkbook
-from app.services.export_format import export_columns, format_messenger_history, row_for_export
+from app.services.export_format import (
+    build_clients_query,
+    export_columns,
+    format_messenger_history,
+    row_for_export,
+    sort_client_rows,
+)
 
 
 def test_export_columns_preserves_excel_order_and_adds_ai_fields() -> None:
@@ -41,3 +47,21 @@ def test_format_messenger_history_limits_lines() -> None:
     messages = [{"channel": "wa", "direction": "in", "text": f"msg{i}"} for i in range(15)]
     text = format_messenger_history(messages, limit=10)
     assert text.count("msg") == 10
+
+
+def test_build_clients_query_skips_empty_params() -> None:
+    query = build_clients_query(sales_filter="direct", tag="vip", q="", phone="7999")
+    assert "filter=direct" in query
+    assert "tag=vip" in query
+    assert "phone=7999" in query
+    assert "q=" not in query
+
+
+def test_sort_client_rows_numeric() -> None:
+    rows = [
+        {"Наименование": "A", "Всего заказов": 5},
+        {"Наименование": "B", "Всего заказов": 1},
+        {"Наименование": "C", "Всего заказов": 10},
+    ]
+    sorted_rows = sort_client_rows(rows, "Всего заказов", "asc")
+    assert [r["Наименование"] for r in sorted_rows] == ["B", "A", "C"]

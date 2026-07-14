@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from typing import Any
+from urllib.parse import urlencode
 
 from app.services.telegram_export import tg_conversation_label
-from app.services.fields import AI_NO_DATA_LABEL
+from app.services.fields import AI_NO_DATA_LABEL, is_empty_cell
 
 from app.services.excel_parser import (
     AI_EXTRA_COLUMNS,
+    AI_FILLABLE_COLUMNS,
+    CLIENT_DISPLAY_COLUMNS,
     CLIENT_TABLE_COLUMNS,
     SEGMENT_COLUMNS,
     ParsedWorkbook,
 )
+
+AI_RUNNING_LABEL = "running"
+
+_NUMERIC_SORT_COLUMNS = frozenset({"Средний чек", "Всего заказов", "Баллы начисленные"})
+_DATE_SORT_COLUMNS = frozenset({"Дата последнего заказа"})
+_KEYWORD_SEARCH_EXTRA_KEYS = ("Теги", "Комментарий", "Саммари")
 
 # Колонки как в Excel-выгрузке контрагентов из Мой Склад (online.moysklad.ru)
 MOYSKLAD_EXCEL_COLUMNS = list(CLIENT_TABLE_COLUMNS)
@@ -121,11 +132,126 @@ def display_cell_value(value: Any) -> Any:
     return value
 
 
+def client_cell_state(row: dict[str, Any], col: str) -> str:
+    """Состояние ячейки: value | running | unknown | empty."""
+    if col in (row.get("_ai_unknown_fields") or []):
+        return "unknown"
+    value = _cell_value(row, col)
+    if not is_empty_cell(value):
+        return "value"
+    if col in AI_FILLABLE_COLUMNS and not row.get("_ai_processed"):
+        return "running"
+    return "empty"
+
+
 def client_cell_value(row: dict[str, Any], col: str) -> Any:
     """Значение ячейки для таблицы клиентов и экспорта."""
-    if col in (row.get("_ai_unknown_fields") or []):
+    state = client_cell_state(row, col)
+    if state == "unknown":
         return AI_NO_DATA_LABEL
+    if state == "running":
+        return AI_RUNNING_LABEL
     return _cell_value(row, col)
+
+
+def _normalize_phone_digits(value: Any) -> str:
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def row_keyword_text(row: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for col in CLIENT_DISPLAY_COLUMNS:
+        val = _cell_value(row, col)
+        if not is_empty_cell(val):
+            parts.append(str(val))
+    for key in _KEYWORD_SEARCH_EXTRA_KEYS:
+        val = row.get(key)
+        if val not in (None, ""):
+            parts.append(str(val))
+    return " ".join(parts).lower()
+
+
+def row_matches_phone(row: dict[str, Any], phone_query: str) -> bool:
+    digits = _normalize_phone_digits(phone_query)
+    if not digits:
+        return True
+    for key in ("Телефон", "Наименование"):
+        if digits in _normalize_phone_digits(row.get(key)):
+            return True
+    return False
+
+
+def _parse_sort_date(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text[:10], fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")[:19])
+    except ValueError:
+        return None
+
+
+def _sort_scalar(row: dict[str, Any], col: str) -> Any:
+    raw = _cell_value(row, col)
+    if is_empty_cell(raw):
+        return None
+    if col in _NUMERIC_SORT_COLUMNS:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return str(raw).lower()
+    if col in _DATE_SORT_COLUMNS:
+        parsed = _parse_sort_date(raw)
+        return parsed or str(raw).lower()
+    return str(raw).lower()
+
+
+def sort_client_rows(
+    rows: list[dict[str, Any]],
+    sort_col: str,
+    order: str = "asc",
+) -> list[dict[str, Any]]:
+    if not sort_col or sort_col not in CLIENT_DISPLAY_COLUMNS:
+        return rows
+    descending = order == "desc"
+
+    def sort_key(row: dict[str, Any]) -> tuple[int, Any]:
+        val = _sort_scalar(row, sort_col)
+        return (1 if val is None else 0, val)
+
+    return sorted(rows, key=sort_key, reverse=descending)
+
+
+def build_clients_query(
+    *,
+    sales_filter: str = "direct",
+    tag: str = "",
+    status: str = "",
+    q: str = "",
+    phone: str = "",
+    sort: str = "",
+    order: str = "asc",
+    page: int | None = None,
+    **overrides: Any,
+) -> str:
+    params: dict[str, str] = {
+        "filter": sales_filter,
+        "tag": tag,
+        "status": status,
+        "q": q,
+        "phone": phone,
+        "sort": sort,
+        "order": order,
+    }
+    if page is not None:
+        params["page"] = str(page)
+    params.update({k: str(v) for k, v in overrides.items() if v is not None})
+    return urlencode({k: v for k, v in params.items() if v not in ("", None)})
 
 
 def row_for_export(row: dict[str, Any], columns: list[str]) -> dict[str, Any]:

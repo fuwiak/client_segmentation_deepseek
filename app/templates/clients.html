@@ -7,14 +7,30 @@
 
 <section class="card toolbar-card">
   <div class="filter-tabs" role="tablist">
-    <a href="/clients?filter=all" class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
-    <a href="/clients?filter=marketplace" class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
-    <a href="/clients?filter=direct" class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
+    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}" class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
   </div>
   <form class="filter-form" method="get">
     <input type="hidden" name="filter" value="{{ sales_filter }}">
-    <input type="search" name="tag" placeholder="Тег или группа…" value="{{ tag_filter }}">
-    <input type="search" name="status" placeholder="Статус заказа…" value="{{ status_filter }}">
+    {% if sort_col %}<input type="hidden" name="sort" value="{{ sort_col }}">{% endif %}
+    {% if sort_order %}<input type="hidden" name="order" value="{{ sort_order }}">{% endif %}
+    <label class="filter-field">
+      <span class="filter-label">Ключевые слова</span>
+      <input type="search" name="q" placeholder="Имя, адрес, группа…" value="{{ q_filter|default('') }}">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Телефон</span>
+      <input type="search" name="phone" placeholder="+7…" value="{{ phone_filter|default('') }}">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Тег / группа</span>
+      <input type="search" name="tag" placeholder="Тег или группа…" value="{{ tag_filter }}">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Статус заказа</span>
+      <input type="search" name="status" placeholder="Статус заказа…" value="{{ status_filter }}">
+    </label>
     <button type="submit" class="btn secondary small">Найти</button>
   </form>
   <div class="toolbar-actions">
@@ -25,7 +41,7 @@
             hx-swap="innerHTML">↻ Мой Склад</button>
     {% endif %}
     <button type="button" class="btn secondary small"
-            hx-post="/enrich/start?filter={{ sales_filter }}&tag={{ tag_filter }}&status={{ status_filter }}"
+            hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
             hx-target="#enrich-progress-block"
             hx-swap="outerHTML"
             {% if not messenger_available %}title="Задайте GREEN_API_* или TELEGRAM_BOT_TOKEN"{% endif %}>

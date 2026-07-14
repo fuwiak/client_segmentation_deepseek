@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
-from app.services.export_format import merge_enriched_rows
+from app.services.export_format import merge_enriched_rows, row_keyword_text, row_matches_phone, sort_client_rows
 from app.services.fields import enrich_row_computed
 
 
@@ -85,6 +85,10 @@ class DataHub:
     sales_filter: str = "all",
     tag: str = "",
     status: str = "",
+    q: str = "",
+    phone: str = "",
+    sort: str = "",
+    order: str = "asc",
   ) -> list[dict[str, Any]]:
     rows = self.active_rows()
     if sales_filter == "marketplace":
@@ -105,7 +109,12 @@ class DataHub:
         for r in rows
         if status.lower() in str(r.get("Статус последнего заказа") or "").lower()
       ]
-    return rows
+    if q:
+      q_l = q.lower().strip()
+      rows = [r for r in rows if q_l in row_keyword_text(r)]
+    if phone:
+      rows = [r for r in rows if row_matches_phone(r, phone)]
+    return sort_client_rows(rows, sort, order)
 
 
 _hub: DataHub | None = None

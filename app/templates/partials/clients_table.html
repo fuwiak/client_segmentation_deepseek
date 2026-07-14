@@ -6,8 +6,27 @@
       <tr>
         <th></th>
         {% for col in client_columns %}
-        <th{% if col == 'Группы' %} class="tags-col-head"{% endif %}>
-          {{ col }}
+        {% set next_order = 'desc' if sort_col == col and sort_order == 'asc' else 'asc' %}
+        <th{% if col == 'Группы' %} class="tags-col-head sortable-th"{% else %} class="sortable-th"{% endif %}>
+          <a href="/clients?{{ build_clients_query(
+            sales_filter=sales_filter,
+            tag=tag_filter,
+            status=status_filter,
+            q=q_filter|default(''),
+            phone=phone_filter|default(''),
+            sort=col,
+            order=next_order,
+            page=1
+          ) }}"
+             class="sortable-th-link{% if sort_col == col %} is-active sort-{{ sort_order|default('asc') }}{% endif %}"
+             title="Сортировать по «{{ col }}»">
+            {{ col }}
+            {% if sort_col == col %}
+            <span class="sort-indicator" aria-hidden="true">{% if sort_order == 'desc' %}▼{% else %}▲{% endif %}</span>
+            {% else %}
+            <span class="sort-indicator sort-indicator-idle" aria-hidden="true">↕</span>
+            {% endif %}
+          </a>
           {% if col == 'Группы' %}
           <button type="button" class="btn-text tag-rules-btn" onclick="openTagRulesDrawer()" title="Условия AI-тегов">ⓘ</button>
           {% endif %}

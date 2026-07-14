@@ -535,6 +535,19 @@ code {
   align-items: flex-end;
 }
 
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xxs);
+  min-width: 160px;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
 .result-count { font-size: 14px; color: var(--muted); margin: var(--sm) 0 0; }
 
 .status-chips { display: flex; flex-wrap: wrap; gap: var(--sm); }
@@ -732,6 +745,19 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   background: rgba(196, 92, 92, 0.08);
   color: #8b3a3a;
   font-size: 0.85em;
+  line-height: 1.3;
+  text-transform: lowercase;
+}
+
+.ai-cell-running {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid rgba(212, 160, 23, 0.55);
+  border-radius: var(--r-sm);
+  background: rgba(212, 160, 23, 0.18);
+  color: #8a6500;
+  font-size: 0.85em;
+  font-weight: 500;
   line-height: 1.3;
   text-transform: lowercase;
 }
@@ -1194,6 +1220,29 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .clients-table-wide td { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .clients-table-wide .tags-cell { max-width: 140px; }
 .clients-table-wide .tg-conv-cell { max-width: 220px; white-space: normal; }
+
+.sortable-th { padding: 0; }
+.sortable-th-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 500;
+}
+.sortable-th-link:hover { color: var(--primary); }
+.sortable-th-link.is-active { color: var(--ink); }
+.sort-indicator {
+  font-size: 10px;
+  color: var(--primary);
+  line-height: 1;
+}
+.sort-indicator-idle {
+  color: var(--muted-soft);
+  opacity: 0.7;
+}
+.clients-table-wide .tags-col-head .sortable-th-link { padding-right: 4px; }
 .tg-conv-badge {
   display: inline-block;
   max-width: 210px;

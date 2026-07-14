@@ -6,7 +6,13 @@ from app.services.fields import (
     finalize_ai_coverage_row,
     is_empty_cell,
 )
-from app.services.export_format import client_cell_value
+from app.services.export_format import (
+    AI_RUNNING_LABEL,
+    build_clients_query,
+    client_cell_state,
+    client_cell_value,
+    sort_client_rows,
+)
 
 
 def test_empty_fillable_columns_skips_filled_values() -> None:
@@ -55,6 +61,17 @@ def test_client_cell_value_returns_no_data_label() -> None:
         "_ai_unknown_fields": ["ИНН"],
     }
     assert client_cell_value(row, "ИНН") == AI_NO_DATA_LABEL
+
+
+def test_client_cell_state_running_before_ai() -> None:
+    row = {"Пол": "", "_ai_processed": False}
+    assert client_cell_state(row, "Пол") == "running"
+    assert client_cell_value(row, "Пол") == AI_RUNNING_LABEL
+
+
+def test_client_cell_state_empty_after_ai() -> None:
+    row = {"Пол": "Женский", "_ai_processed": True}
+    assert client_cell_state(row, "Пол") == "value"
 
 
 def test_is_empty_cell() -> None:

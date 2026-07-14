@@ -33,7 +33,16 @@ from app.services.excel_parser import (
   enrich_with_orders,
   parse_workbook,
 )
-from app.services.export_format import client_cell_value, display_cell_value, export_columns, merge_enriched_rows, row_for_export
+from app.services.export_format import (
+  AI_RUNNING_LABEL,
+  build_clients_query,
+  client_cell_state,
+  client_cell_value,
+  display_cell_value,
+  export_columns,
+  merge_enriched_rows,
+  row_for_export,
+)
 from app.services.fields import enrich_row_computed, finalize_ai_coverage_row
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
@@ -64,7 +73,10 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["tag_reasons"] = explain_tags_for_row
 templates.env.globals["rule_label"] = rule_label
 templates.env.globals["client_cell_value"] = client_cell_value
+templates.env.globals["client_cell_state"] = client_cell_state
 templates.env.globals["display_cell_value"] = display_cell_value
+templates.env.globals["build_clients_query"] = build_clients_query
+templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
@@ -374,10 +386,22 @@ def _clients_ctx(
   sales_filter: str = "direct",
   tag: str = "",
   status: str = "",
+  q: str = "",
+  phone: str = "",
+  sort: str = "",
+  order: str = "asc",
   page: int = 1,
   clients: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-  rows = hub.filter_rows(sales_filter=sales_filter, tag=tag, status=status)
+  rows = hub.filter_rows(
+    sales_filter=sales_filter,
+    tag=tag,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+  )
   per_page = max(1, settings.clients_page_size)
   total = len(rows)
   total_pages = max(1, (total + per_page - 1) // per_page)
@@ -399,6 +423,10 @@ def _clients_ctx(
     sales_filter=sales_filter,
     tag_filter=tag,
     status_filter=status,
+    q_filter=q,
+    phone_filter=phone,
+    sort_col=sort,
+    sort_order=order if sort else "",
     data_source=hub.data_source_label(),
     messenger_available=settings.messenger_enabled and (
       get_green_api_client(settings).enabled or get_telegram_client(settings).enabled
@@ -414,9 +442,21 @@ async def _clients_ctx_with_tg(
   sales_filter: str = "direct",
   tag: str = "",
   status: str = "",
+  q: str = "",
+  phone: str = "",
+  sort: str = "",
+  order: str = "asc",
   page: int = 1,
 ) -> dict[str, Any]:
-  rows = hub.filter_rows(sales_filter=sales_filter, tag=tag, status=status)
+  rows = hub.filter_rows(
+    sales_filter=sales_filter,
+    tag=tag,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+  )
   per_page = max(1, settings.clients_page_size)
   total = len(rows)
   total_pages = max(1, (total + per_page - 1) // per_page)
@@ -431,6 +471,10 @@ async def _clients_ctx_with_tg(
     sales_filter=sales_filter,
     tag=tag,
     status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
     page=page,
     clients=page_rows,
   )
@@ -529,6 +573,10 @@ async def clients_page(
   filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
@@ -536,7 +584,17 @@ async def clients_page(
   return templates.TemplateResponse(
     "clients.html",
     {
-      **(await _clients_ctx_with_tg(request, sales_filter=filter, tag=tag, status=status, page=page)),
+      **(await _clients_ctx_with_tg(
+        request,
+        sales_filter=filter,
+        tag=tag,
+        status=status,
+        q=q,
+        phone=phone,
+        sort=sort,
+        order=order,
+        page=page,
+      )),
       "active_page": "clients",
       "page_title": "Клиенты",
       "subtitle": "AI-база с фильтрами и раскрытием заказов",
@@ -550,13 +608,27 @@ async def clients_table_partial(
   filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "partials/clients_table.html",
-    await _clients_ctx_with_tg(request, sales_filter=filter, tag=tag, status=status, page=page),
+    await _clients_ctx_with_tg(
+      request,
+      sales_filter=filter,
+      tag=tag,
+      status=status,
+      q=q,
+      phone=phone,
+      sort=sort,
+      order=order,
+      page=page,
+    ),
   )
 
 
@@ -950,6 +1022,10 @@ async def enrich_start(
   filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
 ) -> HTMLResponse:
   rows = hub.active_rows()
   if not rows:
@@ -965,6 +1041,10 @@ async def enrich_start(
         sales_filter=filter,
         tag_filter=tag,
         status_filter=status,
+        q_filter=q,
+        phone_filter=phone,
+        sort_col=sort,
+        sort_order=order if sort else "",
       ),
     )
 
@@ -984,6 +1064,10 @@ async def enrich_start(
       sales_filter=filter,
       tag_filter=tag,
       status_filter=status,
+      q_filter=q,
+      phone_filter=phone,
+      sort_col=sort,
+      sort_order=order if sort else "",
     ),
   )
 
@@ -1026,6 +1110,10 @@ async def enrich_progress(
   filter: str = Query("direct"),
   tag: str = Query(""),
   status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
 ) -> HTMLResponse:
   enrich_status = _enrich_progress["status"]
   total = _enrich_progress["total"]
@@ -1043,6 +1131,10 @@ async def enrich_progress(
       sales_filter=filter,
       tag_filter=tag,
       status_filter=status,
+      q_filter=q,
+      phone_filter=phone,
+      sort_col=sort,
+      sort_order=order if sort else "",
     ),
   )
 
