@@ -201,6 +201,17 @@ def test_guess_gender_from_name_and_patronymic() -> None:
     assert guess_gender("ООО Иванов") == "Мужской"
     assert guess_gender("ИП Иванова") == "Женский"
     assert guess_gender("ООО Иванов Иван") == "Мужской"
+    assert guess_gender("Покупатель с улицы") == "Мужской"
+    assert guess_gender("покупатель с улицы") == "Мужской"
+    assert guess_gender("Покупатель") == "Мужской"
+
+
+def test_enrich_gender_pokupatel_s_ulitsy() -> None:
+    from app.services.fields import enrich_gender_by_unique_naimenovanie
+
+    rows = [{"UUID": "1", "Наименование": "Покупатель с улицы"}]
+    enriched = enrich_gender_by_unique_naimenovanie(rows)
+    assert enriched[0]["Пол"] == "Мужской"
 
 
 def test_strip_legal_entity_prefixes() -> None:

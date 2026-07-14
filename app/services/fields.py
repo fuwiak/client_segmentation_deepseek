@@ -492,8 +492,8 @@ def gender_analysis_payload(name: str, heuristic_map: dict[str, str] | None = No
   heuristic = None
   if heuristic_map is not None:
     heuristic = heuristic_map.get(normalize_naimenovanie_key(name))
-  if not heuristic and cleaned:
-    heuristic = guess_gender(cleaned)
+  if not heuristic:
+    heuristic = gender_from_role_label(name) or (guess_gender(cleaned or name) if cleaned or name else None)
   return {
     "name": name,
     "cleaned_name": cleaned or None,
@@ -510,10 +510,29 @@ def _name_token_order(part_count: int) -> list[int]:
   return [1, 2, 0]
 
 
+_MASCULINE_ROLE_LABEL_RE = re.compile(
+  r"^покупатель(?:\s+с\s+улиц[ыи])?$",
+  re.IGNORECASE,
+)
+
+
+def gender_from_role_label(text: str | None) -> str | None:
+  """Ролевые подписи без ФИО: «Покупатель с улицы» — мужской род."""
+  if not text:
+    return None
+  low = re.sub(r"\s+", " ", str(text).strip().lower().replace("ё", "е"))
+  if _MASCULINE_ROLE_LABEL_RE.match(low):
+    return "Мужской"
+  return None
+
+
 def guess_gender(name: str | None) -> str | None:
   """Пол по ФИО: кириллица/латиница, «Фамилия Имя», ник @username, лишние слова."""
   if not name:
     return None
+  role_gender = gender_from_role_label(name)
+  if role_gender:
+    return role_gender
   parts = _name_parts_for_gender(name)
   if not parts:
     return None
@@ -650,6 +669,8 @@ def _is_gender_candidate_naimenovanie(value: Any) -> bool:
     text = text[1:]
   if not text or _PHONE_RE.match(text):
     return False
+  if gender_from_role_label(text):
+    return True
   cleaned = strip_legal_entity_prefixes(text)
   if not cleaned:
     return False
