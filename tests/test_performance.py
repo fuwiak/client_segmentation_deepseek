@@ -16,6 +16,30 @@ def test_performance_headers_on_page_get() -> None:
   assert "X-Response-Time-Ms" in response.headers
 
 
+def test_dynamic_pages_disable_browser_cache() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get("/clients", headers={"HX-Request": "true"})
+  assert response.status_code == 200
+  assert response.headers["Cache-Control"] == "no-store, max-age=0"
+  assert response.headers["Pragma"] == "no-cache"
+  assert response.headers["Expires"] == "0"
+  assert "HX-Request" in response.headers["Vary"]
+
+
+def test_static_assets_can_be_cached_with_versioned_urls() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get(m.static_asset("app.js"))
+  assert response.status_code == 200
+  assert response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+  vendor_response = client.get(m.static_asset("vendor/htmx.min.js"))
+  assert vendor_response.status_code == 200
+  assert vendor_response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+
 def test_settings_page_renders_without_blocking_health() -> None:
   import app.main as m
 
@@ -113,6 +137,12 @@ def test_base_template_has_htmx_app_shell() -> None:
   client = TestClient(m.app)
   response = client.get("/")
   assert response.status_code == 200
+  assert '<meta name="htmx-config" content=\'{"historyCacheSize":0}\'>' in response.text
+  assert '/static/vendor/htmx.min.js?v=' in response.text
+  assert "unpkg.com/htmx" not in response.text
+  assert '/static/app.js?v=' in response.text
+  assert '/static/clients_ws.js?v=' in response.text
+  assert '/static/style.css?v=' in response.text
   assert 'hx-boost="true"' in response.text
   assert 'hx-target="#page-content"' in response.text
   assert 'id="page-content"' in response.text

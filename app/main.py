@@ -102,6 +102,26 @@ templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
+def static_asset(filename: str) -> str:
+  path = Path("app/static") / filename
+  version = int(path.stat().st_mtime) if path.exists() else int(time.time())
+  return f"/static/{filename}?v={version}"
+
+
+templates.env.globals["static_asset"] = static_asset
+
+
+def _append_vary(headers: Any, *names: str) -> None:
+  existing = [v.strip() for v in headers.get("Vary", "").split(",") if v.strip()]
+  lower_existing = {v.lower() for v in existing}
+  for name in names:
+    if name.lower() not in lower_existing:
+      existing.append(name)
+      lower_existing.add(name.lower())
+  if existing:
+    headers["Vary"] = ", ".join(existing)
+
+
 @app.middleware("http")
 async def performance_middleware(request: Request, call_next):
   started = time.perf_counter()
@@ -132,6 +152,18 @@ async def performance_middleware(request: Request, call_next):
     )
     raise
   elapsed_ms = (time.perf_counter() - started) * 1000
+  content_type = response.headers.get("content-type", "")
+  if request.url.path.startswith("/static/"):
+    response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+  elif (
+    request.headers.get("hx-request")
+    or "text/html" in content_type
+    or "application/json" in content_type
+  ):
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    _append_vary(response.headers, "HX-Request", "HX-Boosted")
   response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
   response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
   response.headers["X-Request-Id"] = request_id
