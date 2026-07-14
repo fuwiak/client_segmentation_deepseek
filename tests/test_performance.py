@@ -38,6 +38,17 @@ def test_segment_page_does_not_sync_moysklad() -> None:
     assert 'id="page-content"' in response.text
 
 
+def test_home_page_shows_title_and_active_nav() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get("/")
+  assert response.status_code == 200
+  assert "<h1>Главная</h1>" in response.text
+  assert 'data-nav-path="/" class="nav-item active"' in response.text
+  assert 'data-nav-path="/" class="bottom-nav-item active"' in response.text
+
+
 def test_base_template_has_htmx_app_shell() -> None:
   import app.main as m
 

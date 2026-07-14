@@ -133,16 +133,31 @@
     return path === "/settings" || path.indexOf("/settings/") === 0;
   }
 
+  function currentNavPath() {
+    var path = window.location.pathname || "/";
+    if (path.length > 1 && path.endsWith("/")) {
+      path = path.slice(0, -1);
+    }
+    return path || "/";
+  }
+
   function navPathMatches(navPath, path) {
     if (navPath === "/settings") return settingsNavActive(path);
+    if (navPath === "/") return path === "/";
     return navPath === path;
   }
 
   function updateActiveNav() {
-    var path = window.location.pathname;
+    var path = currentNavPath();
     document.querySelectorAll("[data-nav-path]").forEach(function (el) {
       var navPath = el.getAttribute("data-nav-path");
-      el.classList.toggle("active", navPathMatches(navPath, path));
+      var active = navPathMatches(navPath, path);
+      el.classList.toggle("active", active);
+      if (active) {
+        el.setAttribute("aria-current", "page");
+      } else {
+        el.removeAttribute("aria-current");
+      }
     });
   }
 
@@ -242,6 +257,7 @@
     if (target && target.id === "page-content") {
       closeTagRulesDrawer();
       closeClientDrawer();
+      closeModal();
     }
     if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest(".upload-form")) {
       var modal = document.getElementById("upload-modal");
