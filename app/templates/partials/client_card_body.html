@@ -52,7 +52,7 @@
   <button class="btn secondary small"
           hx-get="/clients/{{ client_id }}/orders"
           hx-target="#client-orders-list"
-          hx-swap="innerHTML">Все заказы ({{ orders|length }})</button>
+          hx-swap="innerHTML">Все заказы ({{ orders_total|default(client.get('Всего заказов') or client.get('_orders_count') or orders|length) }})</button>
   <div id="client-orders-list"></div>
 </section>
 {% endif %}

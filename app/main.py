@@ -1003,10 +1003,13 @@ async def client_card(
       _ctx(request, message="Клиент не найден"),
     )
   orders = hub.resolve_order_entities(client.get("_orders_context") or [])
+  orders_total = int(
+    client.get("_orders_count") or client.get("Всего заказов") or len(orders)
+  )
   template = "partials/client_card_drawer.html" if drawer else "partials/client_card.html"
   return templates.TemplateResponse(
     template,
-    _ctx(request, client=client, orders=orders),
+    _ctx(request, client=client, orders=orders, orders_total=orders_total),
   )
 
 
