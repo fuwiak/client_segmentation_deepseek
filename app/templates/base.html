@@ -5,13 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ page_title|default(title) }}{% endblock %} · Client CRM</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
-<body>
+<body hx-boost="true"
+      hx-target="#page-content"
+      hx-select="#page-content"
+      hx-swap="outerHTML transition:true"
+      hx-push-url="true">
+  <div id="nav-progress" class="nav-progress" aria-hidden="true"></div>
+
   <header class="site-header">
     <div class="header-inner">
       <a href="/" class="wordmark">Client <span class="wordmark-accent">CRM</span></a>
@@ -41,7 +43,7 @@
     </div>
   </header>
 
-  <main class="main-content">
+  <main id="page-content" class="main-content">
     <div class="container">
       {% block page_header %}
       <header class="page-header">
@@ -64,23 +66,23 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Быстрая навигация">
-    <a href="/" class="bottom-nav-item {% if active_page|default('') == 'home' %}active{% endif %}">
+    <a href="/" data-nav-path="/" class="bottom-nav-item {% if active_page|default('') == 'home' %}active{% endif %}">
       <span class="bottom-nav-icon">⌂</span>
       <span>Главная</span>
     </a>
-    <a href="/clients" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
+    <a href="/clients" data-nav-path="/clients" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
       <span class="bottom-nav-icon">👥</span>
       <span>Клиенты</span>
     </a>
-    <a href="/segment" class="bottom-nav-item {% if active_page|default('') == 'segment' %}active{% endif %}">
+    <a href="/segment" data-nav-path="/segment" class="bottom-nav-item {% if active_page|default('') == 'segment' %}active{% endif %}">
       <span class="bottom-nav-icon">↑</span>
       <span>Импорт</span>
     </a>
-    <a href="/dashboard" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
+    <a href="/dashboard" data-nav-path="/dashboard" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
       <span class="bottom-nav-icon">▦</span>
       <span>Дашборд</span>
     </a>
-    <a href="/settings" class="bottom-nav-item {% if active_page in ['settings', 'communications', 'moysklad'] %}active{% endif %}">
+    <a href="/settings" data-nav-path="/settings" class="bottom-nav-item {% if active_page in ['settings', 'communications', 'moysklad'] %}active{% endif %}">
       <span class="bottom-nav-icon">⚙</span>
       <span>Ещё</span>
     </a>
@@ -97,65 +99,8 @@
     </div>
   </div>
 
-  <script>
-    function toggleMobileNav() {
-      var drawer = document.getElementById('mobile-drawer');
-      var btn = document.getElementById('nav-toggle-btn');
-      var open = drawer.hidden;
-      drawer.hidden = !open;
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      btn.textContent = open ? '✕' : '☰';
-    }
-    function closeModal() {
-      var root = document.getElementById('modal-root');
-      if (root) root.innerHTML = '';
-    }
-    function openTagRulesDrawer() {
-      closeClientDrawer();
-      var drawer = document.getElementById('tag-rules-drawer');
-      var overlay = document.getElementById('tag-rules-overlay');
-      if (drawer) drawer.hidden = false;
-      if (overlay) overlay.hidden = false;
-    }
-    function closeTagRulesDrawer() {
-      var drawer = document.getElementById('tag-rules-drawer');
-      var overlay = document.getElementById('tag-rules-overlay');
-      if (drawer) drawer.hidden = true;
-      if (overlay) overlay.hidden = true;
-    }
-    function openClientDrawer() {
-      closeTagRulesDrawer();
-      var drawer = document.getElementById('client-drawer');
-      var overlay = document.getElementById('client-drawer-overlay');
-      if (drawer) drawer.hidden = false;
-      if (overlay) overlay.hidden = false;
-    }
-    function closeClientDrawer() {
-      var drawer = document.getElementById('client-drawer');
-      var overlay = document.getElementById('client-drawer-overlay');
-      if (drawer) drawer.hidden = true;
-      if (overlay) overlay.hidden = true;
-    }
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        closeModal();
-        closeTagRulesDrawer();
-        closeClientDrawer();
-        var drawer = document.getElementById('mobile-drawer');
-        if (drawer && !drawer.hidden) toggleMobileNav();
-      }
-    });
-    document.body.addEventListener('htmx:beforeRequest', function (e) {
-      if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest('.upload-form')) {
-        document.getElementById('upload-modal').hidden = false;
-      }
-    });
-    document.body.addEventListener('htmx:afterRequest', function (e) {
-      if (e.detail.elt && e.detail.elt.closest && e.detail.elt.closest('.upload-form')) {
-        document.getElementById('upload-modal').hidden = true;
-      }
-    });
-  </script>
+  <script src="/static/clients_ws.js?v=2"></script>
+  <script src="/static/app.js?v=1"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

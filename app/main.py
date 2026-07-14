@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
+import time
 import uuid
 from datetime import date
 from pathlib import Path
@@ -81,6 +83,7 @@ campaign_svc = CampaignService(repo)
 lead_svc = LeadService(repo)
 
 app = FastAPI(title=settings.app_title)
+perf_logger = logging.getLogger("performance")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["tag_reasons"] = explain_tags_for_row
 templates.env.globals["rule_label"] = rule_label
@@ -90,6 +93,24 @@ templates.env.globals["display_cell_value"] = display_cell_value
 templates.env.globals["build_clients_query"] = build_clients_query
 templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.middleware("http")
+async def performance_middleware(request: Request, call_next):
+  started = time.perf_counter()
+  response = await call_next(request)
+  elapsed_ms = (time.perf_counter() - started) * 1000
+  response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
+  response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
+  perf_logger.info(
+    "request method=%s path=%s status=%s duration_ms=%.1f",
+    request.method,
+    request.url.path,
+    response.status_code,
+    elapsed_ms,
+  )
+  return response
+
 
 _progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
 _enrich_progress: dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "error": ""}
@@ -893,7 +914,6 @@ async def client_orders(
 @app.get("/segment", response_class=HTMLResponse)
 async def segment_page(request: Request) -> HTMLResponse:
   await _hydrate_hub_from_cache()
-  await _ensure_moysklad_data()
   return templates.TemplateResponse(
     "segment.html",
     _ctx(
@@ -949,9 +969,6 @@ async def campaign_create(
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
-  comm = get_comm_settings()
-  messenger = MessengerConnector(settings)
-  health = await messenger.health()
   return templates.TemplateResponse(
     "settings.html",
     _ctx(
@@ -959,8 +976,6 @@ async def settings_page(request: Request) -> HTMLResponse:
       active_page="settings",
       page_title="Настройки",
       subtitle="Интеграции и подключения",
-      comm_rules=comm.list_rules(),
-      messenger_health=health,
     ),
   )
 

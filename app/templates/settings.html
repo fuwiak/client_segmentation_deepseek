@@ -6,7 +6,9 @@
 <div class="settings-grid">
   <section class="card">
     <h3>Мессенджеры</h3>
-    <div hx-get="/messenger/status" hx-trigger="load" hx-swap="innerHTML"></div>
+    <div hx-get="/messenger/status" hx-trigger="load" hx-swap="innerHTML">
+      <p class="hint muted">Проверяем подключения…</p>
+    </div>
     <p class="hint"><a href="/settings/communications">Настроить автокоммуникацию →</a></p>
   </section>
 

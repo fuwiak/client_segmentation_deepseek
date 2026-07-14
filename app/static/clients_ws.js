@@ -2,6 +2,7 @@
   var wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/clients";
   var socket = null;
   var reconnectMs = 1500;
+  var reconnectTimer = null;
 
   function esc(text) {
     var d = document.createElement("div");
@@ -65,6 +66,21 @@
     }
   }
 
+  function disconnect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (!socket) return;
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.onmessage = null;
+    try {
+      socket.close();
+    } catch (e) {}
+    socket = null;
+  }
+
   function connect() {
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
       return;
@@ -72,7 +88,9 @@
     socket = new WebSocket(wsUrl);
     socket.onmessage = onMessage;
     socket.onclose = function () {
-      setTimeout(connect, reconnectMs);
+      if (document.getElementById("clients-table-block")) {
+        reconnectTimer = setTimeout(connect, reconnectMs);
+      }
     };
     socket.onerror = function () {
       try {
@@ -81,7 +99,12 @@
     };
   }
 
-  if (document.getElementById("clients-table-block")) {
-    connect();
-  }
+  window.initClientsPage = function () {
+    disconnect();
+    if (document.getElementById("clients-table-block")) {
+      connect();
+    }
+  };
+
+  window.initClientsPage();
 })();
