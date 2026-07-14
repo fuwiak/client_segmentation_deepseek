@@ -415,6 +415,8 @@ async def _startup_background() -> None:
       except httpx.HTTPError as exc:
         pipeline_log("PIPE", "startup telegram sync skipped: %s", exc, level=logging.WARNING)
     await _bootstrap_telegram_export()
+    if hub.has_data():
+      await jobs.fill_missing_gender(hub, settings, cache)
     await _schedule_lazy_ai()
   except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
     pipeline_log("PIPE", "startup background failed", level=logging.ERROR)
@@ -493,6 +495,7 @@ async def clients_ai_poll(since: int = Query(0, ge=0)) -> JSONResponse:
 async def clients_ai_start(request: Request) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
+  await jobs.fill_missing_gender(hub, settings, cache)
   started = await jobs.schedule_lazy_ai(
     hub,
     settings,

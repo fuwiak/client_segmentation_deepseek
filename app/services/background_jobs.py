@@ -158,6 +158,56 @@ class BackgroundJobService:
                 pending.append(dict(row))
         return pending
 
+    def _hub_merged_rows(self, hub: DataHub) -> list[dict[str, Any]]:
+        results_by_key = {_row_key(r): r for r in hub.results}
+        if hub.parsed and hub.parsed.rows:
+            return [
+                {**dict(row), **dict(results_by_key.get(_row_key(row), {}))}
+                for row in hub.parsed.rows
+            ]
+        return [dict(row) for row in hub.results]
+
+    async def fill_missing_gender(
+        self,
+        hub: DataHub,
+        settings: Settings,
+        cache: Any,
+    ) -> list[dict[str, Any]]:
+        """Эвристика + LLM по уникальным Наименование без пола (все клиенты, не только pending)."""
+        from app.services.fields import (
+            apply_gender_map_to_hub,
+            build_heuristic_gender_map,
+            normalize_naimenovanie_key,
+            unique_naimenovanie_missing_gender,
+        )
+        from app.services.segmentation import SegmentationService
+
+        merged_rows = self._hub_merged_rows(hub)
+        names = unique_naimenovanie_missing_gender(merged_rows)
+        if not names:
+            return []
+
+        heuristic_map = build_heuristic_gender_map(names)
+        gender_map = dict(heuristic_map)
+        unresolved = [
+            name
+            for name in names
+            if not gender_map.get(normalize_naimenovanie_key(name))
+        ]
+        if unresolved and settings.openrouter_api_key:
+            pipeline_log("AI", "gender fill llm start names=%s", len(unresolved))
+            service = SegmentationService(settings)
+            ai_map = await service.confirm_gender_by_naimenovanie(unresolved, heuristic_map)
+            gender_map.update(ai_map)
+            pipeline_log("AI", "gender fill llm done mapped=%s", len(gender_map))
+
+        updated = apply_gender_map_to_hub(hub, gender_map)
+        if updated:
+            await self._save_results(hub, cache)
+            await self.broadcast_rows(updated)
+            pipeline_log("AI", "gender fill applied rows=%s names=%s", len(updated), len(names))
+        return updated
+
     async def schedule_lazy_ai(
         self,
         hub: DataHub,
@@ -226,24 +276,15 @@ class BackgroundJobService:
                         )
                     pipeline_log("AI", "lazy messenger attach done rows=%s", len(rows))
 
-                from app.services.fields import (
-                    apply_gender_map_to_rows,
-                    build_heuristic_gender_map,
-                    unique_person_naimenovanie,
-                )
+                from app.services.segmentation import SegmentationService
 
+                await self.fill_missing_gender(hub, settings, cache)
+                results_by_key = {_row_key(r): r for r in hub.results}
+                rows = [
+                    {**dict(row), **dict(results_by_key.get(_row_key(row), {}))}
+                    for row in rows
+                ]
                 service = SegmentationService(settings)
-                names = unique_person_naimenovanie(rows)
-                heuristic_gender_map = build_heuristic_gender_map(names)
-                rows = apply_gender_map_to_rows(rows, heuristic_gender_map)
-                if settings.openrouter_api_key and names:
-                    pipeline_log("AI", "gender confirm start names=%s", len(names))
-                    ai_gender_map = await service.confirm_gender_by_naimenovanie(
-                        names,
-                        heuristic_gender_map,
-                    )
-                    rows = apply_gender_map_to_rows(rows, ai_gender_map)
-                    pipeline_log("AI", "gender confirm done mapped=%s", len(ai_gender_map))
 
                 batch_size = max(1, settings.ai_lazy_batch_size)
                 processed: list[dict[str, Any]] = []

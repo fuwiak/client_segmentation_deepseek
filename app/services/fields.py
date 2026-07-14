@@ -352,6 +352,9 @@ FEMALE_NAMES = {
   "регина", "эмилия", "камилла", "амина", "алиса", "мадина", "гульнара",
   "фаина", "клара", "роза", "нелли", "зинаида", "антонина", "анастасия",
   "настя", "лена", "катя", "маша", "даша", "оля", "таня", "света", "юля",
+  "alexandra", "maria", "anna", "olga", "elena", "natalia", "natalya", "irina",
+  "svetlana", "yulia", "ekaterina", "victoria", "darya", "polina", "alina",
+  "marina", "oksana", "ksenia", "sofia", "sofya", "veronika", "valeria",
 }
 MALE_NAMES = {
   "иван", "пётр", "петр", "сергей", "александр", "андрей", "дмитрий", "алексей",
@@ -363,9 +366,14 @@ MALE_NAMES = {
   "владислав", "вячеслав", "станислав", "георгий", "платон", "савелий", "ярослав",
   "филипп", "семён", "семен", "тихон", "прохор", "назар", "эмиль", "адам",
   "влад", "коля", "вова", "дима", "слава", "костя", "паша",
+  "vladislav", "alexey", "aleksey", "alex", "dmitry", "dmitri", "ivan", "sergey",
+  "sergei", "nikolay", "nikolai", "mikhail", "maxim", "artem", "pavel", "roman",
+  "denis", "andrey", "andrei", "eugene", "kirill", "timur", "ruslan", "george",
+  "yaroslav", "philip", "konstantin", "vladimir", "oleg", "igor", "anton",
 }
 _MALE_A_ENDING = frozenset({
   "илья", "никита", "фома", "кузьма", "савва", "лука", "миша", "саша", "женя",
+  "nikita", "luka", "sasha", "ilya",
 })
 _FEMALE_PATRONYMIC_SUFFIXES = ("овна", "евна", "ична", "инична")
 _MALE_PATRONYMIC_SUFFIXES = ("ович", "евич", "ич")
@@ -396,7 +404,27 @@ def _gender_from_token(token: str) -> str | None:
     return patronymic
   if len(text) >= 3 and text.endswith(("а", "я")) and text not in _MALE_A_ENDING:
     return "Женский"
+  if (
+    len(text) >= 3
+    and text.isascii()
+    and text.endswith("a")
+    and text not in _MALE_A_ENDING
+  ):
+    return "Женский"
   return None
+
+
+def _name_parts_for_gender(name: str) -> list[str]:
+  text = str(name or "").strip()
+  if text.startswith("@"):
+    text = text[1:]
+  parts: list[str] = []
+  for raw in text.split():
+    token = raw.strip(".,;:")
+    if not token or len(token) == 1:
+      continue
+    parts.append(token)
+  return parts
 
 
 def _name_token_order(part_count: int) -> list[int]:
@@ -404,15 +432,15 @@ def _name_token_order(part_count: int) -> list[int]:
   if part_count <= 1:
     return [0]
   if part_count == 2:
-    return [1, 0]
+    return [0, 1]
   return [1, 2, 0]
 
 
 def guess_gender(name: str | None) -> str | None:
-  """Пол по ФИО: учитывает «Фамилия Имя» и «Имя Фамилия»."""
+  """Пол по ФИО: кириллица/латиница, «Фамилия Имя», ник @username, лишние слова."""
   if not name:
     return None
-  parts = [part for part in name.strip().split() if part.strip()]
+  parts = _name_parts_for_gender(name)
   if not parts:
     return None
   for idx in _name_token_order(len(parts)):
@@ -426,20 +454,27 @@ def normalize_naimenovanie_key(name: str) -> str:
   return name.strip().lower().replace("ё", "е")
 
 
-def unique_person_naimenovanie(rows: list[dict[str, Any]]) -> list[str]:
-  """Уникальные Наименование, похожие на ФИО физлица."""
+def unique_naimenovanie_missing_gender(rows: list[dict[str, Any]]) -> list[str]:
+  """Уникальные Наименование без пола — кандидаты для эвристики и LLM."""
   seen: set[str] = set()
   result: list[str] = []
   for row in rows:
+    if not is_empty_cell(row.get("Пол")):
+      continue
     name = str(row.get("Наименование") or "").strip()
     if not name:
       continue
     key = normalize_naimenovanie_key(name)
-    if key in seen or not _looks_like_person_name(name):
+    if key in seen or not _is_gender_candidate_naimenovanie(name):
       continue
     seen.add(key)
     result.append(name)
   return result
+
+
+def unique_person_naimenovanie(rows: list[dict[str, Any]]) -> list[str]:
+  """Уникальные Наименование, похожие на ФИО физлица."""
+  return unique_naimenovanie_missing_gender(rows)
 
 
 def build_heuristic_gender_map(names: list[str]) -> dict[str, str]:
@@ -470,10 +505,44 @@ def apply_gender_map_to_rows(
 
 
 def enrich_gender_by_unique_naimenovanie(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-  """Эвристика по уникальным Наименование → применить Пол ко всем строкам."""
-  names = unique_person_naimenovanie(rows)
+  """Эвристика по уникальным Наименование без пола → применить Пол ко всем строкам."""
+  names = unique_naimenovanie_missing_gender(rows)
   gender_map = build_heuristic_gender_map(names)
   return apply_gender_map_to_rows(rows, gender_map)
+
+
+def apply_gender_map_to_hub(
+  hub: Any,
+  gender_map: dict[str, str],
+) -> list[dict[str, Any]]:
+  """Записать Пол в parsed/results и вернуть обновлённые строки results."""
+  if not gender_map:
+    return []
+  if getattr(hub, "parsed", None) and hub.parsed and hub.parsed.rows:
+    hub.parsed.rows = apply_gender_map_to_rows(hub.parsed.rows, gender_map)
+    hub.touch()
+  updated: list[dict[str, Any]] = []
+  for row in hub.results or []:
+    if not is_empty_cell(row.get("Пол")):
+      continue
+    key = normalize_naimenovanie_key(str(row.get("Наименование") or ""))
+    gender = gender_map.get(key)
+    if not gender:
+      continue
+    merged = dict(row)
+    merged["Пол"] = gender
+    ai_fields = list(merged.get("_ai_fields") or [])
+    if "Пол" not in ai_fields:
+      ai_fields.append("Пол")
+    merged["_ai_fields"] = ai_fields
+    unknown = list(merged.get("_ai_unknown_fields") or [])
+    if "Пол" in unknown:
+      unknown = [col for col in unknown if col != "Пол"]
+      merged["_ai_unknown_fields"] = unknown
+    updated.append(enrich_row_computed(merged))
+  if updated:
+    hub.upsert_results(updated)
+  return updated
 
 
 def normalize_gender_label(value: Any) -> str | None:
@@ -500,6 +569,22 @@ def gender_from_patronymic(name: str) -> str | None:
   return None
 
 
+def _is_gender_candidate_naimenovanie(value: Any) -> bool:
+  text = str(value or "").strip()
+  if text.startswith("@"):
+    text = text[1:]
+  if not text or _PHONE_RE.match(text):
+    return False
+  low = text.lower().replace("ё", "е")
+  if any(marker in low for marker in _COMPANY_MARKERS):
+    return False
+  if not re.search(r"[a-zа-яё]", low):
+    return False
+  if len(text) > 80:
+    return False
+  return True
+
+
 def _looks_like_person_name(value: Any) -> bool:
   text = str(value or "").strip()
   if not text or _PHONE_RE.match(text):
@@ -507,7 +592,14 @@ def _looks_like_person_name(value: Any) -> bool:
   low = text.lower().replace("ё", "е")
   if any(marker in low for marker in _COMPANY_MARKERS):
     return False
-  return bool(_PERSON_NAME_RE.match(text))
+  if _PERSON_NAME_RE.match(text):
+    return True
+  if re.match(r"^[A-Za-z][a-z]+(?:\s+[A-Za-z][a-z]+){0,2}$", text):
+    return True
+  parts = _name_parts_for_gender(text)
+  if parts and guess_gender(text):
+    return True
+  return bool(_is_gender_candidate_naimenovanie(text) and parts)
 
 
 def recipient_name_from_row(row: dict[str, Any]) -> str | None:

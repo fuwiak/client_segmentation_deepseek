@@ -193,6 +193,28 @@ def test_guess_gender_from_name_and_patronymic() -> None:
     assert guess_gender("Петровна") == "Женский"
     assert guess_gender("Сергеевич") == "Мужской"
     assert guess_gender("Саша") is None
+    assert guess_gender("Vladislav Koroteev") == "Мужской"
+    assert guess_gender("Александра М") == "Женский"
+    assert guess_gender("Алексей коллега") == "Мужской"
+    assert guess_gender("маша") == "Женский"
+
+
+def test_unique_naimenovanie_missing_gender() -> None:
+    from app.services.fields import unique_naimenovanie_missing_gender
+
+    rows = [
+        {"Наименование": "Vladislav Koroteev"},
+        {"Наименование": "маша", "Пол": ""},
+        {"Наименование": "ООО Ромашка"},
+        {"Наименование": "Иван", "Пол": "Мужской"},
+        {"Наименование": "@sigrifmeow"},
+    ]
+    names = unique_naimenovanie_missing_gender(rows)
+    assert "Vladislav Koroteev" in names
+    assert "маша" in names
+    assert "@sigrifmeow" in names
+    assert "ООО Ромашка" not in names
+    assert "Иван" not in names
 
 
 def test_enrich_gender_by_unique_naimenovanie() -> None:
