@@ -179,6 +179,16 @@ def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sales_channel_from_order(order: dict[str, Any]) -> str | None:
+    """Канал продаж из заказа покупателя (salesChannel в Remap 1.2)."""
+    sc = order.get("salesChannel") or order.get("sales_channel")
+    if isinstance(sc, dict):
+        name = sc.get("name")
+        if name:
+            return str(name).strip()
+    return None
+
+
 def order_to_row(
     order: dict[str, Any],
     agents_by_id: dict[str, str],
@@ -189,6 +199,7 @@ def order_to_row(
 
     state = order.get("state") or {}
     state_name = state.get("name") or ""
+    sales_channel = _sales_channel_from_order(order)
 
     return {
         "№": order.get("name"),
@@ -197,7 +208,7 @@ def order_to_row(
         "Сумма": _minor_to_rub(order.get("sum")),
         "Статус": state_name,
         "Комментарий": order.get("description"),
-        "Канал продаж": "Мой Склад",
+        "Канал продаж": sales_channel,
         "_moysklad_id": order.get("id"),
         "_moysklad_agent_id": agent_id,
         "_source": SourceType.MOYSKLAD.value,

@@ -16,6 +16,7 @@ from app.services.fields import (
   collect_client_comments,
   empty_fillable_columns,
   extract_email_from_row,
+  sales_type_from_channel,
   COUNTERPARTY_COMMENT_KEYS,
 )
 from app.services.tag_rules import evaluate_tags_for_row
@@ -418,11 +419,9 @@ class SegmentationService:
 
         channel = str(
             row.get("Канал продаж") or row.get("Тип карала продаж") or ""
-        ).lower()
-        if any(m in channel for m in ("маркетплейс", "яндекс", "ozon", "wildberries")):
-            parts.append("маркетплейс")
-        elif "прямые" in channel:
-            parts.append("прямые продажи")
+        )
+        if channel:
+            parts.append(sales_type_from_channel(channel))
 
         return "/".join(dict.fromkeys(parts)) or None
 

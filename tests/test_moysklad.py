@@ -20,7 +20,7 @@ from app.services.moysklad.push import (
     merge_counterparty_tags,
     push_segments_to_moysklad,
 )
-from app.services.moysklad.sync import sync_moysklad_to_hub
+from app.services.moysklad.sync import MOYSKLAD_SYNC_SCHEMA_VERSION, sync_moysklad_to_hub
 
 
 SAMPLE_CP = {
@@ -160,6 +160,7 @@ async def test_sync_moysklad_uses_cache_without_api() -> None:
     row = counterparty_to_row(SAMPLE_CP)
     await cache.save_moysklad_sync(
         {
+            "schema_version": MOYSKLAD_SYNC_SCHEMA_VERSION,
             "counterparty_rows": [row],
             "order_rows": [],
             "api_cp_total": 1,
@@ -195,6 +196,7 @@ async def test_sync_moysklad_rejects_stale_partial_cache() -> None:
     row = counterparty_to_row(SAMPLE_CP)
     await cache.save_moysklad_sync(
         {
+            "schema_version": MOYSKLAD_SYNC_SCHEMA_VERSION,
             "counterparty_rows": [row],
             "order_rows": [],
             "api_cp_total": 9850,

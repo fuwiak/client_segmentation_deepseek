@@ -75,12 +75,39 @@ MARKETPLACE_KEYWORDS = (
 )
 
 
+def _normalize_channel(channel: str) -> str:
+  return channel.strip().lower().replace("ё", "е")
+
+
+def is_direct_sales_channel(channel: str | None) -> bool:
+  """Прямые продажи: витрина, сайт, мессенджеры и явно прямые каналы."""
+  if not channel or not str(channel).strip():
+    return False
+  text = _normalize_channel(str(channel))
+  if "vereskflowers" in text:
+    return True
+  if "витрина" in text or "витрына" in text:
+    return True
+  if "прямые продажи" in text or text == "прямые":
+    return True
+  if "telegram" in text or "телеграм" in text:
+    return True
+  if "whatsapp" in text or "ватсап" in text or "whats app" in text:
+    return True
+  if re.search(r"(?:^|[/\s])max(?:$|[\s/])", text):
+    return True
+  if text in {"сайт", "site"}:
+    return True
+  return False
+
+
 def sales_type_from_channel(channel: str | None) -> str:
-  """Тип продаж: маркетплейс или прямые продажи (≠ канал продаж из файла)."""
-  text = (channel or "").lower()
-  if any(k in text for k in MARKETPLACE_KEYWORDS):
-    return "маркетплейс"
-  return "прямые продажи"
+  """Тип продаж по каналу из заказа МойСклад: прямые или маркетплейс."""
+  if not channel or not str(channel).strip():
+    return "прямые продажи"
+  if is_direct_sales_channel(str(channel)):
+    return "прямые продажи"
+  return "маркетплейс"
 
 
 def sales_type_for_row(row: dict[str, Any]) -> str:

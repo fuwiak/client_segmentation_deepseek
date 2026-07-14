@@ -134,7 +134,7 @@ class MoySkladClient(MoySkladClientBase):
             "/entity/customerorder",
             limit=limit,
             offset=offset,
-            extra_params={"expand": "agent,state"},
+            extra_params={"expand": "agent,state,salesChannel"},
         )
         return rows
 
@@ -149,7 +149,7 @@ class MoySkladClient(MoySkladClientBase):
         return await self._fetch_all(
             "/entity/customerorder",
             max_rows=max_rows,
-            extra_params={"expand": "agent,state"},
+            extra_params={"expand": "agent,state,salesChannel"},
         )
 
     async def update_counterparty_groups(
