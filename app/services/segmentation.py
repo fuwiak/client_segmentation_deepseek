@@ -17,7 +17,7 @@ from app.services.fields import (
   collect_client_comments,
   empty_fillable_columns,
   extract_email_from_row,
-  extract_tg_nick_from_messages,
+  extract_tg_nick_from_row,
   guess_gender,
   infer_gender_heuristic,
   normalize_gender_label,
@@ -107,7 +107,6 @@ GENDER_CONFIRM_SYSTEM_PROMPT = """Ты определяешь пол челов�
 null только для явно неоднозначных имён (Саша, Женя без фамилии) или если это не имя человека."""
 
 _PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
-_TG_RE = re.compile(r"@([A-Za-z][A-Za-z0-9_]{3,31})")
 
 
 def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -383,12 +382,7 @@ class SegmentationService:
                 apply_ai_field(merged, "Пол", guessed, ai_fields)
 
         if not merged.get("ТГ ник"):
-            tg = self._extract_tg(row)
-            if not tg:
-                tg = extract_tg_nick_from_messages(
-                    list(row.get("_messenger_context") or [])
-                    + list(row.get("_tg_export_context") or [])
-                )
+            tg = extract_tg_nick_from_row(row)
             if tg:
                 apply_ai_field(merged, "ТГ ник", tg, ai_fields)
 
@@ -618,12 +612,4 @@ class SegmentationService:
 
     @staticmethod
     def _extract_tg(row: dict[str, Any]) -> str | None:
-        search_text = collect_client_comments(row)
-        for key in ("ТГ ник", "E-mail", "Наименование", *COUNTERPARTY_COMMENT_KEYS):
-            value = row.get(key)
-            if value:
-                search_text = f"{search_text} {value}"
-        match = _TG_RE.search(search_text)
-        if match:
-            return f"@{match.group(1)}"
-        return None
+        return extract_tg_nick_from_row(row)

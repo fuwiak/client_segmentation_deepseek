@@ -328,6 +328,7 @@ def row_sales_type_filter_value(row: dict[str, Any]) -> str:
 
 
 _TG_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
+_TG_INLINE_RE = re.compile(r"@([A-Za-z][A-Za-z0-9_]{3,31})")
 _PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
 _PERSON_NAME_RE = re.compile(r"^[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){0,2}$")
 _INTRO_NAME_RE = re.compile(
@@ -736,6 +737,21 @@ def apply_resolved_gender(
       enrichment_fields.append("Пол")
 
 
+def extract_tg_nick_from_text(text: Any) -> str | None:
+  """@username из строки: целиком «@nick» или встроенный в текст."""
+  raw = str(text or "").strip()
+  if not raw:
+    return None
+  if raw.startswith("@"):
+    username = raw[1:].strip()
+    if _TG_USERNAME_RE.match(username):
+      return f"@{username}"
+  match = _TG_INLINE_RE.search(raw)
+  if match and _TG_USERNAME_RE.match(match.group(1)):
+    return f"@{match.group(1)}"
+  return None
+
+
 def extract_tg_nick_from_messages(messages: list[dict[str, Any]]) -> str | None:
   for msg in messages:
     if msg.get("channel") != "telegram":
@@ -749,6 +765,18 @@ def extract_tg_nick_from_messages(messages: list[dict[str, Any]]) -> str | None:
       if _TG_USERNAME_RE.match(text):
         return f"@{text}"
   return None
+
+
+def extract_tg_nick_from_row(row: dict[str, Any]) -> str | None:
+  """ТГ ник из Наименования, комментариев и переписки."""
+  for key in ("ТГ ник", "Наименование", *COUNTERPARTY_COMMENT_KEYS):
+    nick = extract_tg_nick_from_text(row.get(key))
+    if nick:
+      return nick
+  return extract_tg_nick_from_messages(
+    list(row.get("_messenger_context") or [])
+    + list(row.get("_tg_export_context") or [])
+  )
 
 
 def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
@@ -766,11 +794,8 @@ def enrich_row_computed(row: dict[str, Any]) -> dict[str, Any]:
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
   if not enriched.get("Дата последнего заказа"):
     enriched["Дата последнего заказа"] = last_order_date(row)
-  if not enriched.get("ТГ ник"):
-    tg = extract_tg_nick_from_messages(
-      list(enriched.get("_messenger_context") or [])
-      + list(enriched.get("_tg_export_context") or [])
-    )
+  if is_empty_cell(enriched.get("ТГ ник")):
+    tg = extract_tg_nick_from_row(enriched)
     if tg:
       enriched["ТГ ник"] = tg
   if is_empty_cell(enriched.get("Пол")):
