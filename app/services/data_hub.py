@@ -16,7 +16,19 @@ from app.services.export_format import (
   sales_channel_types_index,
   sort_client_rows,
 )
-from app.services.fields import enrich_row_computed, refresh_row_for_display, row_sales_type_filter_value, order_count_for_row, ensure_ai_recommendation, ensure_ai_client_summary, enrich_gender_by_unique_naimenovanie, enrich_tg_nick_by_phone, is_empty_cell, is_non_person_label
+from app.services.fields import (
+  enrich_row_computed,
+  refresh_row_for_display,
+  ensure_sales_classification,
+  row_matches_sales_filter,
+  order_count_for_row,
+  ensure_ai_recommendation,
+  ensure_ai_client_summary,
+  enrich_gender_by_unique_naimenovanie,
+  enrich_tg_nick_by_phone,
+  is_empty_cell,
+  is_non_person_label,
+)
 
 
 def _rows_need_gender_enrich(rows: list[dict[str, Any]]) -> bool:
@@ -147,15 +159,17 @@ class DataHub:
       return self._active_rows_cache[1]
     if self.parsed and self.parsed.rows:
       if self.parsed.meta.get("from_cache"):
-        base = self.parsed.rows
+        # Из кэша полный refresh дорогой; тип/канал продаж всё равно нужны для вкладок.
+        base = [ensure_sales_classification(dict(r)) for r in self.parsed.rows]
       else:
         base = [refresh_row_for_display(r) for r in self.parsed.rows]
       if self.results:
         rows = merge_enriched_rows(base, self.results, key_fn=_row_key)
+        rows = [ensure_sales_classification(r) for r in rows]
       else:
         rows = base
     elif self.results:
-      rows = self.results
+      rows = [ensure_sales_classification(dict(r)) for r in self.results]
     else:
       rows = []
     if _rows_need_gender_enrich(rows):
@@ -421,15 +435,8 @@ class DataHub:
 
     rows = self.active_rows()
     agent_channels, agent_channel_types = self._agent_segment_indexes()
-    if sales_filter == "marketplace":
-      rows = [r for r in rows if "маркетплейс" in row_sales_type_filter_value(r)]
-    elif sales_filter == "direct":
-      # Только чистые прямые; гибрид (есть маркетплейс) остаётся во вкладке Маркетплейс.
-      rows = [
-        r for r in rows
-        if "прямы" in row_sales_type_filter_value(r)
-        and "маркетплейс" not in row_sales_type_filter_value(r)
-      ]
+    if sales_filter in ("marketplace", "direct"):
+      rows = [r for r in rows if row_matches_sales_filter(r, sales_filter)]
     if group:
       rows = [
         r for r in rows

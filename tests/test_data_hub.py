@@ -79,6 +79,55 @@ def test_filter_rows_by_keyword_and_phone() -> None:
     assert by_phone[0]["UUID"] == "2"
 
 
+def test_filter_rows_marketplace_direct_from_order_channels() -> None:
+    """Вкладки Маркетплейс/Прямые — по правилам каналов, даже без поля Тип продаж."""
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[
+                {
+                    "UUID": "d1",
+                    "Наименование": "Прямой",
+                    "_orders_context": [
+                        {"Канал продаж": "Витрина"},
+                        {"Канал продаж": "Telegram"},
+                    ],
+                    "_order_channels_all": ["Витрина", "Telegram"],
+                },
+                {
+                    "UUID": "m1",
+                    "Наименование": "MP",
+                    "_orders_context": [
+                        {"Канал продаж": "Flowwow"},
+                        {"Канал продаж": "Ozon"},
+                    ],
+                    "_order_channels_all": ["Flowwow", "Ozon"],
+                },
+                {
+                    "UUID": "h1",
+                    "Наименование": "Гибрид",
+                    "_orders_context": [
+                        {"Канал продаж": "Витрина"},
+                        {"Канал продаж": "Яндекс.Маркет"},
+                    ],
+                    "_order_channels_all": ["Витрина", "Яндекс.Маркет"],
+                },
+            ],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=3,
+            meta={"source": "moysklad", "from_cache": True},
+        ),
+        None,
+    )
+    direct = hub.filter_rows(sales_filter="direct")
+    market = hub.filter_rows(sales_filter="marketplace")
+    assert {r["UUID"] for r in direct} == {"d1"}
+    assert {r["UUID"] for r in market} == {"m1", "h1"}
+    assert len(hub.filter_rows(sales_filter="all")) == 3
+
+
 def test_filter_rows_sort_by_name() -> None:
     hub = _sample_hub()
     rows = hub.filter_rows(sales_filter="all", sort="Наименование", order="asc")

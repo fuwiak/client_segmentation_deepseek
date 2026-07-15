@@ -8,7 +8,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from app.services.fields import is_direct_sales_channel, unique_sales_channels
+from app.services.fields import (
+  is_direct_sales_channel,
+  row_matches_sales_filter,
+  unique_sales_channels,
+)
 
 PERIOD_LABELS = {
   "day": "День",
@@ -279,10 +283,7 @@ class DashboardService:
       monthly=monthly_revenue(cur_order_pairs) if cur_orders else [],
     )
 
-    mp_clients = [
-      r for r in rows
-      if "маркетплейс" in str(r.get("Тип продаж") or r.get("Тип канала продаж") or "")
-    ]
+    mp_clients = [r for r in rows if row_matches_sales_filter(r, "marketplace")]
     data.marketplace_clients = MetricBlock(
       total=len(mp_clients),
       growth_pct=None,
@@ -297,10 +298,7 @@ class DashboardService:
       k: MetricBlock(total=v) for k, v in mp_breakdown.most_common()
     }
 
-    direct_clients = [
-      r for r in rows
-      if "прямы" in str(r.get("Тип продаж") or r.get("Тип канала продаж") or "")
-    ]
+    direct_clients = [r for r in rows if row_matches_sales_filter(r, "direct")]
     data.direct_clients = MetricBlock(total=len(direct_clients), growth_pct=None)
     direct_breakdown: Counter[str] = Counter()
     for r in direct_clients:

@@ -385,12 +385,43 @@ def sales_type_label_for_row(row: dict[str, Any]) -> str:
 
 
 def row_sales_type_filter_value(row: dict[str, Any]) -> str:
-  return str(
+  """Тип для вкладок Маркетплейс/Прямые — по правилам каналов, не по устаревшему полю."""
+  channels = _order_channels_for_type(row)
+  has_channel_signal = bool(channels) or bool(unique_sales_channels(row))
+  if has_channel_signal:
+    return sales_channel_type_for_row(row).strip().lower()
+  stored = str(
     row.get("Тип продаж")
     or row.get(SALES_CHANNEL_TYPE_KEY)
     or row.get(LEGACY_SALES_CHANNEL_TYPE_KEY)
     or ""
   ).strip().lower()
+  if stored:
+    return stored
+  return sales_channel_type_for_row(row).strip().lower()
+
+
+def row_matches_sales_filter(row: dict[str, Any], sales_filter: str) -> bool:
+  """Разделение вкладок: direct = только чистые прямые; marketplace = маркетплейс + гибрид."""
+  if sales_filter in ("", "all"):
+    return True
+  value = row_sales_type_filter_value(row)
+  if sales_filter == "marketplace":
+    return "маркетплейс" in value
+  if sales_filter == "direct":
+    return "прямы" in value and "маркетплейс" not in value
+  return True
+
+
+def ensure_sales_classification(row: dict[str, Any]) -> dict[str, Any]:
+  """Проставить Канал/Тип продаж по правилам (для строк из кэша без enrich)."""
+  channel = sales_channel_for_row(row)
+  if channel:
+    row["Канал продаж"] = channel
+  sales_type = sales_channel_type_for_row(row)
+  row["Тип продаж"] = sales_type
+  row[SALES_CHANNEL_TYPE_KEY] = sales_type
+  return row
 
 
 _TG_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")

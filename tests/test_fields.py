@@ -134,6 +134,26 @@ def test_sales_channel_type_hybrid_for_missing_channel_with_direct() -> None:
     assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
 
 
+def test_row_matches_sales_filter_by_channel_rules() -> None:
+    from app.services.fields import row_matches_sales_filter
+
+    direct = {
+        "_order_channels_all": ["Витрина", "Telegram"],
+    }
+    market = {
+        "_order_channels_all": ["Flowwow"],
+    }
+    hybrid = {
+        "_order_channels_all": ["Витрина", "Ozon"],
+    }
+    assert row_matches_sales_filter(direct, "direct") is True
+    assert row_matches_sales_filter(direct, "marketplace") is False
+    assert row_matches_sales_filter(market, "marketplace") is True
+    assert row_matches_sales_filter(market, "direct") is False
+    assert row_matches_sales_filter(hybrid, "marketplace") is True
+    assert row_matches_sales_filter(hybrid, "direct") is False
+
+
 def test_sales_channel_type_marketplace_for_only_missing_channel() -> None:
     row = {
         "UUID": "3b",
