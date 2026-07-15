@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import io
 import logging
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -87,6 +88,7 @@ cache.attach_db_persist(db_persist)
 hub = get_data_hub()
 repo = get_repository()
 dashboard_svc = DashboardService()
+_dashboard_compute_lock = threading.Lock()
 campaign_svc = CampaignService(repo)
 lead_svc = LeadService(repo)
 
@@ -601,12 +603,13 @@ async def _warm_dashboard_cache() -> None:
   started = time.perf_counter()
 
   def _compute() -> int:
-    rows = hub.active_rows()
-    dashboard_svc.compute_cached(
-      rows,
-      hub_version=hub.structure_version,
-      period="month",
-    )
+    rows = hub.dashboard_rows()
+    with _dashboard_compute_lock:
+      dashboard_svc.compute_cached(
+        rows,
+        hub_version=hub.structure_version,
+        period="month",
+      )
     return len(rows)
 
   rows_n = await asyncio.to_thread(_compute)
@@ -1070,14 +1073,15 @@ async def dashboard_page(
   started = time.perf_counter()
 
   def _compute_dashboard():
-    rows = hub.active_rows()
-    return dashboard_svc.compute_cached(
-      rows,
-      hub_version=hub.structure_version,
-      period=period,
-      date_from=parsed_from,
-      date_to=parsed_to,
-    )
+    rows = hub.dashboard_rows()
+    with _dashboard_compute_lock:
+      return dashboard_svc.compute_cached(
+        rows,
+        hub_version=hub.structure_version,
+        period=period,
+        date_from=parsed_from,
+        date_to=parsed_to,
+      )
 
   dash = await asyncio.to_thread(_compute_dashboard)
   pipeline_log(
