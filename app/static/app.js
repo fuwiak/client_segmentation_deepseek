@@ -65,16 +65,81 @@
     if (root) root.innerHTML = "";
   }
 
-  function ensureTagRulesPanel() {
-    var panel = document.getElementById("tag-rules-panel");
-    if (!panel || panel.dataset.loaded === "1") return;
-    panel.dataset.loaded = "1";
-    if (typeof htmx !== "undefined") {
-      htmx.ajax("GET", "/clients/tag-rules/panel", {
-        target: "#tag-rules-panel",
-        swap: "innerHTML",
-      });
+  function reportTagRulesEvent(eventName, uiRequestId, details) {
+    try {
+      window.fetch("/diagnostics/tag-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: eventName,
+          ui_request_id: uiRequestId || "-",
+          details: details || "-",
+        }),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (_error) {
+      // Diagnostics must never prevent the drawer from opening.
     }
+  }
+
+  function tagRulesLoadId() {
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function ensureTagRulesPanel(forceReload) {
+    var panel = document.getElementById("tag-rules-panel");
+    if (!panel) return;
+    if (!forceReload && (panel.dataset.loaded === "1" || panel.dataset.loading === "1")) return;
+
+    var uiRequestId = tagRulesLoadId();
+    panel.dataset.loaded = "0";
+    panel.dataset.loading = "1";
+    panel.dataset.uiRequestId = uiRequestId;
+    panel.innerHTML = '<div class="drawer-loading"><p class="hint">Загрузка правил AI…</p></div>';
+
+    // Do not use htmx.ajax here. The app shell's hx-select="#page-content"
+    // is inherited by programmatic HTMX requests and strips this partial to empty HTML.
+    window.fetch("/clients/tag-rules/panel?ui_request_id=" + encodeURIComponent(uiRequestId), {
+      method: "GET",
+      headers: {
+        "HX-Request": "true",
+        "X-UI-Component": "tag-rules",
+      },
+      cache: "no-store",
+    }).then(function (response) {
+      return response.text().then(function (html) {
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status + ", bytes=" + html.length);
+        }
+        if (!html.trim() || html.indexOf("rules-drawer-header") === -1) {
+          throw new Error("invalid panel HTML, bytes=" + html.length);
+        }
+        if (!document.body.contains(panel) || panel.dataset.uiRequestId !== uiRequestId) return;
+        panel.innerHTML = html;
+        panel.dataset.loaded = "1";
+        panel.dataset.loading = "0";
+        processHtmxRegion(panel);
+        reportTagRulesEvent(
+          "rendered",
+          uiRequestId,
+          "bytes=" + html.length + ", rules=" + (response.headers.get("X-Tag-Rules-Count") || "?")
+        );
+      });
+    }).catch(function (error) {
+      if (!document.body.contains(panel) || panel.dataset.uiRequestId !== uiRequestId) return;
+      panel.dataset.loaded = "0";
+      panel.dataset.loading = "0";
+      panel.innerHTML =
+        '<div class="rules-drawer-header"><h3>Правила AI-тегов</h3>' +
+        '<button type="button" class="modal-close" onclick="closeTagRulesDrawer()" aria-label="Закрыть">×</button></div>' +
+        '<p class="hint warn">Не удалось загрузить правила AI.</p>' +
+        '<button type="button" class="btn secondary" onclick="reloadTagRulesPanel()">Повторить</button>';
+      reportTagRulesEvent("error", uiRequestId, error && error.message ? error.message : String(error));
+    });
+  }
+
+  function reloadTagRulesPanel() {
+    ensureTagRulesPanel(true);
   }
 
   function flashToolbarBtn(elt, ms) {
@@ -154,6 +219,7 @@
   window.prepareOrdersModal = prepareOrdersModal;
   window.openTagRulesDrawer = openTagRulesDrawer;
   window.closeTagRulesDrawer = closeTagRulesDrawer;
+  window.reloadTagRulesPanel = reloadTagRulesPanel;
   window.openClientDrawer = openClientDrawer;
   window.closeClientDrawer = closeClientDrawer;
 

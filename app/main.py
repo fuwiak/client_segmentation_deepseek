@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import pandas as pd
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
@@ -202,6 +202,7 @@ def _append_vary(headers: Any, *names: str) -> None:
 async def performance_middleware(request: Request, call_next):
   started = time.perf_counter()
   request_id = request.headers.get("x-railway-request-id") or uuid.uuid4().hex[:10]
+  request.state.request_id = request_id
   pipeline_log(
     "HTTP",
     "START id=%s method=%s path=%s query=%s htmx=%s boosted=%s ua=%s",
@@ -1113,10 +1114,51 @@ async def clients_table_partial(
 
 @app.get("/clients/tag-rules/panel", response_class=HTMLResponse)
 async def tag_rules_panel(request: Request) -> HTMLResponse:
-  return templates.TemplateResponse(
-    "partials/tag_rules_panel.html",
-    _ctx(request, tag_rules=get_tag_rules(), saved=False, rule_type_options=RULE_TYPE_OPTIONS),
+  rules = get_tag_rules()
+  ui_request_id = (request.query_params.get("ui_request_id") or "-")[:40]
+  pipeline_log(
+    "HTTP",
+    "TAG_RULES panel render start id=%s ui_request_id=%s rules=%s htmx=%s referer=%s",
+    getattr(request.state, "request_id", "-"),
+    ui_request_id,
+    len(rules),
+    request.headers.get("hx-request", "false"),
+    (request.headers.get("referer") or "-")[:120],
   )
+  response = templates.TemplateResponse(
+    "partials/tag_rules_panel.html",
+    _ctx(request, tag_rules=rules, saved=False, rule_type_options=RULE_TYPE_OPTIONS),
+  )
+  response.headers["X-Tag-Rules-Count"] = str(len(rules))
+  pipeline_log(
+    "HTTP",
+    "TAG_RULES panel render done id=%s ui_request_id=%s rules=%s bytes=%s",
+    getattr(request.state, "request_id", "-"),
+    ui_request_id,
+    len(rules),
+    len(response.body),
+  )
+  return response
+
+
+@app.post("/diagnostics/tag-rules", status_code=204)
+async def tag_rules_browser_diagnostic(request: Request) -> Response:
+  try:
+    payload = await request.json()
+  except Exception:  # noqa: BLE001
+    payload = {}
+  event = str(payload.get("event") or "unknown")[:40].replace("\n", " ")
+  ui_request_id = str(payload.get("ui_request_id") or "-")[:40].replace("\n", " ")
+  details = str(payload.get("details") or "-")[:200].replace("\n", " ")
+  pipeline_log(
+    "HTTP",
+    "TAG_RULES browser event id=%s ui_request_id=%s event=%s details=%s",
+    getattr(request.state, "request_id", "-"),
+    ui_request_id,
+    event,
+    details,
+  )
+  return Response(status_code=204)
 
 
 @app.post("/clients/tag-rules", response_class=HTMLResponse)

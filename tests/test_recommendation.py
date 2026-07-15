@@ -88,3 +88,57 @@ def test_heuristic_recommendation_for_new_client_without_orders() -> None:
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
     assert "WhatsApp" in rec
+    assert "привычном среднем чеке" not in rec
+    assert "8 марта" in rec or "14 февраля" in rec or "праздник" in rec.lower()
+
+
+def test_first_order_before_womens_day() -> None:
+    row = {
+        "Телефон": "+79001234567",
+        "Всего заказов": 1,
+        "_orders_context": [
+            {"Дата": "05.03.2026", "Сумма": 4500, "Позиции": "Тюльпан"},
+        ],
+    }
+    holiday = SegmentationService._holiday_for_order_date(2026, 3, 5)
+    assert holiday is not None
+    assert "8 марта" in holiday["occasion"]
+
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "8 марта" in rec
+    assert "Первый заказ" in rec
+    assert "привычном среднем чеке" not in rec
+
+
+def test_first_order_before_valentines() -> None:
+    row = {
+        "Телефон": "+79001234567",
+        "Всего заказов": 1,
+        "_orders_count": 1,
+        "_orders_context": [
+            {"Дата": "12.02.2026", "Сумма": 6000, "Комментарий": "доставка к 18:00"},
+        ],
+    }
+    holiday = SegmentationService._holiday_for_order_date(2026, 2, 12)
+    assert holiday is not None
+    assert "14 февраля" in holiday["occasion"]
+
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert "14 февраля" in rec
+    assert "Первый заказ" in rec
+
+
+def test_empty_avg_check_march_segment_no_generic_avg_phrase() -> None:
+    row = {
+        "Телефон": "+79587570138",
+        "Группы": "корпоративный клиент / событие марта",
+        "Всего заказов": 0,
+        "Средний чек": None,
+        "Заказчик или получатель": "+79587570138 доб. 06793",
+    }
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "привычном среднем чеке" not in rec
+    assert "8 марта" in rec or "март" in rec.lower()
+    assert "тюльпан" in rec.lower() or "весенний" in rec.lower() or "welcome" in rec.lower()

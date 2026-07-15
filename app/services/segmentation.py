@@ -106,11 +106,14 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
 
 13. "Рекомендация" — 2–3 предложения: МАРКЕТИНГОВОЕ действие оператору по календарю заказов.
     Обязательно:
-    - ЧТО предложить (состав/бюджет близкий к прошлым заказам на этот повод);
-    - КОГДА — окно из order_marketing_patterns / дат заказов
-      (конец ноября→декабрьский корпоратив; 1–5 марта→8 марта; не «за 3 дня» в вакууме);
+    - ЧТО предложить (состав/бюджет близкий к прошлым заказам на этот повод;
+      если среднего чека нет — типовой оффер под праздник РФ, не пиши «привычный средний чек»);
+    - КОГДА — окно из order_marketing_patterns / дат заказов / российских праздников цветов
+      (14 февраля, 23 февраля, 8 марта, 1 сентября, День матери, День учителя, Новый год);
     - КАК (Telegram / WhatsApp / телефон).
-    Если несколько ежегодных окон — упомяни ближайшее и следующее.
+    ПЕРВЫЙ ЗАКАЗ / МАЛО ДАННЫХ: если заказ за 3–14 дней до праздника цветов в РФ —
+    считай повод этим праздником и планируй касание на следующий год в том же окне.
+    Если заказов 0 — предложи ближайший релевантный праздник из календаря РФ + welcome-оффер.
     Это действие для оператора, не описание клиента.
 
 Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
@@ -578,8 +581,24 @@ class SegmentationService:
         (("8 марта", "8марта", "международн"), "8 марта"),
         (("день рождения", "др ", "др.", "birthday"), "день рождения"),
         (("валентин", "14 февраля"), "14 февраля"),
+        (("23 февраля", "день защитника", "защитника отечества"), "23 февраля"),
+        (("день матери", "днём матери"), "День матери"),
+        (("день учителя", "учителю", "учительниц"), "День учителя"),
+        (("1 сентября", "день знаний", "линейк"), "1 сентября"),
         (("годовщин",), "годовщина"),
         (("маме", "матери", "мамочк"), "подарок маме"),
+    )
+    # Российские праздники, когда дарят цветы: (месяц, день|None, название, окно касания, дней до праздника для матчинга заказа).
+    # day=None → окно по месяцу / вычисляемая дата (День матери).
+    _RU_FLOWER_HOLIDAYS: tuple[tuple[int, int | None, str, str, int], ...] = (
+        (2, 14, "14 февраля (День святого Валентина)", "5–12 февраля", 12),
+        (2, 23, "23 февраля (День защитника Отечества)", "16–22 февраля", 10),
+        (3, 8, "8 марта (Международный женский день)", "1–5 марта", 14),
+        (5, 9, "9 мая (День Победы)", "4–8 мая", 7),
+        (9, 1, "1 сентября (День знаний)", "25 августа – 1 сентября", 10),
+        (10, 5, "5 октября (День учителя)", "28 сентября – 4 октября", 10),
+        (11, None, "День матери (последнее воскресенье ноября)", "за 5–7 дней до Дня матери", 10),
+        (12, 31, "Новый год / корпоратив", "25 ноября – 20 декабря", 40),
     )
 
     @classmethod
@@ -602,6 +621,121 @@ class SegmentationService:
         if not (1 <= month <= 12 and 1 <= day <= 31):
             return None, None, None
         return year, month, day
+
+    @classmethod
+    def _mother_day_date(cls, year: int) -> tuple[int, int]:
+        """День матери в РФ — последнее воскресенье ноября."""
+        from datetime import date, timedelta
+
+        d = date(year, 11, 30)
+        while d.weekday() != 6:  # Sunday
+            d -= timedelta(days=1)
+        return d.month, d.day
+
+    @classmethod
+    def _holiday_for_order_date(
+        cls,
+        year: int | None,
+        month: int,
+        day: int | None,
+    ) -> dict[str, Any] | None:
+        """Если заказ перед/в день праздника цветов РФ — вернуть повод и окно касания."""
+        from datetime import date
+
+        if not day:
+            # Только месяц: грубые эвристики
+            for h_month, h_day, name, touch, _lead in cls._RU_FLOWER_HOLIDAYS:
+                if month == h_month and h_day is not None:
+                    return {"occasion": name, "marketing_touch_window": touch, "holiday_month": h_month, "holiday_day": h_day}
+                if month == 11 and h_day is None:
+                    return {"occasion": name, "marketing_touch_window": touch, "holiday_month": 11, "holiday_day": None}
+            return None
+
+        y = year or date.today().year
+        try:
+            order_dt = date(y, month, day)
+        except ValueError:
+            return None
+
+        best: dict[str, Any] | None = None
+        best_delta: int | None = None
+        for h_month, h_day, name, touch, lead_days in cls._RU_FLOWER_HOLIDAYS:
+            if h_day is None:
+                # День матери
+                if year:
+                    hm, hd = cls._mother_day_date(year)
+                else:
+                    hm, hd = cls._mother_day_date(y)
+            else:
+                hm, hd = h_month, h_day
+            try:
+                holiday_dt = date(y, hm, hd)
+            except ValueError:
+                continue
+            # Заказ в том же сезоне: за lead_days до праздника или в день праздника (+1)
+            delta = (holiday_dt - order_dt).days
+            if delta < -1:
+                # заказ после праздника в этом году — смотрим следующий год
+                try:
+                    if h_day is None:
+                        hm2, hd2 = cls._mother_day_date(y + 1)
+                        holiday_dt = date(y + 1, hm2, hd2)
+                    else:
+                        holiday_dt = date(y + 1, hm, hd)
+                    delta = (holiday_dt - order_dt).days
+                except ValueError:
+                    continue
+            if -1 <= delta <= lead_days:
+                if best_delta is None or delta < best_delta:
+                    best_delta = delta
+                    best = {
+                        "occasion": name,
+                        "marketing_touch_window": touch,
+                        "holiday_month": hm,
+                        "holiday_day": hd,
+                        "days_before_holiday": delta,
+                    }
+        return best
+
+    @classmethod
+    def _offer_style_for_row(cls, row: dict[str, Any], occasion: str | None = None) -> str:
+        """Что предложить: предпочтения / реальный чек / типовой оффер под праздник РФ."""
+        prefs = cls._preference_labels(row)
+        if prefs:
+            return prefs[0]
+        try:
+            avg = float(row.get("Средний чек") or 0)
+        except (TypeError, ValueError):
+            avg = 0.0
+        if avg >= 5000:
+            return f"букет в бюджете ~{int(avg)} р."
+
+        occ = (occasion or "").lower()
+        if "8 марта" in occ or "женск" in occ:
+            return "весенний букет к 8 марта (тюльпаны / фрезия / микс)"
+        if "14 февраля" in occ or "валентин" in occ:
+            return "романтический букет к 14 февраля"
+        if "23 февраля" in occ:
+            return "композиция / букет к 23 февраля"
+        if "матери" in occ:
+            return "букет ко Дню матери"
+        if "учител" in occ:
+            return "букет ко Дню учителя"
+        if "1 сентября" in occ or "знаний" in occ:
+            return "школьный букет к 1 сентября"
+        if "новый год" in occ or "корпоратив" in occ:
+            return "новогодняя / корпоративная композиция"
+        if "свадьб" in occ:
+            return "букет / композиция на свадьбу"
+        return "сезонный букет под ближайший праздник"
+
+    @classmethod
+    def _orders_count(cls, row: dict[str, Any]) -> int:
+        try:
+            return int(row.get("Всего заказов") or row.get("_orders_count") or 0)
+        except (TypeError, ValueError):
+            ctx = row.get("_orders_context") or []
+            return len(ctx) if ctx else 0
 
     @classmethod
     def build_order_marketing_patterns(cls, row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -631,22 +765,18 @@ class SegmentationService:
                 if any(k in text for k in keywords):
                     occasion = label
                     break
-            # Календарные эвристики по дате заказа (даже без текста).
-            if occasion is None:
-                if month == 12 or (month == 11 and day and day >= 20):
-                    occasion = "Новый год / корпоратив"
-                elif month == 3 and (day is None or day <= 15):
-                    occasion = "8 марта"
-                elif month == 2 and (day is None or 7 <= day <= 16):
-                    occasion = "14 февраля"
-                elif month == 9 and (day is None or day <= 5):
-                    occasion = "1 сентября"
+            # Заказ перед важным праздником цветов в РФ (даже без текста в комментарии).
+            holiday = cls._holiday_for_order_date(year, month, day)
+            touch_from_holiday = holiday.get("marketing_touch_window") if holiday else None
+            if occasion is None and holiday:
+                occasion = str(holiday["occasion"])
             by_month[month].append(
                 {
                     "year": year,
                     "day": day,
                     "amount": amount_f,
                     "occasion": occasion,
+                    "touch": touch_from_holiday,
                     "channel": str(order.get("Канал продаж") or "").strip() or None,
                     "positions": str(order.get("Позиции") or "").strip()[:120] or None,
                     "comment": str(order.get("Комментарий") or "").strip()[:160] or None,
@@ -665,12 +795,23 @@ class SegmentationService:
             avg_amount = int(round(sum(amounts) / len(amounts))) if amounts else None
             recurrent = len(years) >= 2
             prev_month = 12 if month == 1 else month - 1
-            if occasion == "8 марта":
+            touch_from_items = next((i.get("touch") for i in items if i.get("touch")), None)
+            if touch_from_items:
+                touch = touch_from_items
+            elif occasion and "8 марта" in occasion:
                 touch = "1–5 марта"
-            elif occasion == "14 февраля":
+            elif occasion and "14 февраля" in occasion:
                 touch = "5–12 февраля"
+            elif occasion and "23 февраля" in occasion:
+                touch = "16–22 февраля"
+            elif occasion and "День матери" in occasion:
+                touch = "за 5–7 дней до Дня матери (конец ноября)"
+            elif occasion and "День учителя" in occasion:
+                touch = "28 сентября – 4 октября"
+            elif occasion and "1 сентября" in occasion:
+                touch = "25 августа – 1 сентября"
             elif occasion and "Новый год" in occasion:
-                touch = "25 ноября – 15 декабря"
+                touch = "25 ноября – 20 декабря"
             else:
                 touch = (
                     f"конец {cls._MONTHS_GENITIVE[prev_month]} / "
@@ -923,17 +1064,60 @@ class SegmentationService:
         return f"касание в конце {cls._MONTHS_GENITIVE[prev_month]} / в начале {month_prep}"
 
     @classmethod
+    def _first_order_holiday_hints(cls, row: dict[str, Any], contact: str) -> list[str]:
+        """Для 0–1 заказа: проверить близость к праздникам цветов в РФ."""
+        hints: list[str] = []
+        orders = row.get("_orders_context") or []
+        for order in orders[:3]:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            holiday = cls._holiday_for_order_date(year, month, day)
+            if not holiday:
+                continue
+            occ = str(holiday["occasion"])
+            touch = str(holiday["marketing_touch_window"])
+            offer = cls._offer_style_for_row(row, occ)
+            amount = order.get("Сумма")
+            try:
+                amount_f = float(amount) if amount not in (None, "") else None
+            except (TypeError, ValueError):
+                amount_f = None
+            budget = f", ориентир по первому заказу ~{int(amount_f)} р." if amount_f else ""
+            days = holiday.get("days_before_holiday")
+            when = (
+                f"заказ за {days} дн. до праздника"
+                if isinstance(days, int) and days >= 0
+                else "заказ рядом с праздником"
+            )
+            hints.append(
+                f"Первый заказ похож на «{occ}» ({when}). "
+                f"Следующее касание: {touch} через {contact} — предложить {offer}{budget}."
+            )
+        return hints
+
+    @classmethod
     def _heuristic_recommendation(cls, row: dict[str, Any]) -> str | None:
         """Практическая рекомендация оператору: оффер, календарный тайминг, канал."""
         tags = str(row.get("Теги") or "").lower()
         summary = str(row.get("Саммари") or "").lower()
         text = f"{tags} {summary} {cls._collect_intent_text(row)}"
         contact = "Telegram" if row.get("ТГ ник") else ("WhatsApp" if row.get("Телефон") else "телефон")
-        prefs = cls._preference_labels(row)
-        offer_style = (
-            prefs[0] if prefs else "букет в привычном среднем чеке клиента"
-        )
+        orders_n = cls._orders_count(row)
         hints: list[str] = []
+
+        # Мало/пустая история — сначала календарь праздников РФ по дате первого заказа.
+        if orders_n <= 1:
+            hints.extend(cls._first_order_holiday_hints(row, contact))
+
+        order_patterns = cls.build_order_marketing_patterns(row)
+        primary_occ = str(order_patterns[0]["occasion"]) if order_patterns else None
+        if primary_occ is None:
+            if "8 марта" in text or "событие марта" in text or "событие — марта" in text:
+                primary_occ = "8 марта (Международный женский день)"
+            elif "14 февраля" in text:
+                primary_occ = "14 февраля (День святого Валентина)"
+        offer_style = cls._offer_style_for_row(row, primary_occ)
 
         events = cls._dated_event_labels(row)
         birthday_hit = any("день рождения" in e for e in events) or any(
@@ -946,7 +1130,6 @@ class SegmentationService:
                     continue
                 month, day = cls._parse_month_day_from_text(label.replace("—", " "))
                 if month is None:
-                    # «дня рождения — марта»
                     for stem, num in cls._MONTH_NAME_TO_NUM.items():
                         if stem != "ма" and stem in label:
                             month = num
@@ -961,38 +1144,44 @@ class SegmentationService:
             if month is None:
                 month = cls._month_from_order_dates(row)
             window = cls._offer_window_for_month(month, day)
+            bday_offer = cls._offer_style_for_row(row, "день рождения")
             if month and day:
                 hints.append(
                     f"К ДР ({day} {cls._MONTHS_GENITIVE[month]}): {window}; "
-                    f"через {contact} предложить {offer_style} с доставкой."
+                    f"через {contact} предложить {bday_offer} с доставкой."
                 )
             elif month:
                 hints.append(
                     f"К ДР в {cls._MONTHS_PREPOSITIONAL[month]}: {window}; "
-                    f"через {contact} предложить {offer_style} с доставкой."
+                    f"через {contact} предложить {bday_offer} с доставкой."
                 )
             else:
                 hints.append(
                     f"Уточнить дату ДР (месяц не найден в данных), затем через {contact} "
-                    f"предложить {offer_style}; без даты не ставить шаблон «за 3 дня»."
+                    f"предложить {bday_offer}; без даты не ставить шаблон «за 3 дня»."
                 )
 
-        if any(k in text for k in ("8 марта", "8марта", "#8марта")) or any(
+        if any(k in text for k in ("8 марта", "8марта", "#8марта", "событие марта")) or any(
             "8 марта" in e for e in events
         ):
             hints.append(
                 f"1–5 марта через {contact} отправить персональное предложение к 8 марта "
-                f"({offer_style})."
+                f"({cls._offer_style_for_row(row, '8 марта')})."
             )
         if any(k in text for k in ("14 февраля", "валентин")) or any(
             "14 февраля" in e for e in events
         ):
             hints.append(
-                f"5–12 февраля через {contact} предложить романтический букет "
-                f"с доставкой к точному времени."
+                f"5–12 февраля через {contact} предложить "
+                f"{cls._offer_style_for_row(row, '14 февраля')} с доставкой к точному времени."
+            )
+        if any(k in text for k in ("23 февраля", "защитника")):
+            hints.append(
+                f"16–22 февраля через {contact} предложить "
+                f"{cls._offer_style_for_row(row, '23 февраля')}."
             )
 
-        # «событие <месяц>» без ДР
+        # «событие <месяц>» без ДР — март трактуем как 8 марта (РФ).
         for label in events:
             if not label.startswith("событие —") and "годовщина" not in label and "свадьба" not in label:
                 continue
@@ -1005,24 +1194,29 @@ class SegmentationService:
                     if stem == "ма" and re.search(r"\bмая\b", label):
                         month = num
                         break
+            if month == 3 and not birthday_hit:
+                # уже добавили блок 8 марта выше при «событие марта»
+                continue
             if month and not birthday_hit:
+                occ = f"событие {cls._MONTHS_GENITIVE[month]}"
                 hints.append(
                     f"К событию в {cls._MONTHS_PREPOSITIONAL[month]}: "
-                    f"{cls._offer_window_for_month(month, day)}; через {contact} — {offer_style}."
+                    f"{cls._offer_window_for_month(month, day)}; через {contact} — "
+                    f"{cls._offer_style_for_row(row, occ)}."
                 )
 
-        # Маркетинговые окна прямо из истории заказов (декабрь, март, …).
-        for pattern in cls.build_order_marketing_patterns(row)[:3]:
+        # Маркетинговые окна из истории заказов (декабрь, март, …).
+        for pattern in order_patterns[:3]:
             occ = str(pattern.get("occasion") or "сезон")
             touch = pattern.get("marketing_touch_window") or ""
             avg = pattern.get("avg_check")
-            budget = f" бюджет ~{avg} р." if avg else ""
+            budget = f", бюджет ~{avg} р." if avg else ""
             years = pattern.get("years") or []
             years_txt = f" (было: {', '.join(str(y) for y in years)})" if years else ""
-            hint = (
-                f"{touch}: предложить через {contact} под «{occ}»{years_txt}{budget}."
+            style = cls._offer_style_for_row(row, occ)
+            hints.append(
+                f"{touch}: через {contact} предложить {style} под «{occ}»{years_txt}{budget}."
             )
-            hints.append(hint)
 
         if "#vip" in tags or row.get("ВИП") == "да":
             hints.append("VIP: персональный премиум-подбор и приоритетная доставка.")
@@ -1033,24 +1227,33 @@ class SegmentationService:
 
         channel = row.get("Канал продаж") or ""
         if not hints:
-            try:
-                orders = int(row.get("Всего заказов") or row.get("_orders_count") or 0)
-            except (TypeError, ValueError):
-                orders = 0
-            if orders > 2:
+            if orders_n > 2:
                 hints.append(
                     f"Напомнить о регулярном заказе через {contact}"
                     + (f" (канал: {channel})." if channel else ".")
                 )
-            elif orders == 1:
-                hints.append("Предложить повторный заказ со скидкой на доставку в течение 2 недель.")
+            elif orders_n == 1:
+                hints.append(
+                    f"Уточнить повод первого заказа и ближайший праздник (8 марта / 14 февраля / ДР); "
+                    f"через {contact} предложить повтор со скидкой на доставку в течение 2 недель."
+                )
             else:
                 hints.append(
-                    f"Связаться через {contact} с предложением сезонного букета"
-                    " или welcome-скидки на первый заказ."
+                    f"Новый клиент без заказов: через {contact} welcome-оффер к ближайшему "
+                    f"празднику цветов в РФ (14 февраля, 23 февраля, 8 марта, 1 сентября, "
+                    f"День матери, Новый год) — {cls._offer_style_for_row(row, primary_occ)}."
                 )
 
-        return " ".join(dict.fromkeys(hints))
+        # Не оставлять шаблон «привычный средний чек» при пустом чеке.
+        cleaned = []
+        for hint in dict.fromkeys(hints):
+            if "привычном среднем чеке" in hint and not (row.get("Средний чек") not in (None, "", "—", 0, "0")):
+                hint = hint.replace(
+                    "букет в привычном среднем чеке клиента",
+                    cls._offer_style_for_row(row, primary_occ),
+                )
+            cleaned.append(hint)
+        return " ".join(cleaned)
 
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:

@@ -290,6 +290,32 @@ def test_clients_toolbar_buttons_have_click_feedback_markup() -> None:
   assert "openTagRulesDrawer(event)" in response.text
 
 
+def test_tag_rules_panel_has_content_and_diagnostic_headers() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.get(
+    "/clients/tag-rules/panel?ui_request_id=browser-test",
+    headers={"HX-Request": "true"},
+  )
+  assert response.status_code == 200
+  assert response.headers["X-Tag-Rules-Count"] == str(len(m.get_tag_rules()))
+  assert "rules-drawer-header" in response.text
+  assert "tag-rules-form" in response.text
+
+
+def test_tag_rules_browser_diagnostic_accepts_event() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  response = client.post(
+    "/diagnostics/tag-rules",
+    json={"event": "rendered", "ui_request_id": "browser-test", "details": "bytes=123"},
+  )
+  assert response.status_code == 204
+  assert response.content == b""
+
+
 def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
   import app.main as m
   from app.services.excel_parser import ParsedWorkbook
