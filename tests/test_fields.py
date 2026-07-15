@@ -154,6 +154,20 @@ def test_row_matches_sales_filter_by_channel_rules() -> None:
     assert row_matches_sales_filter(hybrid, "direct") is False
 
 
+def test_sales_filter_reuses_precomputed_classification() -> None:
+    from app.services.fields import ensure_sales_classification, row_matches_sales_filter
+
+    class NoIteration(list):
+        def __iter__(self):
+            raise AssertionError("filter must reuse the precomputed sales type")
+
+    row = ensure_sales_classification({"_order_channels_all": ["Flowwow", "Ozon"]})
+    row["_order_channels_all"] = NoIteration(row["_order_channels_all"])
+
+    assert row_matches_sales_filter(row, "marketplace") is True
+    assert row_matches_sales_filter(row, "direct") is False
+
+
 def test_sales_channel_type_marketplace_for_only_missing_channel() -> None:
     row = {
         "UUID": "3b",

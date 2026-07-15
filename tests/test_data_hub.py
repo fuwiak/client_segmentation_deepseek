@@ -497,3 +497,52 @@ def test_filter_rows_with_groups_includes_sales_channel_types() -> None:
     )
     assert len(filtered) == 1
     assert filtered[0]["UUID"] == "cp-1"
+
+
+def test_group_cloud_does_not_rescan_the_full_orders_collection() -> None:
+    class NoIteration(list):
+        def __iter__(self):
+            raise AssertionError("group cloud must use the already enriched client rows")
+
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[{"UUID": "cp-1", "Наименование": "Анна"}],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=1,
+            meta={"source": "moysklad"},
+        ),
+        ParsedWorkbook(
+            source_type="orders",
+            rows=[{
+                "№": "100",
+                "_moysklad_agent_id": "cp-1",
+                "Канал продаж": "Flowwow",
+            }],
+            context_columns=[],
+            segment_columns=[],
+            total_rows=1,
+            meta={},
+        ),
+    )
+    assert hub.orders_parsed is not None
+    hub.orders_parsed.rows = NoIteration(hub.orders_parsed.rows)
+
+    rows, group_options, _ = hub.filter_rows_with_groups(sales_filter="marketplace")
+
+    assert [row["UUID"] for row in rows] == ["cp-1"]
+    assert any(item["name"] == "Flowwow" for item in group_options)
+
+
+def test_group_cloud_is_cached_until_structure_changes() -> None:
+    hub = _sample_hub()
+
+    first = hub.filter_rows_with_groups(sales_filter="all")[1]
+    second = hub.filter_rows_with_groups(sales_filter="all")[1]
+    hub.touch()
+    after_touch = hub.filter_rows_with_groups(sales_filter="all")[1]
+
+    assert second is first
+    assert after_touch is not first

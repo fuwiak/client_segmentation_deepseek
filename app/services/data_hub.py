@@ -12,8 +12,6 @@ from app.services.export_format import (
   row_has_group,
   row_keyword_text,
   row_matches_phone,
-  sales_channels_index,
-  sales_channel_types_index,
   sort_client_rows,
 )
 from app.services.fields import (
@@ -80,13 +78,13 @@ class DataHub:
     self._active_rows_cache: tuple[int, list[dict[str, Any]]] | None = None
     self._active_rows_by_key: dict[str, dict[str, Any]] | None = None
     self._filter_cache: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    self._group_options_cache: dict[tuple[str, ...], list[dict[str, Any]]] = {}
     self._client_index: dict[str, dict[str, Any]] | None = None
     self._client_index_version: int = -1
     self._results_by_key: dict[str, dict[str, Any]] | None = None
     self._results_index_version: int = -1
     self._order_lookup_cache: dict[str, dict[str, Any]] | None = None
     self._order_lookup_version: int = -1
-    self._agent_segment_cache: tuple[int, tuple[dict[str, set[str]], dict[str, str]]] | None = None
     self._phone_username_map: dict[str, str] = {}
 
   @property
@@ -108,10 +106,10 @@ class DataHub:
     self._active_rows_cache = None
     self._active_rows_by_key = None
     self._filter_cache.clear()
+    self._group_options_cache.clear()
     self._client_index = None
     self._results_by_key = None
     self._order_lookup_cache = None
-    self._agent_segment_cache = None
 
   def set_workbook(
     self,
@@ -237,6 +235,7 @@ class DataHub:
       for key, cached in self._filter_cache.items()
       if not self._filter_key_depends_on_ai(key)
     }
+    self._group_options_cache.clear()
     self.results_from_cache = False
     self.version += 1
 
@@ -363,14 +362,6 @@ class DataHub:
     self._order_lookup_version = self._structure_version
     return order_by_key
 
-  def _agent_segment_indexes(self) -> tuple[dict[str, set[str]], dict[str, str]]:
-    if self._agent_segment_cache and self._agent_segment_cache[0] == self._structure_version:
-      return self._agent_segment_cache[1]
-    order_rows = self.orders_parsed.rows if self.orders_parsed else []
-    indexes = (sales_channels_index(order_rows), sales_channel_types_index(order_rows))
-    self._agent_segment_cache = (self._structure_version, indexes)
-    return indexes
-
   def resolve_order_entities(self, orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Подтянуть полные строки заказов из orders_parsed (позиции, канал, статус)."""
     order_by_key = self._order_lookup()
@@ -445,19 +436,10 @@ class DataHub:
       return cached
 
     rows = self.active_rows()
-    agent_channels, agent_channel_types = self._agent_segment_indexes()
     if sales_filter in ("marketplace", "direct"):
       rows = [r for r in rows if row_matches_sales_filter(r, sales_filter)]
     if group:
-      rows = [
-        r for r in rows
-        if row_has_group(
-          r,
-          group,
-          agent_channels=agent_channels,
-          agent_channel_types=agent_channel_types,
-        )
-      ]
+      rows = [r for r in rows if row_has_group(r, group)]
     if tag:
       tag_l = tag.lower().lstrip("#")
       rows = [
@@ -504,22 +486,19 @@ class DataHub:
       sort=sort,
       order=order,
     )
-    agent_channels, agent_channel_types = self._agent_segment_indexes()
-    group_options = collect_group_counts(
-      base_rows,
-      agent_channels=agent_channels,
-      agent_channel_types=agent_channel_types,
+    group_cache_key = (
+      sales_filter,
+      tag,
+      status,
+      q,
+      phone,
     )
+    group_options = self._group_options_cache.get(group_cache_key)
+    if group_options is None:
+      group_options = collect_group_counts(base_rows)
+      self._group_options_cache[group_cache_key] = group_options
     if group:
-      rows = [
-        r for r in base_rows
-        if row_has_group(
-          r,
-          group,
-          agent_channels=agent_channels,
-          agent_channel_types=agent_channel_types,
-        )
-      ]
+      rows = [r for r in base_rows if row_has_group(r, group)]
     else:
       rows = base_rows
     return rows, group_options, len(base_rows)

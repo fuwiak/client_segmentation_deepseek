@@ -87,6 +87,10 @@ SALES_CHANNEL_TYPE_HYBRID = "прямые продажи/маркетплейс"
 LEGACY_SALES_CHANNEL_TYPE_KEY = "Тип карала продаж"
 SALES_CHANNEL_TYPE_KEY = "Тип канала продаж"
 
+_SALES_CHANNELS_CACHE_KEY = "_sales_channels_unique"
+_SALES_CHANNEL_TYPES_CACHE_KEY = "_sales_channel_types_unique"
+_SALES_FILTER_VALUE_CACHE_KEY = "_sales_filter_value"
+
 
 def _normalize_channel(channel: str) -> str:
   return channel.strip().lower().replace("ё", "е")
@@ -173,6 +177,10 @@ def sales_channel_type_from_channels(channels: list[str]) -> str:
 
 def unique_sales_channels(row: dict[str, Any]) -> list[str]:
   """Уникальные каналы продаж клиента (из заказов и поля строки)."""
+  cached = row.get(_SALES_CHANNELS_CACHE_KEY)
+  if isinstance(cached, list):
+    return cached
+
   seen: set[str] = set()
   result: list[str] = []
 
@@ -202,24 +210,44 @@ def unique_sales_channels(row: dict[str, Any]) -> list[str]:
     for ch in _order_channels(row):
       _add(ch)
   _add(row.get("Канал продаж"))
+  row[_SALES_CHANNELS_CACHE_KEY] = result
   return result
 
 
 def unique_sales_channel_types(row: dict[str, Any]) -> list[str]:
   """Тип канала продаж клиента (если есть данные для определения)."""
+  cached = row.get(_SALES_CHANNEL_TYPES_CACHE_KEY)
+  if isinstance(cached, list):
+    return cached
+
   channels = _order_channels_for_type(row)
   if not channels:
+    row[_SALES_CHANNEL_TYPES_CACHE_KEY] = []
     return []
   label = sales_channel_type_from_channels(channels)
   if label == SALES_CHANNEL_TYPE_HYBRID:
     # Гибрид в облаке групп матчит «маркетплейс» (как раньше для смеси каналов).
-    return [SALES_CHANNEL_TYPE_HYBRID, SALES_CHANNEL_TYPE_MARKETPLACE]
-  return [label]
+    result = [SALES_CHANNEL_TYPE_HYBRID, SALES_CHANNEL_TYPE_MARKETPLACE]
+  else:
+    result = [label]
+  row[_SALES_CHANNEL_TYPES_CACHE_KEY] = result
+  return result
 
 
 def sales_channel_type_for_row(row: dict[str, Any]) -> str:
   """Тип канала продаж по всем заказам контрагента."""
-  return sales_channel_type_from_channels(_order_channels_for_type(row))
+  channels = _order_channels_for_type(row)
+  label = sales_channel_type_from_channels(channels)
+  if not channels:
+    row[_SALES_CHANNEL_TYPES_CACHE_KEY] = []
+  elif label == SALES_CHANNEL_TYPE_HYBRID:
+    row[_SALES_CHANNEL_TYPES_CACHE_KEY] = [
+      SALES_CHANNEL_TYPE_HYBRID,
+      SALES_CHANNEL_TYPE_MARKETPLACE,
+    ]
+  else:
+    row[_SALES_CHANNEL_TYPES_CACHE_KEY] = [label]
+  return label
 
 
 def sales_type_for_row(row: dict[str, Any]) -> str:
@@ -386,6 +414,9 @@ def sales_type_label_for_row(row: dict[str, Any]) -> str:
 
 def row_sales_type_filter_value(row: dict[str, Any]) -> str:
   """Тип для вкладок Маркетплейс/Прямые — по правилам каналов, не по устаревшему полю."""
+  cached = str(row.get(_SALES_FILTER_VALUE_CACHE_KEY) or "").strip().lower()
+  if cached:
+    return cached
   channels = _order_channels_for_type(row)
   has_channel_signal = bool(channels) or bool(unique_sales_channels(row))
   if has_channel_signal:
@@ -415,12 +446,16 @@ def row_matches_sales_filter(row: dict[str, Any], sales_filter: str) -> bool:
 
 def ensure_sales_classification(row: dict[str, Any]) -> dict[str, Any]:
   """Проставить Канал/Тип продаж по правилам (для строк из кэша без enrich)."""
+  row.pop(_SALES_CHANNELS_CACHE_KEY, None)
+  row.pop(_SALES_CHANNEL_TYPES_CACHE_KEY, None)
+  row.pop(_SALES_FILTER_VALUE_CACHE_KEY, None)
   channel = sales_channel_for_row(row)
   if channel:
     row["Канал продаж"] = channel
   sales_type = sales_channel_type_for_row(row)
   row["Тип продаж"] = sales_type
   row[SALES_CHANNEL_TYPE_KEY] = sales_type
+  row[_SALES_FILTER_VALUE_CACHE_KEY] = sales_type.lower()
   return row
 
 
@@ -1182,12 +1217,16 @@ def enrich_row_computed(
 ) -> dict[str, Any]:
   """Добавляет вычисляемые поля к строке клиента."""
   enriched = dict(row)
+  enriched.pop(_SALES_CHANNELS_CACHE_KEY, None)
+  enriched.pop(_SALES_CHANNEL_TYPES_CACHE_KEY, None)
+  enriched.pop(_SALES_FILTER_VALUE_CACHE_KEY, None)
   channel = sales_channel_for_row(enriched)
   if channel:
     enriched["Канал продаж"] = channel
   sales_type = sales_channel_type_for_row(enriched)
   enriched["Тип продаж"] = sales_type
   enriched[SALES_CHANNEL_TYPE_KEY] = sales_type
+  enriched[_SALES_FILTER_VALUE_CACHE_KEY] = sales_type.lower()
   enriched["Статус последнего заказа"] = last_order_status(row)
   enriched["Статус"] = client_status_from_orders(enriched)
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
