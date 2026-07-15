@@ -89,6 +89,7 @@ hub = get_data_hub()
 repo = get_repository()
 dashboard_svc = DashboardService()
 _dashboard_compute_lock = threading.Lock()
+_clients_compute_lock = threading.Lock()
 campaign_svc = CampaignService(repo)
 lead_svc = LeadService(repo)
 
@@ -569,6 +570,7 @@ async def _startup_background() -> None:
       await jobs.fill_missing_tg_nick(hub, cache)
       await jobs.fill_missing_gender(hub, settings, cache)
       await _warm_dashboard_cache()
+      await _warm_clients_cache()
     if settings.ai_lazy_full_on_startup:
       await _schedule_lazy_ai()
     else:
@@ -617,6 +619,29 @@ async def _warm_dashboard_cache() -> None:
     "PIPE",
     "dashboard cache warm done rows=%s duration_ms=%.1f structure_version=%s",
     rows_n,
+    (time.perf_counter() - started) * 1000,
+    hub.structure_version,
+  )
+
+
+async def _warm_clients_cache() -> None:
+  """Precompute client tabs/group clouds before the first navigation."""
+  if not hub.has_data():
+    return
+  started = time.perf_counter()
+
+  def _compute() -> dict[str, int]:
+    with _clients_compute_lock:
+      return {
+        sales_filter: len(hub.filter_rows_with_groups(sales_filter=sales_filter)[0])
+        for sales_filter in ("direct", "marketplace", "all")
+      }
+
+  counts = await asyncio.to_thread(_compute)
+  pipeline_log(
+    "PIPE",
+    "clients cache warm done counts=%s duration_ms=%.1f structure_version=%s",
+    counts,
     (time.perf_counter() - started) * 1000,
     hub.structure_version,
   )
@@ -877,30 +902,31 @@ def _clients_ctx(
   include_group_options: bool = True,
 ) -> dict[str, Any]:
   started = time.perf_counter()
-  if include_group_options:
-    rows, group_options, groups_total = hub.filter_rows_with_groups(
-      sales_filter=sales_filter,
-      tag=tag,
-      group=group,
-      status=status,
-      q=q,
-      phone=phone,
-      sort=sort,
-      order=order,
-    )
-  else:
-    rows = hub.filter_rows(
-      sales_filter=sales_filter,
-      tag=tag,
-      group=group,
-      status=status,
-      q=q,
-      phone=phone,
-      sort=sort,
-      order=order,
-    )
-    group_options = []
-    groups_total = len(rows)
+  with _clients_compute_lock:
+    if include_group_options:
+      rows, group_options, groups_total = hub.filter_rows_with_groups(
+        sales_filter=sales_filter,
+        tag=tag,
+        group=group,
+        status=status,
+        q=q,
+        phone=phone,
+        sort=sort,
+        order=order,
+      )
+    else:
+      rows = hub.filter_rows(
+        sales_filter=sales_filter,
+        tag=tag,
+        group=group,
+        status=status,
+        q=q,
+        phone=phone,
+        sort=sort,
+        order=order,
+      )
+      group_options = []
+      groups_total = len(rows)
   filter_ms = (time.perf_counter() - started) * 1000
   per_page = max(1, settings.clients_page_size)
   total = len(rows)

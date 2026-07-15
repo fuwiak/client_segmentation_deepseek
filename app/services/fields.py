@@ -144,7 +144,7 @@ def _order_channels_for_type(row: dict[str, Any]) -> list[str]:
   """Канал продаж по каждому заказу (пустая строка, если не задан)."""
   stored = row.get("_order_channels_all")
   if isinstance(stored, list):
-    return [str(ch).strip() if ch is not None else "" for ch in stored]
+    return stored
   channels: list[str] = []
   for order in row.get("_orders_context") or []:
     ch = order.get("Канал продаж")
@@ -200,13 +200,14 @@ def unique_sales_channels(row: dict[str, Any]) -> list[str]:
       seen.add(key)
       result.append(ch)
 
-  for order in row.get("_orders_context") or []:
-    _add(order.get("Канал продаж"))
   stored_all = row.get("_order_channels_all")
   if isinstance(stored_all, list):
     for ch in stored_all:
       _add(ch)
-  if not result:
+  else:
+    for order in row.get("_orders_context") or []:
+      _add(order.get("Канал продаж"))
+  if not result and not isinstance(stored_all, list):
     for ch in _order_channels(row):
       _add(ch)
   _add(row.get("Канал продаж"))

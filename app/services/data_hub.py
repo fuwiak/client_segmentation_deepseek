@@ -168,7 +168,6 @@ class DataHub:
           key_fn=_row_key,
           refresh=not bool(self.parsed.meta.get("from_cache")),
         )
-        rows = [ensure_sales_classification(r) for r in rows]
       else:
         rows = base
     elif self.results:

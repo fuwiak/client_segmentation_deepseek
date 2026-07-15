@@ -140,6 +140,35 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
     assert len(hub.filter_rows(sales_filter="all")) == 3
 
 
+def test_cached_ai_overlay_cannot_replace_current_sales_classification() -> None:
+    hub = DataHub()
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[{
+                "UUID": "m1",
+                "Наименование": "MP",
+                "_order_channels_all": ["Flowwow"],
+            }],
+            context_columns=["UUID", "Наименование"],
+            segment_columns=[],
+            total_rows=1,
+            meta={"source": "moysklad", "from_cache": True},
+        ),
+        None,
+    )
+    hub.set_results([{
+        "UUID": "m1",
+        "Наименование": "MP",
+        "Тип продаж": "прямые продажи",
+        "_sales_filter_value": "прямые продажи",
+        "_ai_processed": True,
+    }], {"processed": 1})
+
+    assert [row["UUID"] for row in hub.filter_rows(sales_filter="marketplace")] == ["m1"]
+    assert hub.filter_rows(sales_filter="direct") == []
+
+
 def test_filter_rows_sort_by_name() -> None:
     hub = _sample_hub()
     rows = hub.filter_rows(sales_filter="all", sort="Наименование", order="asc")
