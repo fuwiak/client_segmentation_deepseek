@@ -51,11 +51,17 @@ class DbPersistService:
                 import asyncpg
 
                 dsn = self._settings.database_url.strip()
-                self._pool = await asyncpg.create_pool(
-                    dsn,
-                    min_size=1,
-                    max_size=5,
-                    command_timeout=120,
+                # timeout — connect; без него create_pool может висеть на cold Postgres
+                # и блокировать warm/startup, если кто-то await'ит до healthcheck.
+                self._pool = await asyncio.wait_for(
+                    asyncpg.create_pool(
+                        dsn,
+                        min_size=1,
+                        max_size=5,
+                        command_timeout=120,
+                        timeout=15,
+                    ),
+                    timeout=20,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Postgres pool unavailable: %s", exc)

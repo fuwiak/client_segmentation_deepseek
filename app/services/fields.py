@@ -1249,6 +1249,31 @@ def build_client_history_summary(row: dict[str, Any]) -> str | None:
   if tags:
     parts.append(f"Теги: {tags}.")
 
+  try:
+    from app.services.segmentation import SegmentationService
+
+    calendar = SegmentationService._dated_event_labels(row)
+    prefs = SegmentationService._preference_labels(row)
+    order_patterns = SegmentationService.build_order_marketing_patterns(row)
+  except Exception:  # noqa: BLE001 — саммари не должно падать из‑за эвристик
+    calendar, prefs, order_patterns = [], [], []
+  if order_patterns:
+    parts.append(
+      "Маркетинг по заказам: "
+      + "; ".join(
+        f"{p.get('summary')} → касание {p.get('marketing_touch_window')}"
+        + (f", чек ~{p.get('avg_check')} р." if p.get("avg_check") else "")
+        for p in order_patterns[:5]
+      )
+      + "."
+    )
+  elif calendar:
+    parts.append("Календарь событий: " + "; ".join(calendar[:5]) + ".")
+  elif row.get("Дата рождения"):
+    parts.append(f"Дата рождения: {row.get('Дата рождения')}.")
+  if prefs:
+    parts.append("Предпочтения: " + ", ".join(prefs) + ".")
+
   sales_bits = [
     str(row.get("Тип продаж") or row.get("Тип канала продаж") or "").strip(),
     str(row.get("Канал продаж") or "").strip(),

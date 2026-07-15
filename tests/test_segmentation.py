@@ -104,6 +104,21 @@ def test_heuristic_intent_summary_from_order_comment() -> None:
     assert summary is not None
     assert "день рождения" in summary
     assert "подарок маме" in summary
+    assert "месяц не найден" in summary
+
+
+def test_heuristic_intent_summary_birthday_with_date() -> None:
+    service = _service()
+    row = {
+        "UUID": "6b",
+        "Дата рождения": "12.07.1990",
+        "_orders_context": [{"Комментарий": "на др", "Дата": "10.07.2025"}],
+        "_messenger_context": [{"text": "оплата переводом на карту сбер"}],
+    }
+    summary = service._heuristic_intent_summary(row)
+    assert summary is not None
+    assert "12 июля" in summary
+    assert "переводом" in summary.lower() or "карт" in summary.lower()
 
 
 def test_heuristic_intent_summary_unknown_occasion() -> None:

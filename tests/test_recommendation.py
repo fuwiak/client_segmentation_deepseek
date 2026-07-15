@@ -2,16 +2,80 @@ from app.services.segmentation import SegmentationService
 
 
 def test_heuristic_recommendation_for_birthday_tag() -> None:
-    service = SegmentationService.__new__(SegmentationService)
     row = {
         "Теги": "#деньрождения",
-        "Саммари": "Поводы: день рождения.",
+        "Саммари": "События: день рождения — месяц не найден в данных.",
         "Телефон": "+79001234567",
         "Всего заказов": 3,
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "рождения" in rec.lower()
+    assert "уточнить дату" in rec.lower()
+    assert "за 3 дня" not in rec.lower() or "без даты" in rec.lower()
+
+
+def test_heuristic_recommendation_for_birthday_with_month() -> None:
+    row = {
+        "Теги": "#деньрождения",
+        "Дата рождения": "12.07.1990",
+        "Телефон": "+79001234567",
+        "ТГ ник": "@viktor",
+        "Всего заказов": 5,
+        "Средний чек": 5700,
+    }
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "июл" in rec.lower()
+    assert "12" in rec
+    assert "Telegram" in rec
+
+
+def test_heuristic_recommendation_for_march_event_segment() -> None:
+    row = {
+        "Группы": "флаувау / событие марта",
+        "Телефон": "+79001234567",
+        "Всего заказов": 10,
+        "_orders_context": [
+            {"Дата": "09.03.2026", "Комментарий": "Flowwow", "Сумма": 5000},
+        ],
+    }
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "март" in rec.lower()
+
+
+def test_order_marketing_patterns_from_history() -> None:
+    row = {
+        "Телефон": "+79001234567",
+        "_orders_context": [
+            {"Дата": "26.05.2026", "Сумма": 10000, "Канал продаж": "Telegram", "Позиции": "Пион"},
+            {"Дата": "15.05.2026", "Сумма": 9000, "Канал продаж": "Telegram", "Позиции": "Пион"},
+            {"Дата": "25.03.2026", "Сумма": 15000, "Канал продаж": "Прямые продажи"},
+            {"Дата": "22.12.2025", "Сумма": 76000, "Позиции": "Амариллис воск. Veresk"},
+            {"Дата": "07.03.2025", "Сумма": 16000, "Канал продаж": "Витрина"},
+            {"Дата": "27.12.2024", "Сумма": 50000, "Позиции": "Композиция новогодняя"},
+            {"Дата": "08.12.2024", "Сумма": 44920, "Позиции": "Новогодняя композиция"},
+            {
+                "Дата": "28.11.2024",
+                "Сумма": 15000,
+                "Комментарий": "Нежный букет в подарок невесте бюджет 15",
+            },
+        ],
+    }
+    patterns = SegmentationService.build_order_marketing_patterns(row)
+    occasions = " ".join(str(p.get("occasion") or "") for p in patterns)
+    assert "Новый год" in occasions or "декабр" in occasions.lower()
+    assert "8 марта" in occasions or "март" in occasions.lower()
+    assert any(p.get("recurrent_yearly") for p in patterns)
+
+    summary = SegmentationService._heuristic_intent_summary(row)
+    assert summary is not None
+    assert "Маркетинг:" in summary
+    assert "декабр" in summary.lower() or "Новый год" in summary
+
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "декабр" in rec.lower() or "ноябр" in rec.lower()
 
 
 def test_heuristic_recommendation_for_new_client_without_orders() -> None:

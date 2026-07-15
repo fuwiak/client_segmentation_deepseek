@@ -138,8 +138,8 @@ async def _app_lifespan(_app: FastAPI):
   keep_task: asyncio.Task[None] | None = None
   startup_task: asyncio.Task[None] | None = None
   try:
-    if settings.warm_cache_on_startup:
-      await _warm_hub_from_cache()
+    # Не блокируем yield: иначе /health не отвечает, Railway держит Hold Start
+    # и при healthcheckTimeout рестартит контейнер (warm → Postgres fallback может висеть).
     _warmup_state["ready"] = True
     if settings.keep_alive_enabled and (settings.redis_url or db_persist.enabled):
       keep_task = asyncio.create_task(_keep_alive_loop())
@@ -571,7 +571,7 @@ async def _startup_background() -> None:
 async def _startup_all() -> None:
   pipeline_log("PIPE", "startup all start")
   try:
-    if not _hub_warmed:
+    if settings.warm_cache_on_startup and not _hub_warmed:
       await _warm_hub_from_cache()
     if db_persist.enabled:
       await db_persist.init_schema()

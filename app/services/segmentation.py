@@ -44,7 +44,8 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
    - "маркетплейс" — канал продаж это маркетплейс (Flowwow, Ozon, Яндекс, Flawery)
    - "прямые продажи" — прямой канал
    - "корпоративный" — если это юрлицо/ИП
-   - "событие" — если в данных есть указание на праздник/событие
+   - "событие <месяц>" — праздник/повод обязательно с месяцем
+     (например «событие марта», «событие июля»); без голого «событие»
    Если уже есть значение в "Группы" — уточни или дополни его, не удаляй.
 
 2. "Заказчик или получатель" — кто заказывает: заказчик или получатель; укажи ФИО если есть.
@@ -59,41 +60,58 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
    Ищи в email, комментариях контрагента и заказов, поле Наименование. НЕ выдумывай.
 
 5. "Теги" — одна строка с хэштегами через пробел: #nik1 #nik2 #nik3 (каждый с одним #, не массив JSON).
-   Пример: #деньрождения #vip #проблемный #доволен
+   Пример: #деньрождения #др_март #vip #проблемный #доволен
    Определи по датам заказов (праздники), сумме, комментариям контрагента и заказов, тону коммуникации.
-   Теги: события (8марта, деньрождения, свадьба), настроение (доволен/недоволен), проблемный, постоянный, vip.
+   Теги: события (8марта, деньрождения, др_<месяц>, свадьба), настроение (доволен/недоволен), проблемный, постоянный, vip.
+   Если известен месяц ДР/события — добавь #др_март / #событие_июль.
 
-6. "Саммари" — 2–3 предложения на русском о МОТИВАЦИИ покупки (intent), а не о профиле клиента.
+6. "Саммари" — 2–4 предложения на русском о МОТИВАЦИИ покупки (intent), а не о профиле клиента.
    НЕ пиши «постоянный клиент», «высокий средний чек», «настроение не определено» — это уже в других полях.
-   Фокус:
-   - СОБЫТИЕ/ПОВОД: день рождения, 8 марта, 14 февраля, годовщина, свадьба, извинение, выпускной, Новый год и т.д.
-   - INTENT: зачем покупает — подарок (кому именно), для себя, романтический жест, корпоративный заказ, срочная доставка «к 18:00»
-   - ПАТТЕРН: если заказы повторяются в одни даты — укажи регулярное событие (например, «ежегодно на 8 марта»)
-   Источники: комментарии заказов, переписка, даты заказов, имена получателей.
-   Если повод не ясен — одной фразой «повод не определён из данных», без общих описаний клиента.
+   ГЛАВНЫЙ ИСТОЧНИК ПАТТЕРНОВ — ИСТОРИЯ ЗАКАЗОВ (orders_sample + order_marketing_patterns):
+   даты, суммы, каналы, позиции, комментарии к заказам. Переписка — дополнение, не замена.
+   Обязательная структура:
+   - СОБЫТИЯ С КАЛЕНДАРЁМ: какое событие + КОГДА (день+месяц или хотя бы месяц; годы повторов).
+     Примеры: «каждый декабрь — Новый год/корпоратив (2024, 2025)», «март — 8 марта (2025, 2026)»,
+     «ДР мамы — 12 июля», «свадьба/невеста — ноябрь 2024».
+     Смотри повторы одного месяца в разные годы = ежегодный повод для маркетинга.
+     ЗАПРЕЩЕНО голое «день рождения» / «событие марта» без даты или месяца.
+   - INTENT: подарок (кому), для себя, романтика, корпоратив/опт, свадьба, сезон.
+   - ПРЕДПОЧТЕНИЯ из позиций/комментов: цветы, бюджет (по чекам), доставка, оплата, канал.
+   Если повод не ясен даже по датам заказов — «повод не определён из данных».
 
-7. "Саммари клиента" — 4–6 предложений: профиль и ИСТОРИЯ клиента в CRM (не рекомендация оператору).
-   Включи: лояльность (статус, число заказов, VIP), сегменты и теги, каналы, паттерны заказов, позиции,
-   тон переписки, важные комментарии. Это обзор клиента, отдельно от «Саммари» (intent) и «Рекомендация».
+7. "Саммари клиента" — 4–7 предложений: профиль и ИСТОРИЯ клиента в CRM (не рекомендация оператору).
+   Обязательно по смыслу:
+   - лояльность (статус, число заказов, VIP, средний чек);
+   - МАРКЕТИНГОВЫЙ КАЛЕНДАРЬ по заказам: месяцы/поводы с годами повторов;
+   - предпочтения: цветы/позиции, типичный бюджет, доставка, оплата, канал;
+   - тон переписки (если есть);
+   Не дублируй «Рекомендацию».
 
 8. "Фамилия (для ИП и физ. лиц)", "Имя (для ИП и физ. лиц)", "Отчество (для ИП и физ. лиц)" —
    заполни из ФИО заказчика/получателя, если явно указаны в данных или комментариях.
 
 9. "E-mail" — только если явно есть в комментариях или полях клиента.
 
-10. "Дата рождения" — только если явно указана в комментариях (формат ДД.ММ.ГГГГ).
+10. "Дата рождения" — только если явно указана (формат ДД.ММ.ГГГГ или ДД.ММ).
+    Если в тексте только месяц — не выдумывай день; месяц отрази в «Саммари»/тегах.
 
-11. Если есть messages_sample (WhatsApp/Telegram) — учитывай тон переписки, поводы, жалобы,
-    благодарности, имена получателей. Указывай в references канал (whatsapp/telegram).
+11. Если есть messages_sample (WhatsApp/Telegram) — извлекай:
+    поводы и даты, предпочтения по цветам/доставке/оплате, жалобы, благодарности, имена получателей.
+    Указывай в references канал (whatsapp/telegram).
 
 12. Для каждого поля из empty_fields — попробуй заполнить по данным клиента и заказов.
     Адреса, ИНН/КПП/ОГРН/ОКПО, банковские реквизиты (БИК, Банк, К/с, Р/с), тип контрагента,
     полное наименование, местонахождение, комментарии, статус, канал продаж — ТОЛЬКО при явном
     указании в данных. Не выдумывай юридические и банковские реквизиты.
 
-13. "Рекомендация" — 1–2 предложения: что предложить клиенту сейчас (оффер, тайминг, канал связи).
-    Это действие для оператора, а не описание клиента. Опирайся на «Саммари клиента», теги, историю заказов.
-    Если данных мало — предложи нейтральный follow-up (например, напоминание о сезонном букете).
+13. "Рекомендация" — 2–3 предложения: МАРКЕТИНГОВОЕ действие оператору по календарю заказов.
+    Обязательно:
+    - ЧТО предложить (состав/бюджет близкий к прошлым заказам на этот повод);
+    - КОГДА — окно из order_marketing_patterns / дат заказов
+      (конец ноября→декабрьский корпоратив; 1–5 марта→8 марта; не «за 3 дня» в вакууме);
+    - КАК (Telegram / WhatsApp / телефон).
+    Если несколько ежегодных окон — упомяни ближайшее и следующее.
+    Это действие для оператора, не описание клиента.
 
 Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
 
@@ -134,16 +152,21 @@ def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
         for k, v in row.items()
         if k not in skip and v is not None and not str(k).startswith("_")
     }
-    if row.get("_orders_context"):
-        compact["orders_sample"] = row["_orders_context"][:3]
+    orders = row.get("_orders_context") or []
+    if orders:
+        # История заказов — основа маркетинговых паттернов (даты/поводы/бюджет).
+        compact["orders_sample"] = orders[:20]
+        patterns = SegmentationService.build_order_marketing_patterns(row)
+        if patterns:
+            compact["order_marketing_patterns"] = patterns
     if row.get("_orders_count"):
         compact["orders_count_matched"] = row["_orders_count"]
     if row.get("_messenger_context"):
-        compact["messages_sample"] = row["_messenger_context"][:8]
+        compact["messages_sample"] = row["_messenger_context"][-20:]
         compact["messages_count"] = len(row["_messenger_context"])
     comments = collect_client_comments(row)
     if comments:
-        compact["all_comments"] = comments[:2000]
+        compact["all_comments"] = comments[:3000]
     return compact
 
 
@@ -475,7 +498,7 @@ class SegmentationService:
         return normalize_tags_field(" ".join(dict.fromkeys(tags))) if tags else None
 
     _EVENT_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
-        (("день рождения", "д.р.", "др ", "birthday"), "день рождения"),
+        (("день рождения", "д.р.", "др ", "др.", "birthday"), "день рождения"),
         (("8 марта", "8марта"), "8 марта"),
         (("14 февраля", "14февраля", "валентин"), "14 февраля"),
         (("свадьб", "бракосочет"), "свадьба"),
@@ -495,35 +518,386 @@ class SegmentationService:
         (("срочн", "к 18", "к 19", "к 20", "к 21"), "срочная доставка"),
     )
 
+    _PREF_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+        (("эквайринг", "оплата по эквайринг"), "оплата эквайрингом"),
+        (("перевод на карт", "на карту", "сбер"), "оплата переводом на карту"),
+        (("к 18", "к 19", "к 20", "к 21", "точн"), "доставка к точному времени"),
+        (("роз", "пиону", "пион", "тюльпан", "гортенз", "фрези"), "предпочтения по цветам из заказов"),
+    )
+
+    _MONTHS_GENITIVE = (
+        "",
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря",
+    )
+    _MONTHS_PREPOSITIONAL = (
+        "",
+        "январе",
+        "феврале",
+        "марте",
+        "апреле",
+        "мае",
+        "июне",
+        "июле",
+        "августе",
+        "сентябре",
+        "октябре",
+        "ноябре",
+        "декабре",
+    )
+    _MONTH_NAME_TO_NUM = {
+        "январ": 1,
+        "феврал": 2,
+        "март": 3,
+        "апрел": 4,
+        "ма": 5,
+        "июн": 6,
+        "июл": 7,
+        "август": 8,
+        "сентябр": 9,
+        "октябр": 10,
+        "ноябр": 11,
+        "декабр": 12,
+    }
+    _DATE_IN_TEXT_RE = re.compile(
+        r"(?P<d>\d{1,2})[./-](?P<m>\d{1,2})(?:[./-](?P<y>\d{2,4}))?"
+    )
+    _OCCASION_IN_ORDER_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+        (("невест", "свадьб", "бракосочет"), "свадьба"),
+        (("новогод", "ёлк", "елк", "амариллис", "корпоратив"), "Новый год / корпоратив"),
+        (("8 марта", "8марта", "международн"), "8 марта"),
+        (("день рождения", "др ", "др.", "birthday"), "день рождения"),
+        (("валентин", "14 февраля"), "14 февраля"),
+        (("годовщин",), "годовщина"),
+        (("маме", "матери", "мамочк"), "подарок маме"),
+    )
+
+    @classmethod
+    def _order_ymd(cls, order: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+        raw = str(order.get("Дата") or order.get("Момент времени") or "").strip()
+        if not raw:
+            return None, None, None
+        iso = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw)
+        if iso:
+            return int(iso.group(1)), int(iso.group(2)), int(iso.group(3))
+        match = cls._DATE_IN_TEXT_RE.search(raw)
+        if not match:
+            return None, None, None
+        day = int(match.group("d"))
+        month = int(match.group("m"))
+        year_raw = match.group("y")
+        year = int(year_raw) if year_raw else None
+        if year is not None and year < 100:
+            year += 2000
+        if not (1 <= month <= 12 and 1 <= day <= 31):
+            return None, None, None
+        return year, month, day
+
+    @classmethod
+    def build_order_marketing_patterns(cls, row: dict[str, Any]) -> list[dict[str, Any]]:
+        """Паттерны из истории заказов: когда и на какую оказию заказывают (маркетинг)."""
+        from collections import Counter, defaultdict
+
+        orders = row.get("_orders_context") or []
+        if not orders:
+            return []
+
+        by_month: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for order in orders:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            amount = order.get("Сумма")
+            try:
+                amount_f = float(amount) if amount not in (None, "") else None
+            except (TypeError, ValueError):
+                amount_f = None
+            text = " ".join(
+                str(order.get(k) or "")
+                for k in ("Комментарий", "Описание", "Позиции", "Статус")
+            ).lower()
+            occasion = None
+            for keywords, label in cls._OCCASION_IN_ORDER_HINTS:
+                if any(k in text for k in keywords):
+                    occasion = label
+                    break
+            # Календарные эвристики по дате заказа (даже без текста).
+            if occasion is None:
+                if month == 12 or (month == 11 and day and day >= 20):
+                    occasion = "Новый год / корпоратив"
+                elif month == 3 and (day is None or day <= 15):
+                    occasion = "8 марта"
+                elif month == 2 and (day is None or 7 <= day <= 16):
+                    occasion = "14 февраля"
+                elif month == 9 and (day is None or day <= 5):
+                    occasion = "1 сентября"
+            by_month[month].append(
+                {
+                    "year": year,
+                    "day": day,
+                    "amount": amount_f,
+                    "occasion": occasion,
+                    "channel": str(order.get("Канал продаж") or "").strip() or None,
+                    "positions": str(order.get("Позиции") or "").strip()[:120] or None,
+                    "comment": str(order.get("Комментарий") or "").strip()[:160] or None,
+                }
+            )
+
+        patterns: list[dict[str, Any]] = []
+        for month in sorted(by_month.keys()):
+            items = by_month[month]
+            years = sorted({i["year"] for i in items if i.get("year")})
+            occasions = [i["occasion"] for i in items if i.get("occasion")]
+            occasion = None
+            if occasions:
+                occasion = Counter(occasions).most_common(1)[0][0]
+            amounts = [i["amount"] for i in items if i.get("amount") is not None]
+            avg_amount = int(round(sum(amounts) / len(amounts))) if amounts else None
+            recurrent = len(years) >= 2
+            prev_month = 12 if month == 1 else month - 1
+            if occasion == "8 марта":
+                touch = "1–5 марта"
+            elif occasion == "14 февраля":
+                touch = "5–12 февраля"
+            elif occasion and "Новый год" in occasion:
+                touch = "25 ноября – 15 декабря"
+            else:
+                touch = (
+                    f"конец {cls._MONTHS_GENITIVE[prev_month]} / "
+                    f"начало {cls._MONTHS_PREPOSITIONAL[month]}"
+                )
+            label = occasion or f"сезон {cls._MONTHS_GENITIVE[month]}"
+            if recurrent:
+                years_txt = ", ".join(str(y) for y in years)
+                summary = (
+                    f"{label} — ежегодно в {cls._MONTHS_PREPOSITIONAL[month]} "
+                    f"({years_txt}, {len(items)} заказ.)"
+                )
+            else:
+                years_txt = ", ".join(str(y) for y in years) if years else "год н/д"
+                summary = (
+                    f"{label} — {cls._MONTHS_GENITIVE[month]} "
+                    f"({years_txt}, {len(items)} заказ.)"
+                )
+            patterns.append(
+                {
+                    "month": month,
+                    "month_name": cls._MONTHS_GENITIVE[month],
+                    "years": years,
+                    "orders_in_month": len(items),
+                    "recurrent_yearly": recurrent,
+                    "occasion": label,
+                    "avg_check": avg_amount,
+                    "marketing_touch_window": touch,
+                    "summary": summary,
+                    "sample_positions": next(
+                        (i["positions"] for i in items if i.get("positions")), None
+                    ),
+                    "sample_comment": next(
+                        (i["comment"] for i in items if i.get("comment")), None
+                    ),
+                }
+            )
+
+        # Приоритет: ежегодные и «праздничные» месяцы сверху.
+        patterns.sort(
+            key=lambda p: (
+                0 if p.get("recurrent_yearly") else 1,
+                0 if p.get("occasion") and "сезон" not in str(p.get("occasion")) else 1,
+                -int(p.get("orders_in_month") or 0),
+            )
+        )
+        return patterns
+
     @classmethod
     def _collect_intent_text(cls, row: dict[str, Any]) -> str:
         parts = [collect_client_comments(row).lower()]
         for msg in row.get("_messenger_context") or []:
             parts.append(str(msg.get("text") or "").lower())
+        for key in ("Группы", "Теги", "Саммари", "Дата рождения"):
+            val = row.get(key)
+            if val:
+                parts.append(str(val).lower())
         return " ".join(parts)
 
     @classmethod
-    def _heuristic_intent_summary(cls, row: dict[str, Any]) -> str | None:
-        """Саммари: события и intent покупки из комментариев и переписки."""
+    def _parse_month_day_from_text(cls, text: str) -> tuple[int | None, int | None]:
+        match = cls._DATE_IN_TEXT_RE.search(text or "")
+        if match:
+            day = int(match.group("d"))
+            month = int(match.group("m"))
+            if 1 <= month <= 12 and 1 <= day <= 31:
+                return month, day
+        lowered = (text or "").lower()
+        for stem, month in cls._MONTH_NAME_TO_NUM.items():
+            if stem == "ма":
+                if re.search(r"\bмая\b|\bмай\b|\bмае\b", lowered):
+                    return month, None
+                continue
+            if stem in lowered:
+                return month, None
+        return None, None
+
+    @classmethod
+    def _month_from_order_dates(cls, row: dict[str, Any]) -> int | None:
+        """Частый месяц заказов (если один доминирует) — кандидат месяца события."""
+        months: list[int] = []
+        for order in row.get("_orders_context") or []:
+            raw = str(order.get("Дата") or order.get("Момент времени") or "")
+            dt_month, _ = cls._parse_month_day_from_text(raw)
+            if dt_month:
+                months.append(dt_month)
+                continue
+            # ISO / YYYY-MM-DD
+            iso = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw)
+            if iso:
+                months.append(int(iso.group(2)))
+        if not months:
+            return None
+        from collections import Counter
+
+        month, count = Counter(months).most_common(1)[0]
+        if count >= 2 or len(months) == 1:
+            return month
+        return None
+
+    @classmethod
+    def _dated_event_labels(cls, row: dict[str, Any]) -> list[str]:
+        """События с календарной привязкой (месяц/день), без «голых» ярлыков."""
         text = cls._collect_intent_text(row)
-        if not text.strip():
+        labels: list[str] = []
+        birthday_date = str(row.get("Дата рождения") or "").strip()
+        b_month, b_day = cls._parse_month_day_from_text(birthday_date)
+        order_month = cls._month_from_order_dates(row)
+
+        for keywords, label in cls._EVENT_HINTS:
+            if not any(k in text for k in keywords):
+                continue
+            if label == "8 марта":
+                labels.append("8 марта")
+                continue
+            if label == "14 февраля":
+                labels.append("14 февраля")
+                continue
+            if label == "1 сентября":
+                labels.append("1 сентября")
+                continue
+            if label == "Новый год":
+                labels.append("Новый год (декабрь)")
+                continue
+            if label == "день рождения":
+                month, day = b_month, b_day
+                if month is None:
+                    # дата рядом с упоминанием ДР в тексте
+                    for chunk in re.split(r"[.;\n]", text):
+                        if any(k in chunk for k in keywords):
+                            month, day = cls._parse_month_day_from_text(chunk)
+                            if month:
+                                break
+                if month is None:
+                    month = order_month
+                if month and day:
+                    labels.append(f"день рождения — {day} {cls._MONTHS_GENITIVE[month]}")
+                elif month:
+                    labels.append(
+                        f"день рождения — {cls._MONTHS_GENITIVE[month]} "
+                        f"(день не найден в данных)"
+                    )
+                else:
+                    labels.append("день рождения — месяц не найден в данных")
+                continue
+            # свадьба / годовщина / др. — месяц из текста или заказов
+            month, day = cls._parse_month_day_from_text(text)
+            if month is None:
+                month = order_month
+            if month and day:
+                labels.append(f"{label} — {day} {cls._MONTHS_GENITIVE[month]}")
+            elif month:
+                labels.append(f"{label} — {cls._MONTHS_GENITIVE[month]}")
+            else:
+                labels.append(f"{label} — месяц не найден в данных")
+
+        # Сегмент вида «событие марта»
+        groups = str(row.get("Группы") or "").lower()
+        for stem, month in cls._MONTH_NAME_TO_NUM.items():
+            if stem == "ма":
+                pattern = r"событие\s+мая\b"
+            else:
+                pattern = rf"событие\s+{stem}"
+            if re.search(pattern, groups):
+                label = f"событие — {cls._MONTHS_GENITIVE[month]}"
+                if label not in labels and not any("событие —" in x for x in labels):
+                    labels.append(label)
+
+        # История заказов: паттерны по месяцам / повторам лет.
+        for pattern in cls.build_order_marketing_patterns(row):
+            summary = str(pattern.get("summary") or "").strip()
+            if summary:
+                labels.append(summary)
+
+        return list(dict.fromkeys(labels))
+
+    @classmethod
+    def _preference_labels(cls, row: dict[str, Any]) -> list[str]:
+        text = cls._collect_intent_text(row)
+        for order in row.get("_orders_context") or []:
+            text += " " + str(order.get("Позиции") or "").lower()
+            text += " " + str(order.get("Комментарий") or "").lower()
+        prefs: list[str] = []
+        for keywords, label in cls._PREF_HINTS:
+            if any(k in text for k in keywords):
+                prefs.append(label)
+        return list(dict.fromkeys(prefs))
+
+    @classmethod
+    def _heuristic_intent_summary(cls, row: dict[str, Any]) -> str | None:
+        """Саммари: события с календарём, intent и предпочтения."""
+        text = cls._collect_intent_text(row)
+        has_orders = bool(row.get("_orders_context") or row.get("_messenger_context"))
+        if not text.strip() and not has_orders:
             return None
 
-        events: list[str] = []
-        for keywords, label in cls._EVENT_HINTS:
-            if any(k in text for k in keywords):
-                events.append(label)
-
+        events = cls._dated_event_labels(row)
+        order_patterns = cls.build_order_marketing_patterns(row)
         intents: list[str] = []
         for keywords, label in cls._INTENT_HINTS:
             if any(k in text for k in keywords):
                 intents.append(label)
+        for pattern in order_patterns:
+            occ = str(pattern.get("occasion") or "")
+            if "свадьба" in occ.lower():
+                intents.append("подарок на свадьбу")
+            if "корпоратив" in occ.lower() or "Новый год" in occ:
+                intents.append("корпоративный / праздничный заказ")
+            if "8 марта" in occ:
+                intents.append("подарок к 8 марта")
+        prefs = cls._preference_labels(row)
 
         parts: list[str] = []
         if events:
-            parts.append(f"Поводы: {', '.join(dict.fromkeys(events))}.")
+            parts.append(f"События по заказам: {'; '.join(events[:6])}.")
         if intents:
             parts.append(f"Intent: {', '.join(dict.fromkeys(intents))}.")
+        if prefs:
+            parts.append(f"Предпочтения: {', '.join(prefs)}.")
+        marketing_windows = [
+            f"{p['occasion']}: касание {p['marketing_touch_window']}"
+            + (f", чек ~{p['avg_check']} р." if p.get("avg_check") else "")
+            for p in order_patterns[:4]
+            if p.get("marketing_touch_window")
+        ]
+        if marketing_windows:
+            parts.append("Маркетинг: " + "; ".join(marketing_windows) + ".")
 
         recipient = row.get("Заказчик или получатель")
         if recipient and str(recipient).strip():
@@ -531,33 +905,133 @@ class SegmentationService:
 
         if parts:
             return " ".join(parts)
-        if row.get("_orders_context") or row.get("_messenger_context"):
-            return "Повод покупки не определён из доступных комментариев и переписки."
+        if has_orders:
+            return "Повод покупки не определён из истории заказов, комментариев и переписки."
         return None
 
     @classmethod
+    def _offer_window_for_month(cls, month: int | None, day: int | None = None) -> str:
+        if not month:
+            return "уточнить точную дату события, затем поставить касание за 5–7 дней"
+        month_prep = cls._MONTHS_PREPOSITIONAL[month]
+        prev_month = 12 if month == 1 else month - 1
+        if day:
+            return (
+                f"касание в конце {cls._MONTHS_GENITIVE[prev_month]} "
+                f"или за 5–7 дней до {day} {cls._MONTHS_GENITIVE[month]}"
+            )
+        return f"касание в конце {cls._MONTHS_GENITIVE[prev_month]} / в начале {month_prep}"
+
+    @classmethod
     def _heuristic_recommendation(cls, row: dict[str, Any]) -> str | None:
-        """Практическая рекомендация оператору: оффер и тайминг."""
+        """Практическая рекомендация оператору: оффер, календарный тайминг, канал."""
         tags = str(row.get("Теги") or "").lower()
         summary = str(row.get("Саммари") or "").lower()
         text = f"{tags} {summary} {cls._collect_intent_text(row)}"
+        contact = "Telegram" if row.get("ТГ ник") else ("WhatsApp" if row.get("Телефон") else "телефон")
+        prefs = cls._preference_labels(row)
+        offer_style = (
+            prefs[0] if prefs else "букет в привычном среднем чеке клиента"
+        )
         hints: list[str] = []
 
-        if any(k in text for k in ("день рождения", "др ", "birthday", "#деньрождения")):
-            hints.append("Напомнить о букете ко дню рождения за 3–5 дней и предложить готовый вариант с доставкой.")
-        if any(k in text for k in ("8 марта", "8марта", "#8марта")):
-            hints.append("За 7–10 дней до 8 марта отправить персональное предложение с акцентом на любимые цветы.")
-        if any(k in text for k in ("14 февраля", "валентин")):
-            hints.append("Предложить романтический букет с доставкой к точному времени.")
+        events = cls._dated_event_labels(row)
+        birthday_hit = any("день рождения" in e for e in events) or any(
+            k in text for k in ("день рождения", "др ", "birthday", "#деньрождения")
+        )
+        if birthday_hit:
+            month = day = None
+            for label in events:
+                if "день рождения" not in label:
+                    continue
+                month, day = cls._parse_month_day_from_text(label.replace("—", " "))
+                if month is None:
+                    # «дня рождения — марта»
+                    for stem, num in cls._MONTH_NAME_TO_NUM.items():
+                        if stem != "ма" and stem in label:
+                            month = num
+                            break
+                        if stem == "ма" and re.search(r"\bмая\b", label):
+                            month = num
+                            break
+                break
+            if month is None:
+                b_month, b_day = cls._parse_month_day_from_text(str(row.get("Дата рождения") or ""))
+                month, day = b_month, b_day
+            if month is None:
+                month = cls._month_from_order_dates(row)
+            window = cls._offer_window_for_month(month, day)
+            if month and day:
+                hints.append(
+                    f"К ДР ({day} {cls._MONTHS_GENITIVE[month]}): {window}; "
+                    f"через {contact} предложить {offer_style} с доставкой."
+                )
+            elif month:
+                hints.append(
+                    f"К ДР в {cls._MONTHS_PREPOSITIONAL[month]}: {window}; "
+                    f"через {contact} предложить {offer_style} с доставкой."
+                )
+            else:
+                hints.append(
+                    f"Уточнить дату ДР (месяц не найден в данных), затем через {contact} "
+                    f"предложить {offer_style}; без даты не ставить шаблон «за 3 дня»."
+                )
+
+        if any(k in text for k in ("8 марта", "8марта", "#8марта")) or any(
+            "8 марта" in e for e in events
+        ):
+            hints.append(
+                f"1–5 марта через {contact} отправить персональное предложение к 8 марта "
+                f"({offer_style})."
+            )
+        if any(k in text for k in ("14 февраля", "валентин")) or any(
+            "14 февраля" in e for e in events
+        ):
+            hints.append(
+                f"5–12 февраля через {contact} предложить романтический букет "
+                f"с доставкой к точному времени."
+            )
+
+        # «событие <месяц>» без ДР
+        for label in events:
+            if not label.startswith("событие —") and "годовщина" not in label and "свадьба" not in label:
+                continue
+            month, day = cls._parse_month_day_from_text(label)
+            if month is None:
+                for stem, num in cls._MONTH_NAME_TO_NUM.items():
+                    if stem != "ма" and stem in label:
+                        month = num
+                        break
+                    if stem == "ма" and re.search(r"\bмая\b", label):
+                        month = num
+                        break
+            if month and not birthday_hit:
+                hints.append(
+                    f"К событию в {cls._MONTHS_PREPOSITIONAL[month]}: "
+                    f"{cls._offer_window_for_month(month, day)}; через {contact} — {offer_style}."
+                )
+
+        # Маркетинговые окна прямо из истории заказов (декабрь, март, …).
+        for pattern in cls.build_order_marketing_patterns(row)[:3]:
+            occ = str(pattern.get("occasion") or "сезон")
+            touch = pattern.get("marketing_touch_window") or ""
+            avg = pattern.get("avg_check")
+            budget = f" бюджет ~{avg} р." if avg else ""
+            years = pattern.get("years") or []
+            years_txt = f" (было: {', '.join(str(y) for y in years)})" if years else ""
+            hint = (
+                f"{touch}: предложить через {contact} под «{occ}»{years_txt}{budget}."
+            )
+            hints.append(hint)
+
         if "#vip" in tags or row.get("ВИП") == "да":
-            hints.append("Сделать персональное VIP-предложение с премиум-составом и приоритетной доставкой.")
+            hints.append("VIP: персональный премиум-подбор и приоритетная доставка.")
         if "#проблемный" in tags:
             hints.append("Связаться лично, уточнить прошлый опыт и предложить компенсационный букет.")
         if "#доволен" in tags:
             hints.append("Поблагодарить и предложить бонус на следующий заказ в любимом стиле.")
 
         channel = row.get("Канал продаж") or ""
-        contact = "Telegram" if row.get("ТГ ник") else ("WhatsApp" if row.get("Телефон") else "телефон")
         if not hints:
             try:
                 orders = int(row.get("Всего заказов") or row.get("_orders_count") or 0)
