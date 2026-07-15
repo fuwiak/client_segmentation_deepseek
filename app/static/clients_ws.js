@@ -3,6 +3,7 @@
   var sinceSeq = 0;
   var pollIntervalMs = 2500;
   var COLUMN_ORDER_KEY = "clients_table_column_order";
+  var COLUMN_HIDDEN_KEY = "clients_table_hidden_columns";
 
   function esc(text) {
     var d = document.createElement("div");
@@ -150,15 +151,73 @@
     var next = mergeColumnOrder(order, current);
     var theadRow = table.querySelector("thead tr");
     if (!theadRow) return;
-    var actionsTh = theadRow.querySelector("th.actions-col");
     next.forEach(function (col) {
-      moveColumnNode(theadRow, col, actionsTh);
+      moveColumnNode(theadRow, col, null);
     });
     table.querySelectorAll("tbody tr").forEach(function (row) {
-      var actionsTd = row.querySelector("td.actions-cell");
       next.forEach(function (col) {
-        moveColumnNode(row, col, actionsTd);
+        moveColumnNode(row, col, null);
       });
+    });
+  }
+
+  function loadHiddenColumns() {
+    try {
+      var raw = localStorage.getItem(COLUMN_HIDDEN_KEY);
+      if (!raw) return [];
+      var hidden = JSON.parse(raw);
+      return Array.isArray(hidden) ? hidden : [];
+    } catch (_err) {
+      return [];
+    }
+  }
+
+  function saveHiddenColumns(hidden) {
+    try {
+      localStorage.setItem(COLUMN_HIDDEN_KEY, JSON.stringify(hidden));
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  function applyColumnVisibility(table, hidden) {
+    var hideSet = {};
+    (hidden || []).forEach(function (col) {
+      hideSet[col] = true;
+    });
+    table.querySelectorAll("th[data-col], td[data-col]").forEach(function (cell) {
+      var col = cell.getAttribute("data-col");
+      if (!col) return;
+      cell.classList.toggle("col-hidden", !!hideSet[col]);
+    });
+    var panel = document.getElementById("columns-picker-panel");
+    if (!panel) return;
+    panel.querySelectorAll(".col-visibility-toggle").forEach(function (input) {
+      var col = input.getAttribute("data-col");
+      input.checked = !hideSet[col];
+    });
+  }
+
+  function initColumnVisibility(table) {
+    var hidden = loadHiddenColumns();
+    applyColumnVisibility(table, hidden);
+    var panel = document.getElementById("columns-picker-panel");
+    if (!panel || panel.dataset.visInit === "1") return;
+    panel.dataset.visInit = "1";
+    panel.addEventListener("change", function (e) {
+      var input = e.target;
+      if (!input || !input.classList || !input.classList.contains("col-visibility-toggle")) return;
+      var nextHidden = [];
+      panel.querySelectorAll(".col-visibility-toggle").forEach(function (el) {
+        if (!el.checked) nextHidden.push(el.getAttribute("data-col"));
+      });
+      // Нельзя скрыть все колонки.
+      if (nextHidden.length >= currentColumnOrder(table).length) {
+        input.checked = true;
+        return;
+      }
+      saveHiddenColumns(nextHidden);
+      applyColumnVisibility(table, nextHidden);
     });
   }
 
@@ -226,7 +285,10 @@
     var block = document.getElementById("clients-table-block");
     if (!block) return;
     var table = block.querySelector(".clients-table");
-    if (table) initColumnDragDrop(table);
+    if (table) {
+      initColumnDragDrop(table);
+      initColumnVisibility(table);
+    }
   }
 
   window.initClientsPage = function () {

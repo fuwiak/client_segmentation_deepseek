@@ -146,17 +146,30 @@ class BackgroundJobService:
             }
         )
 
-    def pending_ai_rows(self, hub: DataHub) -> list[dict[str, Any]]:
-        """Строки без завершённой AI-обработки."""
+    def pending_ai_rows(
+        self,
+        hub: DataHub,
+        rows: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Строки без завершённой AI-обработки. Если rows задан — только среди них."""
         results_by_key = {_row_key(r): r for r in hub.results}
         pending: list[dict[str, Any]] = []
-        base_rows = hub.parsed.rows if hub.parsed and hub.parsed.rows else hub.results
+        if rows is not None:
+            base_rows = rows
+        else:
+            base_rows = hub.parsed.rows if hub.parsed and hub.parsed.rows else hub.results
         for row in base_rows:
             key = _row_key(row)
             merged = results_by_key.get(key, row)
             if not merged.get("_ai_processed"):
                 pending.append(dict(row))
         return pending
+
+    def pending_ai_count(self) -> int:
+        """Дешёвый счётчик из текущего прогресса (без скана всей базы)."""
+        if self.ai_progress.status == "running":
+            return max(0, self.ai_progress.total - self.ai_progress.done)
+        return 0
 
     def _hub_merged_rows(self, hub: DataHub) -> list[dict[str, Any]]:
         results_by_key = {_row_key(r): r for r in hub.results}
@@ -231,23 +244,35 @@ class BackgroundJobService:
         cache: Any,
         messenger_attach: Callable[[list[dict[str, Any]]], Any] | None = None,
         force: bool = False,
+        rows: list[dict[str, Any]] | None = None,
     ) -> bool:
-        """Запустить lazy AI в фоне, если есть необработанные строки."""
+        """Запустить lazy AI в фоне. rows=None — вся база; иначе только переданные строки."""
         if not settings.ai_auto_segment:
             pipeline_log("AI", "lazy schedule skipped ai_auto_segment=false")
             return False
-        pending = self.pending_ai_rows(hub)
+        pending = self.pending_ai_rows(hub, rows=rows)
         if not pending:
-            if self.ai_progress.status == "running":
+            if self.ai_progress.status == "running" and rows is None:
                 self.ai_progress.status = "done"
                 self.ai_progress.done = self.ai_progress.total
                 await self.broadcast_progress()
-            pipeline_log("AI", "lazy schedule skipped pending=0 status=%s", self.ai_progress.status)
+            pipeline_log(
+                "AI",
+                "lazy schedule skipped pending=0 status=%s scope=%s",
+                self.ai_progress.status,
+                "page" if rows is not None else "full",
+            )
             return False
         if self._ai_task and not self._ai_task.done() and not force:
             pipeline_log("AI", "lazy schedule skipped already_running pending=%s", len(pending))
             return False
-        pipeline_log("AI", "lazy schedule start pending=%s force=%s", len(pending), force)
+        pipeline_log(
+            "AI",
+            "lazy schedule start pending=%s force=%s scope=%s",
+            len(pending),
+            force,
+            "page" if rows is not None else "full",
+        )
         self._ai_task = asyncio.create_task(
             self._run_lazy_ai(hub, settings, cache, pending, messenger_attach)
         )
@@ -293,7 +318,7 @@ class BackgroundJobService:
 
                 from app.services.segmentation import SegmentationService
 
-                await self.fill_missing_gender(hub, settings, cache)
+                # Пол gender по всей базе дорогой — только строки текущего прогона.
                 results_by_key = {_row_key(r): r for r in hub.results}
                 rows = [
                     {**dict(row), **dict(results_by_key.get(_row_key(row), {}))}
@@ -327,7 +352,9 @@ class BackgroundJobService:
                         self.ai_progress.total,
                         self.ai_progress.done + len(finalized),
                     )
-                    await self._persist_and_notify(hub, cache, finalized)
+                    # Не пишем весь hub в Redis после каждого батча — только progress/WS.
+                    await self.broadcast_progress()
+                    await self.broadcast_rows(finalized)
                     pipeline_log(
                         "AI",
                         "lazy batch done offset=%s done=%s total=%s",
@@ -343,7 +370,8 @@ class BackgroundJobService:
                     "processed": len(hub.results or processed),
                 }
                 hub.meta = meta
-                await self._save_results(hub, cache)
+                if processed:
+                    await self._persist_and_notify(hub, cache, processed)
 
                 self.ai_progress.status = "done"
                 self.ai_progress.done = self.ai_progress.total

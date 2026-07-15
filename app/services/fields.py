@@ -154,12 +154,20 @@ def _order_channels_for_type(row: dict[str, Any]) -> list[str]:
 
 
 def sales_channel_type_from_channels(channels: list[str]) -> str:
-  """Прямые продажи только если каждый заказ из белого списка каналов."""
+  """Тип по набору каналов: прямые / маркетплейс / смесь обоих."""
   if not channels:
     return SALES_CHANNEL_TYPE_DIRECT
+  has_direct = False
+  has_marketplace = False
   for channel in channels:
     if not channel or not is_direct_sales_channel(channel):
-      return SALES_CHANNEL_TYPE_MARKETPLACE
+      has_marketplace = True
+    else:
+      has_direct = True
+  if has_direct and has_marketplace:
+    return SALES_CHANNEL_TYPE_HYBRID
+  if has_marketplace:
+    return SALES_CHANNEL_TYPE_MARKETPLACE
   return SALES_CHANNEL_TYPE_DIRECT
 
 
@@ -167,11 +175,33 @@ def unique_sales_channels(row: dict[str, Any]) -> list[str]:
   """Уникальные каналы продаж клиента (из заказов и поля строки)."""
   seen: set[str] = set()
   result: list[str] = []
-  for ch in _order_channels(row):
-    key = ch.lower()
-    if key not in seen and not _looks_like_sales_type_label(ch):
+
+  def _add(raw: Any) -> None:
+    if raw is None:
+      return
+    text = str(raw).strip()
+    if not text or _looks_like_sales_type_label(text):
+      return
+    for part in text.split(","):
+      ch = part.strip()
+      if not ch or _looks_like_sales_type_label(ch):
+        continue
+      key = ch.lower()
+      if key in seen:
+        continue
       seen.add(key)
       result.append(ch)
+
+  for order in row.get("_orders_context") or []:
+    _add(order.get("Канал продаж"))
+  stored_all = row.get("_order_channels_all")
+  if isinstance(stored_all, list):
+    for ch in stored_all:
+      _add(ch)
+  if not result:
+    for ch in _order_channels(row):
+      _add(ch)
+  _add(row.get("Канал продаж"))
   return result
 
 
@@ -180,7 +210,11 @@ def unique_sales_channel_types(row: dict[str, Any]) -> list[str]:
   channels = _order_channels_for_type(row)
   if not channels:
     return []
-  return [sales_channel_type_from_channels(channels)]
+  label = sales_channel_type_from_channels(channels)
+  if label == SALES_CHANNEL_TYPE_HYBRID:
+    # Гибрид в облаке групп матчит «маркетплейс» (как раньше для смеси каналов).
+    return [SALES_CHANNEL_TYPE_HYBRID, SALES_CHANNEL_TYPE_MARKETPLACE]
+  return [label]
 
 
 def sales_channel_type_for_row(row: dict[str, Any]) -> str:
@@ -198,11 +232,16 @@ def _parse_date(value: Any) -> datetime | None:
   if isinstance(value, datetime):
     return value
   text = str(value).strip()
-  for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+  for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
     try:
-      return datetime.strptime(text[: len(fmt.replace("%", "0"))], fmt)
+      return datetime.strptime(text, fmt)
     except ValueError:
       continue
+  if "T" in text:
+    try:
+      return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+      pass
   try:
     return datetime.fromisoformat(text)
   except ValueError:
@@ -302,27 +341,30 @@ def last_order_date(row: dict[str, Any]) -> str | None:
       best = (dt, order)
   if best is None or best[0] is None:
     return None
-  return best[0].strftime("%d.%m.%Y %H:%M:%S")
+  return best[0].strftime("%d.%m.%Y")
+
+
+def format_last_order_date_display(value: Any) -> str | None:
+  """Дата последнего заказа без времени (для уже сохранённых значений с HH:MM:SS)."""
+  if value in (None, "", "—"):
+    return None
+  dt = _parse_date(value)
+  if dt is not None:
+    return dt.strftime("%d.%m.%Y")
+  text = str(value).strip()
+  if " " in text:
+    return text.split(" ", 1)[0]
+  return text or None
 
 
 def sales_channel_for_row(row: dict[str, Any]) -> str | None:
+  """Все уникальные каналы продаж клиента через запятую."""
+  channels = unique_sales_channels(row)
+  if channels:
+    return ", ".join(channels)
   channel = row.get("Канал продаж") or row.get("Тип канала продаж")
   if channel and not _looks_like_sales_type_label(str(channel)):
     return str(channel).strip()
-  orders = row.get("_orders_context") or []
-  best: tuple[datetime | None, dict[str, Any]] | None = None
-  for order in orders:
-    dt = _parse_date(order.get("Дата") or order.get("Момент времени"))
-    if best is None or (dt and (best[0] is None or dt > best[0])):
-      best = (dt, order)
-  if best is None:
-    return None
-  order = best[1]
-  raw = str(
-    order.get("Канал продаж") or order.get("Тип канала продаж") or ""
-  ).strip()
-  if raw and not _looks_like_sales_type_label(raw):
-    return raw
   return None
 
 
@@ -1109,7 +1151,7 @@ def enrich_row_computed(
 ) -> dict[str, Any]:
   """Добавляет вычисляемые поля к строке клиента."""
   enriched = dict(row)
-  channel = sales_channel_for_row(row)
+  channel = sales_channel_for_row(enriched)
   if channel:
     enriched["Канал продаж"] = channel
   sales_type = sales_channel_type_for_row(enriched)
@@ -1119,8 +1161,9 @@ def enrich_row_computed(
   enriched["Статус"] = client_status_from_orders(enriched)
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
-  if not enriched.get("Дата последнего заказа"):
-    enriched["Дата последнего заказа"] = last_order_date(row)
+  computed_date = last_order_date(row)
+  stored_date = format_last_order_date_display(enriched.get("Дата последнего заказа"))
+  enriched["Дата последнего заказа"] = computed_date or stored_date
   if is_empty_cell(enriched.get("ТГ ник")):
     tg = extract_tg_nick_from_row(enriched, phone_username_map=phone_username_map)
     if tg:

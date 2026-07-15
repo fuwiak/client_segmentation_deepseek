@@ -20,7 +20,7 @@
 
   <header class="site-header">
     <div class="header-inner">
-      <a href="/" class="wordmark">Client <span class="wordmark-accent">CRM</span></a>
+      <a href="/clients" class="wordmark">Client <span class="wordmark-accent">CRM</span></a>
 
       <nav class="desktop-nav" aria-label="Основная навигация">
         {% include 'partials/nav_items.html' %}
@@ -59,10 +59,6 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Быстрая навигация">
-    <a href="/" data-nav-path="/" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'home' %}active{% endif %}">
-      <span class="bottom-nav-icon">⌂</span>
-      <span>Главная</span>
-    </a>
     <a href="/clients" data-nav-path="/clients" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
       <span class="bottom-nav-icon">👥</span>
       <span>Клиенты</span>

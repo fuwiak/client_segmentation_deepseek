@@ -20,6 +20,25 @@ def test_pending_ai_rows_skips_processed() -> None:
     assert jobs.pending_ai_rows(hub) == []
 
 
+def test_pending_ai_rows_scoped_to_page() -> None:
+    hub = DataHub()
+    hub.parsed = type(
+        "P",
+        (),
+        {
+            "rows": [
+                {"UUID": "1", "Наименование": "А"},
+                {"UUID": "2", "Наименование": "Б"},
+            ]
+        },
+    )()
+    jobs = BackgroundJobService()
+    page = [{"UUID": "2", "Наименование": "Б"}]
+    pending = jobs.pending_ai_rows(hub, rows=page)
+    assert len(pending) == 1
+    assert pending[0]["UUID"] == "2"
+
+
 def test_row_ws_patch_running_state() -> None:
     row = {"UUID": "abc", "Группы": "", "_ai_processed": False}
     patch = row_ws_patch(row)

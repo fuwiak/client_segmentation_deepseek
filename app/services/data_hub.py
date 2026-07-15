@@ -370,9 +370,11 @@ class DataHub:
     if sales_filter == "marketplace":
       rows = [r for r in rows if "маркетплейс" in row_sales_type_filter_value(r)]
     elif sales_filter == "direct":
+      # Только чистые прямые; гибрид (есть маркетплейс) остаётся во вкладке Маркетплейс.
       rows = [
         r for r in rows
         if "прямы" in row_sales_type_filter_value(r)
+        and "маркетплейс" not in row_sales_type_filter_value(r)
       ]
     if group:
       rows = [

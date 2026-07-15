@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     ai_timeout_seconds: int = 120
     ai_auto_segment: bool = True
     ai_lazy_batch_size: int = 5
+    # Полная AI-прокачка всей базы на старте — дорого; по умолчанию только активная страница.
+    ai_lazy_full_on_startup: bool = False
 
     enrichment_chat_limit: int = 50
     enrichment_batch_size: int = 5

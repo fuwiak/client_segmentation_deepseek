@@ -504,7 +504,11 @@ async def _attach_messenger_for_ai(rows: list[dict[str, Any]]) -> list[dict[str,
     return rows
 
 
-async def _schedule_lazy_ai(*, force: bool = False) -> None:
+async def _schedule_lazy_ai(
+  *,
+  force: bool = False,
+  rows: list[dict[str, Any]] | None = None,
+) -> None:
   if not hub.has_data():
     pipeline_log("AI", "lazy schedule skipped has_data=false force=%s", force)
     return
@@ -514,15 +518,24 @@ async def _schedule_lazy_ai(*, force: bool = False) -> None:
     cache=cache,
     messenger_attach=_attach_messenger_for_ai,
     force=force,
+    rows=rows,
   )
   pipeline_log(
     "AI",
-    "lazy schedule done started=%s force=%s pending=%s status=%s",
+    "lazy schedule done started=%s force=%s scope=%s pending=%s status=%s",
     started,
     force,
-    len(jobs.pending_ai_rows(hub)),
+    "page" if rows is not None else "full",
+    len(jobs.pending_ai_rows(hub, rows=rows)),
     jobs.ai_snapshot().get("status"),
   )
+
+
+async def _schedule_page_lazy_ai(page_clients: list[dict[str, Any]]) -> None:
+  """AI только для видимой страницы таблицы — без фоновой прокачки всей базы."""
+  if not page_clients:
+    return
+  await _schedule_lazy_ai(rows=page_clients)
 
 
 async def _startup_background() -> None:
@@ -544,7 +557,10 @@ async def _startup_background() -> None:
     if hub.has_data():
       await jobs.fill_missing_tg_nick(hub, cache)
       await jobs.fill_missing_gender(hub, settings, cache)
-    await _schedule_lazy_ai()
+    if settings.ai_lazy_full_on_startup:
+      await _schedule_lazy_ai()
+    else:
+      pipeline_log("AI", "startup full lazy skipped; AI runs per visible clients page")
   except Exception:  # noqa: BLE001 — фоновая инициализация не должна ронять процесс
     pipeline_log("PIPE", "startup background failed", level=logging.ERROR)
     logging.getLogger(__name__).exception("Startup background failed")
@@ -617,14 +633,12 @@ async def clients_websocket(websocket: WebSocket) -> None:
 
 @app.get("/clients/ai/status")
 async def clients_ai_status() -> JSONResponse:
-  pending = len(jobs.pending_ai_rows(hub)) if hub.has_data() else 0
-  return JSONResponse({**jobs.ai_snapshot(), "pending": pending})
+  return JSONResponse({**jobs.ai_snapshot(), "pending": jobs.pending_ai_count()})
 
 
 @app.get("/clients/ai/poll")
 async def clients_ai_poll(since: int = Query(0, ge=0)) -> JSONResponse:
-  pending = len(jobs.pending_ai_rows(hub)) if hub.has_data() else 0
-  return JSONResponse({**jobs.poll_snapshot(since), "pending": pending})
+  return JSONResponse({**jobs.poll_snapshot(since), "pending": jobs.pending_ai_count()})
 
 
 @app.post("/clients/ai/start", response_class=HTMLResponse)
@@ -1038,21 +1052,23 @@ async def clients_page(
   )
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
+  ctx = await _clients_ctx_with_tg(
+    request,
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+    page=page,
+  )
+  asyncio.create_task(_schedule_page_lazy_ai(list(ctx.get("clients") or [])))
   return templates.TemplateResponse(
     "clients.html",
     {
-      **(await _clients_ctx_with_tg(
-        request,
-        sales_filter=filter,
-        tag=tag,
-        group=group,
-        status=status,
-        q=q,
-        phone=phone,
-        sort=sort,
-        order=order,
-        page=page,
-      )),
+      **ctx,
       "active_page": "clients",
       "page_title": "Клиенты",
       "subtitle": "AI-база с фильтрами и раскрытием заказов",
@@ -1076,20 +1092,22 @@ async def clients_table_partial(
   pipeline_log("PIPE", "partial clients_table filter=%s page=%s sort=%s order=%s", filter, page, sort or "-", order)
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
+  ctx = await _clients_ctx_with_tg(
+    request,
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+    page=page,
+  )
+  asyncio.create_task(_schedule_page_lazy_ai(list(ctx.get("clients") or [])))
   return templates.TemplateResponse(
     "partials/clients_table.html",
-    await _clients_ctx_with_tg(
-      request,
-      sales_filter=filter,
-      tag=tag,
-      group=group,
-      status=status,
-      q=q,
-      phone=phone,
-      sort=sort,
-      order=order,
-      page=page,
-    ),
+    ctx,
   )
 
 

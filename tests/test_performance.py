@@ -74,15 +74,18 @@ def test_segment_page_does_not_sync_moysklad() -> None:
     assert 'id="page-content"' in response.text
 
 
-def test_home_page_shows_title_and_active_nav() -> None:
+def test_home_page_shows_title_and_nav_without_extra_tabs() -> None:
   import app.main as m
 
   client = TestClient(m.app)
   response = client.get("/")
   assert response.status_code == 200
   assert "<h1>Главная</h1>" in response.text
-  assert 'data-nav-path="/" preload="mouseover" class="nav-item active"' in response.text
-  assert 'data-nav-path="/" preload="mouseover" class="bottom-nav-item active"' in response.text
+  assert 'data-nav-path="/clients"' in response.text
+  assert 'data-nav-path="/dashboard"' in response.text
+  # Desktop + mobile nav_items: только Клиенты и Дашборд (по 2 = 4 nav-item).
+  assert response.text.count('class="nav-item') == 4
+  assert response.text.count('class="bottom-nav-item') == 2
 
 
 def test_home_page_shows_diag_panel_for_import_and_settings() -> None:
@@ -95,7 +98,6 @@ def test_home_page_shows_diag_panel_for_import_and_settings() -> None:
   assert "Импорт Excel" in response.text
   assert "Настройки" in response.text
   assert 'data-nav-path="/segment"' in response.text
-  assert 'class="nav-item active"' in response.text
   assert "Импорт</a>" not in response.text.split("diag-panel-nav")[0]
 
 
@@ -250,17 +252,17 @@ def test_htmx_navigation_request_without_boost_header_returns_fragment() -> None
   assert '<script src=' not in response.text
 
 
-def test_clients_page_skips_relink_and_lazy_ai() -> None:
+def test_clients_page_skips_relink_and_schedules_page_ai() -> None:
   import app.main as m
 
   with patch.object(m.hub, "relink_orders") as relink_mock, patch.object(
-    m, "_schedule_lazy_ai", new_callable=AsyncMock
-  ) as lazy_ai_mock:
+    m, "_schedule_page_lazy_ai", new_callable=AsyncMock
+  ) as page_ai_mock:
     client = TestClient(m.app)
     response = client.get("/clients")
     assert response.status_code == 200
     relink_mock.assert_not_called()
-    lazy_ai_mock.assert_not_called()
+    page_ai_mock.assert_called()
 
 
 def test_clients_toolbar_buttons_have_click_feedback_markup() -> None:
@@ -316,8 +318,8 @@ def test_client_card_drawer_tolerates_non_numeric_order_count() -> None:
     )
   assert response.status_code == 200
   assert "Все заказы (1)" in response.text
-  assert 'hx-target="#client-orders-list"' in response.text
-  assert 'class="btn secondary small client-orders-expand-btn"' in response.text
+  assert 'hx-get="/clients/cp-drawer/orders?modal=1"' in response.text
+  assert "orders-modal-btn" in response.text
   assert "rules-drawer-header" in response.text
 
 

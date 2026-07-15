@@ -71,7 +71,7 @@ def test_direct_sales_channels() -> None:
         assert sales_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
 
 
-def test_sales_channel_type_marketplace_if_any_order_not_direct() -> None:
+def test_sales_channel_type_hybrid_when_direct_and_marketplace() -> None:
     row = {
         "UUID": "1",
         "_orders_context": [
@@ -80,7 +80,36 @@ def test_sales_channel_type_marketplace_if_any_order_not_direct() -> None:
         ],
         "_order_channels_all": ["Ozon", "Витрина"],
     }
-    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_MARKETPLACE
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
+
+
+def test_sales_channel_lists_all_unique_channels() -> None:
+    from app.services.fields import enrich_row_computed, sales_channel_for_row
+
+    row = {
+        "UUID": "1",
+        "_orders_context": [
+            {"Канал продаж": "Витрина", "Дата": "01.01.2026"},
+            {"Канал продаж": "Ozon", "Дата": "02.01.2026"},
+            {"Канал продаж": "Витрина", "Дата": "03.01.2026"},
+        ],
+        "_order_channels_all": ["Витрина", "Ozon", "Витрина"],
+    }
+    assert sales_channel_for_row(row) == "Витрина, Ozon"
+    enriched = enrich_row_computed(row)
+    assert enriched["Канал продаж"] == "Витрина, Ozon"
+    assert enriched["Тип канала продаж"] == SALES_CHANNEL_TYPE_HYBRID
+
+
+def test_last_order_date_without_time() -> None:
+    from app.services.fields import last_order_date
+
+    row = {
+        "_orders_context": [
+            {"Дата": "15.03.2026 18:30:00", "Канал продаж": "Витрина"},
+        ],
+    }
+    assert last_order_date(row) == "15.03.2026"
 
 
 def test_sales_channel_type_direct_only_for_whitelist_channels() -> None:
@@ -97,10 +126,18 @@ def test_sales_channel_type_direct_only_for_whitelist_channels() -> None:
     assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_DIRECT
 
 
-def test_sales_channel_type_marketplace_for_missing_channel() -> None:
+def test_sales_channel_type_hybrid_for_missing_channel_with_direct() -> None:
     row = {
         "UUID": "3",
         "_order_channels_all": ["Витрина", ""],
+    }
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
+
+
+def test_sales_channel_type_marketplace_for_only_missing_channel() -> None:
+    row = {
+        "UUID": "3b",
+        "_order_channels_all": ["", ""],
     }
     assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_MARKETPLACE
 

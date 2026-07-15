@@ -1,6 +1,20 @@
 {% from 'partials/ai_cell.html' import render as ai_cell %}
 {% from 'partials/ai_tags.html' import render as ai_tags %}
 <div class="table-wrap">
+  <div class="clients-columns-toolbar">
+    <details class="columns-picker">
+      <summary class="btn-text columns-picker-toggle">Колонки</summary>
+      <div class="columns-picker-panel" id="columns-picker-panel">
+        <p class="hint columns-picker-hint">Перетащите заголовок для порядка · снимите галочку чтобы скрыть</p>
+        {% for col in client_columns %}
+        <label class="columns-picker-item">
+          <input type="checkbox" class="col-visibility-toggle" data-col="{{ col }}" checked>
+          <span>{{ col }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
   <table class="clients-table clients-table-wide">
     <thead>
       <tr>
@@ -33,7 +47,6 @@
           {% endif %}
         </th>
         {% endfor %}
-        <th class="actions-col"></th>
       </tr>
     </thead>
     <tbody>
@@ -42,14 +55,23 @@
       {% set cid_url = client_url_id(row) %}
       <tr data-client-id="{{ cid }}">
         {% for col in client_columns %}
-        <td{% if col in ('Группы', 'Теги') %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% endif %} data-col="{{ col }}">
+        <td{% if col in ('Группы', 'Теги') %} class="tags-cell"{% elif col == 'TG conversation' %} class="tg-conv-cell"{% elif col == 'Наименование' %} class="name-cell"{% endif %} data-col="{{ col }}">
           {% set value = client_cell_value(row, col) %}
           {% if col == 'Наименование' %}
-          <button type="button" class="client-name-link"
-                  hx-boost="false"
-                  hx-get="/clients/{{ cid_url }}?drawer=1"
-                  hx-target="#client-drawer-panel"
-                  hx-swap="innerHTML">{{ display_cell_value(value) }}</button>
+          <div class="name-with-orders">
+            <button type="button" class="client-name-link"
+                    hx-boost="false"
+                    hx-get="/clients/{{ cid_url }}?drawer=1"
+                    hx-target="#client-drawer-panel"
+                    hx-swap="innerHTML">{{ display_cell_value(value) }}</button>
+            <button type="button" class="btn-text orders-modal-btn"
+                    hx-boost="false"
+                    hx-push-url="false"
+                    hx-get="/clients/{{ cid_url }}/orders?modal=1"
+                    hx-target="#modal-root"
+                    hx-swap="innerHTML"
+                    onclick="prepareOrdersModal(event)">Заказы</button>
+          </div>
           {% elif col == 'TG conversation' %}
           <span class="tg-conv-badge" title="{{ value }}">{{ display_cell_value(value) }}</span>
           {% elif col == 'Средний чек' %}
@@ -67,20 +89,6 @@
           {% endif %}
         </td>
         {% endfor %}
-        <td class="actions-cell">
-          <button type="button" class="btn-text orders-modal-btn"
-                  hx-boost="false"
-                  hx-push-url="false"
-                  hx-get="/clients/{{ cid_url }}/orders?modal=1"
-                  hx-target="#modal-root"
-                  hx-swap="innerHTML"
-                  onclick="prepareOrdersModal(event)">Заказы</button>
-          <button type="button" class="btn-text client-name-link"
-                  hx-boost="false"
-                  hx-get="/clients/{{ cid_url }}?drawer=1"
-                  hx-target="#client-drawer-panel"
-                  hx-swap="innerHTML">Карточка</button>
-        </td>
       </tr>
       {% endfor %}
     </tbody>
