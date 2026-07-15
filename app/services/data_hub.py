@@ -151,7 +151,12 @@ class DataHub:
       else:
         base = [refresh_row_for_display(r) for r in self.parsed.rows]
       if self.results:
-        rows = merge_enriched_rows(base, self.results, key_fn=_row_key)
+        rows = merge_enriched_rows(
+          base,
+          self.results,
+          key_fn=_row_key,
+          refresh=not bool(self.parsed.meta.get("from_cache")),
+        )
       else:
         rows = base
     elif self.results:
@@ -164,6 +169,12 @@ class DataHub:
     self._active_rows_cache = (self._structure_version, rows)
     self._active_rows_by_key = {_row_key(row): row for row in rows}
     return rows
+
+  def dashboard_rows(self) -> list[dict[str, Any]]:
+    """Sales snapshot without expensive AI display/recommendation overlays."""
+    if self.parsed and self.parsed.rows:
+      return self.parsed.rows
+    return self.results
 
   def set_results(self, results: list[dict[str, Any]], meta: dict[str, Any]) -> None:
     self.results = [enrich_row_computed(r) for r in results]

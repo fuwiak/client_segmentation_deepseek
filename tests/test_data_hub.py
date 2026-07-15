@@ -68,6 +68,18 @@ def test_active_rows_merges_parsed_with_enrichment_overlay() -> None:
     assert rows[1]["Наименование"] == "Б"
 
 
+def test_dashboard_rows_use_source_snapshot_without_ai_merge() -> None:
+    hub = _sample_hub()
+    source_rows = hub.parsed.rows
+    hub.set_results(
+        [{"UUID": "1", "Наименование": "Анна", "Теги": "#vip"}],
+        {"processed": 1},
+    )
+
+    assert hub.dashboard_rows() is source_rows
+    assert hub.dashboard_rows()[0].get("Теги") is None
+
+
 def test_filter_rows_by_keyword_and_phone() -> None:
     hub = _sample_hub()
     by_name = hub.filter_rows(sales_filter="all", q="анна")

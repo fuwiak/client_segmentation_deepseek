@@ -452,6 +452,7 @@ def merge_enriched_rows(
     enriched: list[dict[str, Any]],
     *,
     key_fn: Any,
+    refresh: bool = True,
 ) -> list[dict[str, Any]]:
     from app.services.excel_parser import AI_EXTRA_COLUMNS, SEGMENT_COLUMNS
 
@@ -531,9 +532,9 @@ def merge_enriched_rows(
             if len(base_orders) > len(combined_orders):
                 combined["_orders_context"] = base_orders
                 combined["_orders_count"] = base.get("_orders_count") or len(base_orders)
-            merged.append(refresh_row_for_display(combined))
+            merged.append(refresh_row_for_display(combined) if refresh else combined)
         else:
-            merged.append(refresh_row_for_display(row))
+            merged.append(refresh_row_for_display(row) if refresh else row)
     return merged
 
 
