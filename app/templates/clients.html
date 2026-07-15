@@ -86,29 +86,12 @@
       <span class="btn-action-icon" aria-hidden="true">ⓘ</span> Правила AI
     </button>
   </div>
-  <p class="result-count">
-    {{ total }} клиентов{% if group_filter %} · группа: <strong>{{ group_filter }}</strong>{% endif %}{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}
-    {% if total > 0 %}
-      · показано {{ page_start }}–{{ page_end }}
-    {% endif %}
-  </p>
-  {% if total > 0 %}
-  {% include 'partials/clients_pagination.html' %}
-  {% endif %}
   <div id="clients-sync-status"></div>
   {% include 'partials/ai_progress.html' %}
   {% include 'partials/enrich_progress.html' %}
 </section>
 
-<section class="card" id="clients-table-block">
-  {% include 'partials/clients_table.html' %}
-</section>
-
-{% if total > 0 %}
-<section class="card pagination-card">
-  {% include 'partials/clients_pagination.html' %}
-</section>
-{% endif %}
+{% include 'partials/clients_page_frame.html' %}
 </div>
 
 {% endif %}

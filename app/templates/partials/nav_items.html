@@ -1,2 +1,2 @@
-<a href="/dashboard" data-nav-path="/dashboard" preload="mouseover" class="nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">Дашборд</a>
-<a href="/clients" data-nav-path="/clients" preload="mouseover" class="nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">Клиенты</a>
+<a href="/dashboard" data-nav-path="/dashboard" preload="mouseover always" hx-sync="#page-content:replace" class="nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">Дашборд</a>
+<a href="/clients" data-nav-path="/clients" preload="mouseover always" hx-sync="#page-content:replace" class="nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">Клиенты</a>

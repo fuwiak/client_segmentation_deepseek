@@ -1,9 +1,21 @@
-<nav class="pagination" aria-label="Страницы клиентов">
+{% macro page_link(target_page, css_class, label, title='') -%}
+  {% set query = build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=target_page) %}
+  <a href="/clients?{{ query }}"
+     hx-boost="false"
+     hx-get="/clients/page?{{ query }}"
+     hx-push-url="/clients?{{ query }}"
+     class="{{ css_class }}"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+
+<nav class="pagination" aria-label="Страницы клиентов"
+     hx-target="#clients-page-frame"
+     hx-select="#clients-page-frame"
+     hx-swap="outerHTML"
+     hx-sync="#clients-page-frame:replace"
+     preload="mouseover">
   {% if page > 1 %}
-  <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=1) }}"
-     class="btn secondary small pagination-btn" title="Первая">«</a>
-  <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=page - 1) }}"
-     class="btn secondary small pagination-btn" title="Назад">‹</a>
+  {{ page_link(1, 'btn secondary small pagination-btn', '«', 'Первая') }}
+  {{ page_link(page - 1, 'btn secondary small pagination-btn', '‹', 'Назад') }}
   {% else %}
   <span class="btn secondary small pagination-btn disabled" aria-disabled="true">«</span>
   <span class="btn secondary small pagination-btn disabled" aria-disabled="true">‹</span>
@@ -15,16 +27,13 @@
     {% elif p == page %}
     <span class="pagination-current" aria-current="page">{{ p }}</span>
     {% else %}
-    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=p) }}"
-       class="btn secondary small pagination-num">{{ p }}</a>
+    {{ page_link(p, 'btn secondary small pagination-num', p) }}
     {% endif %}
   {% endfor %}
 
   {% if page < total_pages %}
-  <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=page + 1) }}"
-     class="btn secondary small pagination-btn" title="Вперёд">›</a>
-  <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=total_pages) }}"
-     class="btn secondary small pagination-btn" title="Последняя">»</a>
+  {{ page_link(page + 1, 'btn secondary small pagination-btn', '›', 'Вперёд') }}
+  {{ page_link(total_pages, 'btn secondary small pagination-btn', '»', 'Последняя') }}
   {% else %}
   <span class="btn secondary small pagination-btn disabled" aria-disabled="true">›</span>
   <span class="btn secondary small pagination-btn disabled" aria-disabled="true">»</span>

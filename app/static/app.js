@@ -318,6 +318,7 @@
       target &&
       (target.id === "page-content" ||
         target.id === "clients-live-region" ||
+        target.id === "clients-page-frame" ||
         target.id === "settings-live-region")
     );
   }
@@ -366,6 +367,9 @@
     var elt = e.detail.elt;
     if (isLiveSwapTarget(target)) {
       document.documentElement.classList.add("is-navigating");
+      if (target.id === "clients-page-frame") {
+        target.setAttribute("aria-busy", "true");
+      }
     }
     if (isClientDrawerRequest(elt)) {
       showClientDrawerLoading();

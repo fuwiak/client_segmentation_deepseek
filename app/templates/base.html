@@ -59,11 +59,11 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Быстрая навигация">
-    <a href="/clients" data-nav-path="/clients" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
+    <a href="/clients" data-nav-path="/clients" preload="mouseover always" hx-sync="#page-content:replace" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
       <span class="bottom-nav-icon">👥</span>
       <span>Клиенты</span>
     </a>
-    <a href="/dashboard" data-nav-path="/dashboard" preload="mouseover" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
+    <a href="/dashboard" data-nav-path="/dashboard" preload="mouseover always" hx-sync="#page-content:replace" class="bottom-nav-item {% if active_page|default('') == 'dashboard' %}active{% endif %}">
       <span class="bottom-nav-icon">▦</span>
       <span>Дашборд</span>
     </a>

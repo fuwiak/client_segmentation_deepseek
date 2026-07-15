@@ -1,0 +1,21 @@
+<div id="clients-page-frame" aria-live="polite" aria-busy="false">
+  <p class="result-count">
+    {{ total }} клиентов{% if group_filter %} · группа: <strong>{{ group_filter }}</strong>{% endif %}{% if data_source == 'moysklad' %} · источник: Мой Склад{% endif %}
+    {% if total > 0 %}
+      · показано {{ page_start }}–{{ page_end }}
+    {% endif %}
+  </p>
+  {% if total > 0 %}
+  {% include 'partials/clients_pagination.html' %}
+  {% endif %}
+
+  <section class="card" id="clients-table-block">
+    {% include 'partials/clients_table.html' %}
+  </section>
+
+  {% if total > 0 %}
+  <section class="card pagination-card">
+    {% include 'partials/clients_pagination.html' %}
+  </section>
+  {% endif %}
+</div>

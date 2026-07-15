@@ -83,10 +83,11 @@ class RedisCache(CacheBackend):
         raw = await self._client.get(key)
         if raw is None:
             return None
-        return pickle.loads(raw)
+        return await asyncio.to_thread(pickle.loads, raw)
 
     async def set(self, key: str, value: Any, ttl: int) -> None:
-        await self._client.set(key, pickle.dumps(value), ex=ttl)
+        raw = await asyncio.to_thread(pickle.dumps, value, pickle.HIGHEST_PROTOCOL)
+        await self._client.set(key, raw, ex=ttl)
 
     async def ping(self) -> bool:
         try:

@@ -113,6 +113,7 @@ class BackgroundJobService:
         self._ai_lock = asyncio.Lock()
         self._poll_seq = 0
         self._poll_rows: list[dict[str, Any]] = []
+        self._ai_provider_circuit_open = False
 
     def ai_snapshot(self) -> dict[str, Any]:
         return self.ai_progress.to_dict()
@@ -331,17 +332,33 @@ class BackgroundJobService:
 
                 for i in range(0, len(rows), batch_size):
                     chunk = rows[i : i + batch_size]
+                    use_provider = bool(settings.openrouter_api_key) and not self._ai_provider_circuit_open
                     pipeline_log(
                         "AI",
                         "lazy batch start offset=%s size=%s provider=%s",
                         i,
                         len(chunk),
-                        "openrouter" if settings.openrouter_api_key else "heuristic",
+                        "openrouter" if use_provider else "heuristic",
                     )
-                    if settings.openrouter_api_key:
-                        chunk_results = await service.segment_all(chunk)
+                    if use_provider:
+                        # Segmentation contains CPU-heavy fallback heuristics. Run
+                        # the whole batch outside Uvicorn's request event loop.
+                        chunk_results = await asyncio.to_thread(
+                            lambda: asyncio.run(service.segment_all(chunk))
+                        )
+                        if chunk_results and all(
+                            not row.get("_ai_processed") for row in chunk_results
+                        ):
+                            self._ai_provider_circuit_open = True
+                            pipeline_log(
+                                "AI",
+                                "provider circuit opened; subsequent batches use heuristic",
+                                level=logging.WARNING,
+                            )
                     else:
-                        chunk_results = [service._heuristic_row(r) for r in chunk]  # noqa: SLF001
+                        chunk_results = await asyncio.to_thread(
+                            lambda: [service._heuristic_row(r) for r in chunk]  # noqa: SLF001
+                        )
                     finalized = [
                         finalize_ai_coverage_row(enrich_row_computed(r))
                         for r in chunk_results

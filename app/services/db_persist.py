@@ -289,6 +289,10 @@ class DbPersistService:
         results = payload.get("results") or []
         meta = payload.get("meta") or {}
         try:
+            results_json, meta_json = await asyncio.gather(
+                asyncio.to_thread(json.dumps, results, default=str),
+                asyncio.to_thread(json.dumps, meta, default=str),
+            )
             async with pool.acquire() as conn:
                 async with conn.transaction():
                     for key in {workbook_key, LATEST_SEGMENTATION_KEY}:
@@ -302,8 +306,8 @@ class DbPersistService:
                                 saved_at = NOW()
                             """,
                             key,
-                            json.dumps(results, default=str),
-                            json.dumps(meta, default=str),
+                            results_json,
+                            meta_json,
                         )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Postgres segmentation persist failed: %s", exc)

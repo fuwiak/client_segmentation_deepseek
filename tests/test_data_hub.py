@@ -285,6 +285,45 @@ def test_touch_bumps_version_and_clears_filter_cache() -> None:
     assert hub.version == version_before + 2
 
 
+def test_ai_upsert_patches_stable_pagination_cache_in_place() -> None:
+    hub = _sample_hub()
+    active_before = hub.active_rows()
+    direct_before = hub.filter_rows(sales_filter="direct")
+    structure_version_before = hub._structure_version
+
+    hub.upsert_results([{
+        "UUID": "1",
+        "Наименование": "Анна",
+        "Группы": "премиум",
+        "Теги": "#vip",
+        "_ai_processed": True,
+    }])
+
+    assert hub._structure_version == structure_version_before
+    assert hub.active_rows() is active_before
+    assert hub.filter_rows(sales_filter="direct") is direct_before
+    assert direct_before[0]["Теги"] == "#vip"
+    assert direct_before[0]["Группы"] == "премиум"
+
+
+def test_ai_upsert_invalidates_ai_sensitive_filters_only() -> None:
+    hub = _sample_hub()
+    direct_before = hub.filter_rows(sales_filter="direct")
+    vip_before = hub.filter_rows(sales_filter="all", group="VIP")
+
+    hub.upsert_results([{
+        "UUID": "1",
+        "Наименование": "Анна",
+        "Группы": "премиум",
+        "_ai_processed": True,
+    }])
+
+    assert hub.filter_rows(sales_filter="direct") is direct_before
+    assert hub.filter_rows(sales_filter="all", group="VIP") is not vip_before
+    assert hub.filter_rows(sales_filter="all", group="VIP") == []
+    assert len(hub.filter_rows(sales_filter="all", group="премиум")) == 1
+
+
 def test_filter_rows_with_groups_single_pass() -> None:
     hub = _sample_hub()
     rows, group_options, groups_total = hub.filter_rows_with_groups(

@@ -20,12 +20,60 @@ def test_dynamic_pages_disable_browser_cache() -> None:
   import app.main as m
 
   client = TestClient(m.app)
-  response = client.get("/clients", headers={"HX-Request": "true"})
+  response = client.get("/settings", headers={"HX-Request": "true"})
   assert response.status_code == 200
   assert response.headers["Cache-Control"] == "no-store, max-age=0"
   assert response.headers["Pragma"] == "no-cache"
   assert response.headers["Expires"] == "0"
   assert "HX-Request" in response.headers["Vary"]
+
+
+def test_primary_htmx_navigation_is_short_cached_for_preload() -> None:
+  import app.main as m
+
+  client = TestClient(m.app)
+  for path in ("/clients", "/dashboard"):
+    response = client.get(
+      path,
+      headers={"HX-Request": "true", "HX-Boosted": "true", "HX-Preloaded": "true"},
+    )
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "private, max-age=20, stale-while-revalidate=30"
+    assert "HX-Request" in response.headers["Vary"]
+
+
+def test_clients_page_partial_is_short_cached_for_preload() -> None:
+  import app.main as m
+  from app.services.excel_parser import ParsedWorkbook
+
+  m.hub.set_workbook(
+    ParsedWorkbook(
+      source_type="contragents",
+      rows=[{
+        "UUID": f"page-{i}",
+        "Наименование": f"Клиент {i}",
+        "Тип продаж": "прямые продажи",
+      } for i in range(30)],
+      context_columns=["UUID", "Наименование"],
+      segment_columns=[],
+      total_rows=30,
+      meta={"source": "moysklad"},
+    ),
+    None,
+  )
+
+  client = TestClient(m.app)
+  response = client.get(
+    "/clients/page?filter=direct&page=2",
+    headers={"HX-Request": "true", "HX-Preloaded": "true"},
+  )
+  assert response.status_code == 200
+  assert response.headers["Cache-Control"] == "private, max-age=20, stale-while-revalidate=30"
+  assert response.text.lstrip().startswith('<div id="clients-page-frame"')
+  assert 'id="clients-live-region"' not in response.text
+  assert 'hx-sync="#clients-page-frame:replace"' in response.text
+  assert 'hx-get="/clients/page?' in response.text
+  assert 'hx-push-url="/clients?' in response.text
 
 
 def test_static_assets_can_be_cached_with_versioned_urls() -> None:
@@ -219,7 +267,8 @@ def test_base_template_has_htmx_app_shell() -> None:
   assert '/static/style.css?v=' in response.text
   assert 'hx-boost="true"' in response.text
   assert 'hx-ext="preload"' in response.text
-  assert 'preload="mouseover"' in response.text
+  assert 'preload="mouseover always"' in response.text
+  assert 'hx-sync="#page-content:replace"' in response.text
   assert 'hx-target="#page-content"' in response.text
   assert 'id="page-content"' in response.text
   assert "nav-progress" in response.text

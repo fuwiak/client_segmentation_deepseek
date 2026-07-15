@@ -233,6 +233,14 @@ async def performance_middleware(request: Request, call_next):
   if request.url.path.startswith("/static/"):
     response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
   elif (
+    request.method == "GET"
+    and request.url.path in {"/clients/page", "/clients", "/dashboard"}
+    and (request.headers.get("hx-request") or request.url.path == "/clients/page")
+  ):
+    # Enables the bundled HTMX preload extension for pagination and primary nav.
+    response.headers["Cache-Control"] = "private, max-age=20, stale-while-revalidate=30"
+    _append_vary(response.headers, "HX-Request", "HX-Boosted")
+  elif (
     request.headers.get("hx-request")
     or "text/html" in content_type
     or "application/json" in content_type
@@ -558,6 +566,7 @@ async def _startup_background() -> None:
     if hub.has_data():
       await jobs.fill_missing_tg_nick(hub, cache)
       await jobs.fill_missing_gender(hub, settings, cache)
+      await _warm_dashboard_cache()
     if settings.ai_lazy_full_on_startup:
       await _schedule_lazy_ai()
     else:
@@ -583,6 +592,31 @@ async def _startup_all() -> None:
     logging.getLogger(__name__).exception("Startup all failed")
   else:
     pipeline_log("PIPE", "startup all done")
+
+
+async def _warm_dashboard_cache() -> None:
+  """Precompute the expensive dashboard snapshot without blocking requests."""
+  if not hub.has_data():
+    return
+  started = time.perf_counter()
+
+  def _compute() -> int:
+    rows = hub.active_rows()
+    dashboard_svc.compute_cached(
+      rows,
+      hub_version=hub.structure_version,
+      period="month",
+    )
+    return len(rows)
+
+  rows_n = await asyncio.to_thread(_compute)
+  pipeline_log(
+    "PIPE",
+    "dashboard cache warm done rows=%s duration_ms=%.1f structure_version=%s",
+    rows_n,
+    (time.perf_counter() - started) * 1000,
+    hub.structure_version,
+  )
 
 
 @app.get("/health")
@@ -837,17 +871,34 @@ def _clients_ctx(
   sort: str = "",
   order: str = "asc",
   page: int = 1,
+  include_group_options: bool = True,
 ) -> dict[str, Any]:
-  rows, group_options, groups_total = hub.filter_rows_with_groups(
-    sales_filter=sales_filter,
-    tag=tag,
-    group=group,
-    status=status,
-    q=q,
-    phone=phone,
-    sort=sort,
-    order=order,
-  )
+  started = time.perf_counter()
+  if include_group_options:
+    rows, group_options, groups_total = hub.filter_rows_with_groups(
+      sales_filter=sales_filter,
+      tag=tag,
+      group=group,
+      status=status,
+      q=q,
+      phone=phone,
+      sort=sort,
+      order=order,
+    )
+  else:
+    rows = hub.filter_rows(
+      sales_filter=sales_filter,
+      tag=tag,
+      group=group,
+      status=status,
+      q=q,
+      phone=phone,
+      sort=sort,
+      order=order,
+    )
+    group_options = []
+    groups_total = len(rows)
+  filter_ms = (time.perf_counter() - started) * 1000
   per_page = max(1, settings.clients_page_size)
   total = len(rows)
   total_pages = max(1, (total + per_page - 1) // per_page)
@@ -856,7 +907,7 @@ def _clients_ctx(
   end = start + per_page
   page_clients = rows[start:end]
   tg_export_ready = _tg_export_progress.get("status") == "done"
-  return _ctx(
+  ctx = _ctx(
     request,
     clients=page_clients,
     total=total,
@@ -884,6 +935,18 @@ def _clients_ctx(
     tg_export_progress=_tg_export_progress,
     ai_progress=jobs.ai_snapshot(),
   )
+  pipeline_log(
+    "PIPE",
+    "clients ctx id=%s page=%s total=%s groups=%s filter_ms=%.1f total_ms=%.1f hub_version=%s",
+    getattr(request.state, "request_id", "-"),
+    page,
+    total,
+    include_group_options,
+    filter_ms,
+    (time.perf_counter() - started) * 1000,
+    hub.version,
+  )
+  return ctx
 
 
 async def _clients_ctx_with_tg(
@@ -898,8 +961,10 @@ async def _clients_ctx_with_tg(
   sort: str = "",
   order: str = "asc",
   page: int = 1,
+  include_group_options: bool = True,
 ) -> dict[str, Any]:
-  return _clients_ctx(
+  return await asyncio.to_thread(
+    _clients_ctx,
     request,
     sales_filter=sales_filter,
     tag=tag,
@@ -910,6 +975,7 @@ async def _clients_ctx_with_tg(
     sort=sort,
     order=order,
     page=page,
+    include_group_options=include_group_options,
   )
 
 
@@ -975,7 +1041,7 @@ async def home(request: Request) -> HTMLResponse:
   pipeline_log("PIPE", "page home")
   await _ensure_hub_cache_only()
   rows = hub.active_rows()
-  dash = dashboard_svc.compute_home_kpis(rows, hub_version=hub.version)
+  dash = dashboard_svc.compute_home_kpis(rows, hub_version=hub.structure_version)
   return templates.TemplateResponse(
     "home.html",
     _ctx(
@@ -999,15 +1065,28 @@ async def dashboard_page(
 ) -> HTMLResponse:
   pipeline_log("PIPE", "page dashboard period=%s date_from=%s date_to=%s", period, date_from, date_to)
   await _hydrate_hub_from_cache()
-  rows = hub.active_rows()
   parsed_from = _optional_query_date(date_from)
   parsed_to = _optional_query_date(date_to)
-  dash = dashboard_svc.compute_cached(
-    rows,
-    hub_version=hub.version,
-    period=period,
-    date_from=parsed_from,
-    date_to=parsed_to,
+  started = time.perf_counter()
+
+  def _compute_dashboard():
+    rows = hub.active_rows()
+    return dashboard_svc.compute_cached(
+      rows,
+      hub_version=hub.structure_version,
+      period=period,
+      date_from=parsed_from,
+      date_to=parsed_to,
+    )
+
+  dash = await asyncio.to_thread(_compute_dashboard)
+  pipeline_log(
+    "PIPE",
+    "dashboard ctx id=%s period=%s duration_ms=%.1f structure_version=%s",
+    getattr(request.state, "request_id", "-"),
+    period,
+    (time.perf_counter() - started) * 1000,
+    hub.structure_version,
   )
   return templates.TemplateResponse(
     "dashboard.html",
@@ -1110,6 +1189,47 @@ async def clients_table_partial(
     "partials/clients_table.html",
     ctx,
   )
+
+
+@app.get("/clients/page", response_class=HTMLResponse)
+async def clients_page_partial(
+  request: Request,
+  filter: str = Query("direct"),
+  tag: str = Query(""),
+  group: str = Query(""),
+  status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
+  page: int = Query(1, ge=1),
+) -> HTMLResponse:
+  pipeline_log(
+    "PIPE",
+    "partial clients_page filter=%s page=%s sort=%s order=%s preloaded=%s",
+    filter,
+    page,
+    sort or "-",
+    order,
+    request.headers.get("hx-preloaded", "false"),
+  )
+  await _hydrate_hub_from_cache()
+  await _hydrate_moysklad_from_cache()
+  ctx = await _clients_ctx_with_tg(
+    request,
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+    page=page,
+    include_group_options=False,
+  )
+  asyncio.create_task(_schedule_page_lazy_ai(list(ctx.get("clients") or [])))
+  return templates.TemplateResponse("partials/clients_page_frame.html", ctx)
 
 
 @app.get("/clients/tag-rules/panel", response_class=HTMLResponse)

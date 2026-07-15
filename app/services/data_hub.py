@@ -64,8 +64,10 @@ class DataHub:
     self.workbook_hash: str | None = None
     self.results_from_cache: bool = False
     self.version: int = 0
+    self._structure_version: int = 0
     self._active_rows_cache: tuple[int, list[dict[str, Any]]] | None = None
-    self._filter_cache: dict[str, list[dict[str, Any]]] = {}
+    self._active_rows_by_key: dict[str, dict[str, Any]] | None = None
+    self._filter_cache: dict[tuple[str, ...], list[dict[str, Any]]] = {}
     self._client_index: dict[str, dict[str, Any]] | None = None
     self._client_index_version: int = -1
     self._results_by_key: dict[str, dict[str, Any]] | None = None
@@ -79,13 +81,20 @@ class DataHub:
   def phone_username_map(self) -> dict[str, str]:
     return self._phone_username_map
 
+  @property
+  def structure_version(self) -> int:
+    """Version of source/order data; lazy AI overlays do not change it."""
+    return self._structure_version
+
   def set_phone_username_map(self, phone_username_map: dict[str, str]) -> None:
     self._phone_username_map = dict(phone_username_map)
     self.touch()
 
   def touch(self) -> None:
     self.version += 1
+    self._structure_version += 1
     self._active_rows_cache = None
+    self._active_rows_by_key = None
     self._filter_cache.clear()
     self._client_index = None
     self._results_by_key = None
@@ -134,7 +143,7 @@ class DataHub:
     self.touch()
 
   def active_rows(self) -> list[dict[str, Any]]:
-    if self._active_rows_cache and self._active_rows_cache[0] == self.version:
+    if self._active_rows_cache and self._active_rows_cache[0] == self._structure_version:
       return self._active_rows_cache[1]
     if self.parsed and self.parsed.rows:
       if self.parsed.meta.get("from_cache"):
@@ -152,7 +161,8 @@ class DataHub:
     if _rows_need_gender_enrich(rows):
       rows = enrich_gender_by_unique_naimenovanie(rows)
     rows = enrich_tg_nick_by_phone(rows, self._phone_username_map)
-    self._active_rows_cache = (self.version, rows)
+    self._active_rows_cache = (self._structure_version, rows)
+    self._active_rows_by_key = {_row_key(row): row for row in rows}
     return rows
 
   def set_results(self, results: list[dict[str, Any]], meta: dict[str, Any]) -> None:
@@ -165,12 +175,45 @@ class DataHub:
     """Добавить или обновить AI-результаты по ключу строки (lazy evaluation)."""
     if not rows:
       return
-    by_key = {_row_key(r): enrich_row_computed(r) for r in self.results}
+    by_key = self._ensure_results_index()
+    updated: list[dict[str, Any]] = []
     for row in rows:
-      by_key[_row_key(row)] = enrich_row_computed(row)
-    self.results = list(by_key.values())
+      key = _row_key(row)
+      enriched = enrich_row_computed(row)
+      current = by_key.get(key)
+      if current is None:
+        self.results.append(enriched)
+        by_key[key] = enriched
+      else:
+        current.clear()
+        current.update(enriched)
+        enriched = current
+      updated.append(enriched)
+
+    # Lazy AI updates only a handful of rows. Keep the expensive 9k-row
+    # merged/filter caches alive and patch their shared row objects in place.
+    if self._active_rows_cache and self._active_rows_by_key is not None:
+      base_index = self._ensure_client_index()
+      for result in updated:
+        key = _row_key(result)
+        active = self._active_rows_by_key.get(key)
+        base = base_index.get(key.strip().lower()) or active
+        if active is None or base is None:
+          continue
+        merged = merge_enriched_rows([base], [result], key_fn=_row_key)
+        if merged:
+          active.clear()
+          active.update(merged[0])
+
+    # Queries depending on AI fields must be recomputed; stable sales/status/
+    # phone pagination keeps pointing at the patched row objects above.
+    self._filter_cache = {
+      key: cached
+      for key, cached in self._filter_cache.items()
+      if not self._filter_key_depends_on_ai(key)
+    }
     self.results_from_cache = False
-    self.touch()
+    self.version += 1
 
   def apply_cached_results(self, payload: dict[str, Any]) -> bool:
     results = payload.get("results")
@@ -198,7 +241,7 @@ class DataHub:
     return bool(self.results) or self.has_parsed_data()
 
   def _ensure_client_index(self) -> dict[str, dict[str, Any]]:
-    if self._client_index is not None and self._client_index_version == self.version:
+    if self._client_index is not None and self._client_index_version == self._structure_version:
       return self._client_index
     index: dict[str, dict[str, Any]] = {}
     if self.parsed and self.parsed.rows:
@@ -208,15 +251,28 @@ class DataHub:
       for row in self.results:
         _register_client_index_keys(row, index)
     self._client_index = index
-    self._client_index_version = self.version
+    self._client_index_version = self._structure_version
     return index
 
   def _ensure_results_index(self) -> dict[str, dict[str, Any]]:
-    if self._results_by_key is not None and self._results_index_version == self.version:
+    if self._results_by_key is not None:
       return self._results_by_key
     self._results_by_key = {_row_key(row): row for row in self.results}
     self._results_index_version = self.version
     return self._results_by_key
+
+  @staticmethod
+  def _filter_key_depends_on_ai(key: tuple[str, ...]) -> bool:
+    _, tag, group, _, q, _, sort, _ = key
+    return bool(tag or group or q or sort in {
+      "Группы",
+      "Теги",
+      "Заказчик или получатель",
+      "Пол",
+      "E-mail",
+      "ТГ ник",
+      "TG conversation",
+    })
 
   def lookup_client_row(self, client_id: str) -> dict[str, Any] | None:
     """O(1) поиск строки клиента без полного active_rows()."""
@@ -266,12 +322,12 @@ class DataHub:
     return updated
 
   def _order_lookup(self) -> dict[str, dict[str, Any]]:
-    if self._order_lookup_cache is not None and self._order_lookup_version == self.version:
+    if self._order_lookup_cache is not None and self._order_lookup_version == self._structure_version:
       return self._order_lookup_cache
     order_by_key: dict[str, dict[str, Any]] = {}
     if not self.orders_parsed or not self.orders_parsed.rows:
       self._order_lookup_cache = order_by_key
-      self._order_lookup_version = self.version
+      self._order_lookup_version = self._structure_version
       return order_by_key
     for order in self.orders_parsed.rows:
       for key in (order.get("_moysklad_id"), order.get("№"), order.get("Номер")):
@@ -279,15 +335,15 @@ class DataHub:
         if text:
           order_by_key[text] = order
     self._order_lookup_cache = order_by_key
-    self._order_lookup_version = self.version
+    self._order_lookup_version = self._structure_version
     return order_by_key
 
   def _agent_segment_indexes(self) -> tuple[dict[str, set[str]], dict[str, str]]:
-    if self._agent_segment_cache and self._agent_segment_cache[0] == self.version:
+    if self._agent_segment_cache and self._agent_segment_cache[0] == self._structure_version:
       return self._agent_segment_cache[1]
     order_rows = self.orders_parsed.rows if self.orders_parsed else []
     indexes = (sales_channels_index(order_rows), sales_channel_types_index(order_rows))
-    self._agent_segment_cache = (self.version, indexes)
+    self._agent_segment_cache = (self._structure_version, indexes)
     return indexes
 
   def resolve_order_entities(self, orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -358,9 +414,7 @@ class DataHub:
     sort: str = "",
     order: str = "asc",
   ) -> list[dict[str, Any]]:
-    cache_key = (
-      f"{self.version}:{sales_filter}:{tag}:{group}:{status}:{q}:{phone}:{sort}:{order}"
-    )
+    cache_key = (sales_filter, tag, group, status, q, phone, sort, order)
     cached = self._filter_cache.get(cache_key)
     if cached is not None:
       return cached

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+
+from app.config import Settings
 from app.services.background_jobs import BackgroundJobService, row_ws_patch
 from app.services.data_hub import DataHub
 
@@ -52,3 +55,40 @@ def test_hub_upsert_results() -> None:
     hub.upsert_results([{"UUID": "1", "Группы": "VIP+", "Теги": "#vip", "_ai_processed": True}])
     assert len(hub.results) == 1
     assert hub.results[0]["Теги"] == "#vip"
+
+
+def test_provider_failure_opens_circuit_for_later_batches(monkeypatch) -> None:
+    import app.services.segmentation as segmentation_module
+
+    calls = {"provider": 0, "heuristic": 0}
+
+    async def fake_segment_all(self, rows):
+        calls["provider"] += 1
+        return [{**row, "_ai_processed": False, "_ai_fields": []} for row in rows]
+
+    def fake_heuristic(self, row):
+        calls["heuristic"] += 1
+        return {**row, "_ai_processed": False, "_ai_fields": []}
+
+    monkeypatch.setattr(segmentation_module.SegmentationService, "segment_all", fake_segment_all)
+    monkeypatch.setattr(segmentation_module.SegmentationService, "_heuristic_row", fake_heuristic)
+
+    hub = DataHub()
+    rows = [{"UUID": str(i), "Наименование": str(i)} for i in range(3)]
+    hub.parsed = type("P", (), {"rows": rows})()
+    jobs = BackgroundJobService()
+    settings = Settings(openrouter_api_key="broken", ai_lazy_batch_size=1)
+
+    asyncio.run(jobs._run_lazy_ai(hub, settings, _NoopCache(), rows, None))
+
+    assert calls["provider"] == 1
+    assert calls["heuristic"] == 2
+    assert jobs._ai_provider_circuit_open is True
+
+
+class _NoopCache:
+    async def save_segmentation_results(self, *_args, **_kwargs):
+        return None
+
+    async def save_results(self, *_args, **_kwargs):
+        return None
