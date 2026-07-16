@@ -98,12 +98,10 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
     полное наименование, местонахождение, комментарии, статус, канал продаж — ТОЛЬКО при явном
     указании в данных. Не выдумывай юридические и банковские реквизиты.
 
-13. "Рекомендация" — ГОТОВЫЙ МАРКЕТИНГОВЫЙ БРИФ (не эссе). Всегда с датой/праздником.
-    Формат: Касание (окно дат + повод) → Оффер (что + бюджет) → Контекст
-    (когда купил, зачем, чек выше/ниже среднего по peer_benchmarks/похожим) → Канал.
-    Первый заказ / мало данных: блок «По похожим клиентам…» обязателен
-    (тот же праздник/месяц/канал из peer_benchmarks или календарь РФ).
-    Без даты/праздника и без оффера — ответ считается плохим.
+13. "Рекомендация" — 2–4 предложения ЖИВЫМ языком (не ярлыки Касание/Оффер/Контекст).
+    Всегда: окно дат + праздник, что предложить и бюджет (без дубля суммы),
+    когда/зачем покупал, чек vs средний, канал внутри фразы.
+    Первый заказ: коротко про похожих. Без даты/праздника — плохой ответ.
 """ + AI_NARRATIVE_STYLE + """
 Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
 
@@ -280,9 +278,9 @@ class SegmentationService:
         ]
         user_prompt = (
             "Проанализируй клиентов и заполни поля сегментации. "
-            "Поле «Рекомендация» — маркетинговый бриф: Касание (даты+праздник), "
-            "Оффер+бюджет, Контекст (когда/зачем купил, чек vs средний), Канал; "
-            "для 1-го заказа обязательно блок «по похожим» из peer_benchmarks. "
+            "Поле «Рекомендация» — 2–4 предложения живым языком: когда писать, "
+            "что предложить, зачем клиент покупал, чек vs средний, канал; "
+            "без ярлыков «Касание:/Оффер:/Контекст:»; для 1-го заказа — про похожих. "
             "Ответ верни как JSON-объект {\"results\": [...]}.\n\n"
             f"{json.dumps(payload_rows, ensure_ascii=False)}"
         )
@@ -710,7 +708,7 @@ class SegmentationService:
         except (TypeError, ValueError):
             avg = 0.0
         if avg >= 5000:
-            return f"букет в бюджете ~{int(avg)} р."
+            return "букет"
 
         occ = (occasion or "").lower()
         if "8 марта" in occ or "женск" in occ:
@@ -1431,7 +1429,7 @@ class SegmentationService:
 
     @classmethod
     def _heuristic_recommendation(cls, row: dict[str, Any]) -> str | None:
-        """Маркетинговый бриф: касание, оффер, контекст, похожие, канал."""
+        """Живая маркетинговая рекомендация: когда писать, что предложить, зачем покупал."""
         peers = row.get("_peer_benchmarks") if isinstance(row.get("_peer_benchmarks"), dict) else None
         orders_n = cls._orders_count(row)
         contact = cls._contact_channel(row)
@@ -1440,42 +1438,55 @@ class SegmentationService:
         purchase = cls._last_purchase_line(row)
         intent = cls._intent_one_liner(row)
         amount = cls._client_check_amount(row)
-        budget = f" ~{int(amount)} р." if amount else ""
 
-        lines = [
-            f"Касание: {touch} (к {occasion}).",
-            f"Оффер: {offer}{budget}.",
-            f"Контекст: {purchase}, цель — {intent}; {check_line}.",
+        offer_core = str(offer or "сезонный букет").strip()
+        if re.search(r"\d[\d\s]*\s*р", offer_core, flags=re.IGNORECASE):
+            offer_phrase = offer_core
+        elif amount:
+            offer_phrase = f"{offer_core} примерно на {int(amount)} р."
+        else:
+            offer_phrase = offer_core
+
+        sentences: list[str] = [
+            f"Свяжитесь через {contact} в окне {touch} и предложите {offer_phrase} к {occasion}."
         ]
 
+        context = f"Ранее {purchase}, цель — {intent}; {check_line}."
         if orders_n <= 1:
             peer_hint = cls._peer_hint_for_row(row, peers)
             first_bits = cls._first_order_holiday_hints(row, contact)
+            if first_bits:
+                context = (
+                    f"Первый заказ похож на «{occasion}»: {purchase}, цель — {intent}; "
+                    f"{check_line}."
+                )
+            sentences.append(context)
             if peer_hint:
-                lines.append(f"По похожим: {peer_hint}.")
+                sentences.append(
+                    f"По похожим клиентам обычно работает то же окно ({peer_hint})."
+                )
             elif first_bits:
-                # вытащить суть первого хинта без простыни
-                lines.append(
-                    f"По похожим: первый заказ к «{occasion}» — повторить касание "
-                    f"в окне «{touch}», бюджет как в первом заказе{budget or ''}."
+                sentences.append(
+                    f"У похожих с первым заказом к «{occasion}» повтор хорошо заходит "
+                    f"в окне «{touch}», в том же бюджете."
                 )
             else:
-                lines.append(
-                    f"По похожим с первым заказом: обычно закрывают ближайший праздник цветов "
-                    f"(«{occasion}») касанием «{touch}», оффер в том же бюджете."
+                sentences.append(
+                    f"При малой истории ориентируйтесь на похожих и календарь «{occasion}»."
                 )
-            if first_bits and "Первый заказ" not in " ".join(lines):
-                lines[2] = lines[2].rstrip(".") + f"; Первый заказ под «{occasion}»."
-            elif not first_bits and "Первый заказ" not in " ".join(lines):
-                lines.append(f"Первый заказ / мало истории — опираемся на похожих и календарь «{occasion}».")
+        else:
+            sentences.append(context)
 
         if row.get("ВИП") == "да" or "#vip" in str(row.get("Теги") or "").lower():
-            lines.append("VIP: персональный подбор и приоритетная доставка.")
+            sentences.append(
+                "Клиент VIP — уместны персональный подбор и приоритетная доставка."
+            )
         if "#проблемный" in str(row.get("Теги") or "").lower():
-            lines.append("Учесть прошлый негатив: личный контакт перед оффером.")
+            sentences.append(
+                "Перед оффером лучше лично уточнить прошлый опыт — был негатив."
+            )
 
-        lines.append(f"Канал: {contact}.")
-        return "\n".join(lines)
+        return " ".join(sentences)
 
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:

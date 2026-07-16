@@ -10,7 +10,8 @@ def test_heuristic_recommendation_for_birthday_tag() -> None:
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "Касание:" in rec
+    assert "Свяжитесь" in rec
+    assert "Касание:" not in rec
     assert "уточнить" in rec.lower()
     assert "за 3 дня" not in rec.lower() or "без даты" in rec.lower() or "уточнить" in rec.lower()
 
@@ -26,11 +27,15 @@ def test_heuristic_recommendation_for_birthday_with_month() -> None:
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "Касание:" in rec
+    assert "Свяжитесь" in rec
+    assert "Касание:" not in rec
+    assert "Оффер:" not in rec
     assert "июл" in rec.lower()
     assert "12" in rec
     assert "Telegram" in rec
     assert "чек" in rec.lower()
+    # без дубля суммы
+    assert rec.count("5700") <= 1 or "примерно на 5700" in rec
 
 
 def test_heuristic_recommendation_for_march_event_segment() -> None:
@@ -45,7 +50,8 @@ def test_heuristic_recommendation_for_march_event_segment() -> None:
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
     assert "март" in rec.lower()
-    assert "Оффер:" in rec
+    assert "предложите" in rec.lower()
+    assert "Касание:" not in rec
 
 
 def test_order_marketing_patterns_from_history() -> None:
@@ -80,7 +86,7 @@ def test_order_marketing_patterns_from_history() -> None:
     assert "Intent:" not in summary
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "Касание:" in rec
+    assert "Свяжитесь" in rec
     assert "декабр" in rec.lower() or "ноябр" in rec.lower() or "Новый год" in rec
 
 
@@ -93,7 +99,7 @@ def test_heuristic_recommendation_for_new_client_without_orders() -> None:
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "Касание:" in rec
+    assert "Свяжитесь" in rec
     assert "WhatsApp" in rec
     assert "привычном среднем чеке" not in rec
     assert "8 марта" in rec or "14 февраля" in rec or "праздник" in rec.lower() or "сентябр" in rec.lower()
@@ -115,7 +121,7 @@ def test_first_order_before_womens_day() -> None:
     assert rec is not None
     assert "8 марта" in rec
     assert "Первый заказ" in rec or "похож" in rec.lower()
-    assert "Касание:" in rec
+    assert "Касание:" not in rec
     assert "привычном среднем чеке" not in rec
     assert "ниже среднего" in rec or "выше среднего" in rec or "около среднего" in rec
 
@@ -136,7 +142,8 @@ def test_first_order_before_valentines() -> None:
     rec = SegmentationService._heuristic_recommendation(row)
     assert "14 февраля" in rec
     assert "Первый заказ" in rec or "похож" in rec.lower()
-    assert "Оффер:" in rec
+    assert "предложите" in rec.lower()
+    assert "Оффер:" not in rec
 
 
 def test_empty_avg_check_march_segment_no_generic_avg_phrase() -> None:
@@ -151,7 +158,26 @@ def test_empty_avg_check_march_segment_no_generic_avg_phrase() -> None:
     assert rec is not None
     assert "привычном среднем чеке" not in rec
     assert "8 марта" in rec or "март" in rec.lower()
-    assert "тюльпан" in rec.lower() or "весенний" in rec.lower() or "Оффер:" in rec
+    assert "тюльпан" in rec.lower() or "весенний" in rec.lower() or "предложите" in rec.lower()
+
+
+def test_no_duplicate_budget_in_recommendation() -> None:
+    row = {
+        "Телефон": "+79001234567",
+        "ВИП": "да",
+        "Средний чек": 6116,
+        "Всего заказов": 5,
+        "_orders_context": [
+            {"Дата": "21.05.2026", "Сумма": 23000, "Комментарий": "подарок"},
+        ],
+    }
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert rec is not None
+    assert "Касание:" not in rec
+    assert "~6116 р. ~6116" not in rec
+    assert rec.count("6116") <= 2  # чек в оффере и в сравнении — ок, но не дубль подряд
+    assert "VIP:" not in rec
+    assert "WhatsApp" in rec
 
 
 def test_peer_benchmarks_and_similar_first_order() -> None:
@@ -185,7 +211,8 @@ def test_peer_benchmarks_and_similar_first_order() -> None:
         "_peer_benchmarks": peers,
     }
     rec = SegmentationService._heuristic_recommendation(row)
-    assert "Касание:" in rec
+    assert "Свяжитесь" in rec
     assert "8 марта" in rec
     assert "похож" in rec.lower()
+    assert "Касание:" not in rec
     assert "ниже среднего" in rec or "выше среднего" in rec or "около среднего" in rec

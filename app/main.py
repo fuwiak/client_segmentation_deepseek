@@ -556,8 +556,16 @@ async def _schedule_page_lazy_ai(page_clients: list[dict[str, Any]]) -> None:
 
 
 def _recommendation_needs_refresh(client: dict[str, Any]) -> bool:
-  rec = str(client.get("_ai_recommendation") or "")
-  return "Касание:" not in rec
+  rec = str(client.get("_ai_recommendation") or "").strip()
+  if not rec:
+    return True
+  # Старый слоганный формат или слабые шаблоны — пересчитать живым языком.
+  if any(tag in rec for tag in ("Касание:", "Оффер:", "Контекст:", "Канал:", "VIP:")):
+    return True
+  low = rec.lower()
+  if "напомнить о осенних" in low or "отправить благодарственное" in low:
+    return True
+  return False
 
 
 def _refresh_client_recommendation(client: dict[str, Any]) -> dict[str, Any]:
