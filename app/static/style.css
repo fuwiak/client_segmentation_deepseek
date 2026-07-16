@@ -1604,6 +1604,7 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   background: rgba(93, 184, 114, 0.08);
   border-radius: var(--r-md);
   border-left: 3px solid var(--success, #5db872);
+  white-space: pre-line;
 }
 .client-orders-list:not([hidden]) { margin-top: var(--sm); }
 .client-orders-expand-btn.is-open { opacity: 0.85; }

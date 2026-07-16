@@ -98,14 +98,12 @@ SYSTEM_PROMPT = """Ты — старший CRM-аналитик цветочно
     полное наименование, местонахождение, комментарии, статус, канал продаж — ТОЛЬКО при явном
     указании в данных. Не выдумывай юридические и банковские реквизиты.
 
-13. "Рекомендация" — 2–3 предложения: МАРКЕТИНГОВОЕ действие оператору по календарю заказов.
-    Обязательно: ЧТО + имя клиента + КОГДА (окно) + при возможности КАК.
-    Бюджет — по прошлым чекам; без среднего чека — типовой оффер под праздник РФ
-    (не фраза «привычный средний чек»).
-    ПЕРВЫЙ ЗАКАЗ / МАЛО ДАННЫХ: заказ за 3–14 дней до праздника цветов в РФ →
-    этот повод + касание на следующий год в том же окне.
-    Заказов 0 — ближайший праздник РФ + welcome-оффер.
-    Это действие для оператора, не описание клиента.
+13. "Рекомендация" — ГОТОВЫЙ МАРКЕТИНГОВЫЙ БРИФ (не эссе). Всегда с датой/праздником.
+    Формат: Касание (окно дат + повод) → Оффер (что + бюджет) → Контекст
+    (когда купил, зачем, чек выше/ниже среднего по peer_benchmarks/похожим) → Канал.
+    Первый заказ / мало данных: блок «По похожим клиентам…» обязателен
+    (тот же праздник/месяц/канал из peer_benchmarks или календарь РФ).
+    Без даты/праздника и без оффера — ответ считается плохим.
 """ + AI_NARRATIVE_STYLE + """
 Дополнительно в reasoning укажи источник данных (поле, заказ или переписка).
 
@@ -133,13 +131,14 @@ null — только для неоднозначных имён (Саша, Же
 _PHONE_RE = re.compile(r"^[\+\d\s\(\)\-]{6,}$")
 
 
-def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
+def _compact_row(row: dict[str, Any], peer_benchmarks: dict[str, Any] | None = None) -> dict[str, Any]:
     skip = {
         "_orders_context",
         "_orders_count",
         "_reasoning",
         "_ai_processed",
         "_messenger_context",
+        "_peer_benchmarks",
     }
     compact = {
         k: v
@@ -161,6 +160,12 @@ def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
     comments = collect_client_comments(row)
     if comments:
         compact["all_comments"] = comments[:3000]
+    peers = peer_benchmarks or row.get("_peer_benchmarks")
+    if peers:
+        compact["peer_benchmarks"] = peers
+        hint = SegmentationService._peer_hint_for_row(row, peers)
+        if hint:
+            compact["similar_clients_hint"] = hint
     return compact
 
 
@@ -261,19 +266,23 @@ class SegmentationService:
     async def _segment_batch(
         self, rows: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
+        peers = self.build_peer_benchmarks(rows)
+        for row in rows:
+            row["_peer_benchmarks"] = peers
         payload_rows = [
             {
                 "uuid": self._row_key(row),
                 "current": {col: row.get(col) for col in AI_COLUMNS},
                 "empty_fields": empty_fillable_columns(row),
-                "data": _compact_row(row),
+                "data": _compact_row(row, peers),
             }
             for row in rows
         ]
         user_prompt = (
             "Проанализируй клиентов и заполни поля сегментации. "
-            "«Саммари клиента», «Саммари» и «Рекомендация» — только связный narrative "
-            "в стиле few-shot из system prompt, без дампа полей CRM. "
+            "Поле «Рекомендация» — маркетинговый бриф: Касание (даты+праздник), "
+            "Оффер+бюджет, Контекст (когда/зачем купил, чек vs средний), Канал; "
+            "для 1-го заказа обязательно блок «по похожим» из peer_benchmarks. "
             "Ответ верни как JSON-объект {\"results\": [...]}.\n\n"
             f"{json.dumps(payload_rows, ensure_ascii=False)}"
         )
@@ -1065,6 +1074,329 @@ class SegmentationService:
         return f"касание в конце {cls._MONTHS_GENITIVE[prev_month]} / в начале {month_prep}"
 
     @classmethod
+    def _median(cls, values: list[float]) -> float | None:
+        if not values:
+            return None
+        ordered = sorted(values)
+        mid = len(ordered) // 2
+        if len(ordered) % 2:
+            return ordered[mid]
+        return (ordered[mid - 1] + ordered[mid]) / 2
+
+    @classmethod
+    def _client_check_amount(cls, row: dict[str, Any]) -> float | None:
+        for key in ("Средний чек",):
+            raw = row.get(key)
+            if raw in (None, "", "—", 0, "0"):
+                continue
+            try:
+                val = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if val > 0:
+                return val
+        amounts: list[float] = []
+        for order in row.get("_orders_context") or []:
+            try:
+                amount = float(order.get("Сумма") or 0)
+            except (TypeError, ValueError):
+                continue
+            if amount > 0:
+                amounts.append(amount)
+        return cls._median(amounts)
+
+    @classmethod
+    def _default_store_avg(cls) -> float:
+        return 5500.0
+
+    @classmethod
+    def build_peer_benchmarks(cls, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        """Медианы чеков по магазину / каналу / поводу — для сравнения и «похожих»."""
+        from collections import defaultdict
+
+        store: list[float] = []
+        by_channel: dict[str, list[float]] = defaultdict(list)
+        by_occasion: dict[str, list[float]] = defaultdict(list)
+        occasion_touch: dict[str, str] = {}
+
+        for row in rows:
+            amount = cls._client_check_amount(row)
+            if amount is None:
+                continue
+            store.append(amount)
+            channel = str(
+                row.get("Канал продаж")
+                or row.get("Тип канала продаж")
+                or row.get("Тип продаж")
+                or "без канала"
+            ).strip() or "без канала"
+            by_channel[channel].append(amount)
+
+            for order in (row.get("_orders_context") or [])[:5]:
+                year, month, day = cls._order_ymd(order)
+                if not month:
+                    continue
+                holiday = cls._holiday_for_order_date(year, month, day)
+                if not holiday:
+                    continue
+                occ = str(holiday["occasion"])
+                try:
+                    order_amount = float(order.get("Сумма") or amount)
+                except (TypeError, ValueError):
+                    order_amount = amount
+                by_occasion[occ].append(order_amount)
+                touch = str(holiday.get("marketing_touch_window") or "")
+                if touch:
+                    occasion_touch[occ] = touch
+
+        store_avg = cls._median(store) or cls._default_store_avg()
+        return {
+            "store_median_check": int(store_avg),
+            "by_channel": {
+                ch: int(med)
+                for ch, vals in by_channel.items()
+                if (med := cls._median(vals)) is not None and len(vals) >= 1
+            },
+            "by_holiday_occasion": {
+                occ: {
+                    "median_check": int(med),
+                    "sample_size": len(vals),
+                    "typical_touch_window": occasion_touch.get(occ),
+                }
+                for occ, vals in by_occasion.items()
+                if (med := cls._median(vals)) is not None
+            },
+        }
+
+    @classmethod
+    def _benchmark_for_row(
+        cls, row: dict[str, Any], peers: dict[str, Any] | None = None
+    ) -> tuple[float, str]:
+        peers = peers or row.get("_peer_benchmarks") or {}
+        channel = str(
+            row.get("Канал продаж")
+            or row.get("Тип канала продаж")
+            or row.get("Тип продаж")
+            or ""
+        ).strip()
+        by_channel = peers.get("by_channel") or {}
+        if channel and channel in by_channel:
+            return float(by_channel[channel]), f"по каналу «{channel}»"
+
+        # Повод первого/последнего заказа
+        for order in (row.get("_orders_context") or [])[:3]:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            holiday = cls._holiday_for_order_date(year, month, day)
+            if not holiday:
+                continue
+            occ = str(holiday["occasion"])
+            by_occ = (peers.get("by_holiday_occasion") or {}).get(occ) or {}
+            if by_occ.get("median_check"):
+                return float(by_occ["median_check"]), f"по похожим к «{occ}»"
+
+        store = peers.get("store_median_check")
+        if store:
+            return float(store), "по магазину"
+        return cls._default_store_avg(), "по магазину (типичный ориентир)"
+
+    @classmethod
+    def _check_vs_average_line(
+        cls, row: dict[str, Any], peers: dict[str, Any] | None = None
+    ) -> str:
+        amount = cls._client_check_amount(row)
+        bench, label = cls._benchmark_for_row(row, peers)
+        if amount is None:
+            return f"чек неизвестен; ориентир {label} ~{int(bench)} р."
+        diff = amount - bench
+        if abs(diff) / bench <= 0.12:
+            cmp = "около среднего"
+        elif diff > 0:
+            cmp = "выше среднего"
+        else:
+            cmp = "ниже среднего"
+        return f"чек {int(amount)} р. — {cmp} {label} (~{int(bench)} р.)"
+
+    @classmethod
+    def _peer_hint_for_row(
+        cls, row: dict[str, Any], peers: dict[str, Any] | None = None
+    ) -> str | None:
+        peers = peers or row.get("_peer_benchmarks") or {}
+        by_occ = peers.get("by_holiday_occasion") or {}
+        for order in (row.get("_orders_context") or [])[:3]:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            holiday = cls._holiday_for_order_date(year, month, day)
+            if not holiday:
+                continue
+            occ = str(holiday["occasion"])
+            meta = by_occ.get(occ) or {}
+            touch = meta.get("typical_touch_window") or holiday.get("marketing_touch_window")
+            med = meta.get("median_check")
+            n = meta.get("sample_size")
+            parts = [f"похожие с заказом к «{occ}»"]
+            if n:
+                parts.append(f"n≈{n}")
+            if touch:
+                parts.append(f"касание {touch}")
+            if med:
+                parts.append(f"типичный чек ~{int(med)} р.")
+            return "; ".join(parts)
+        channel = str(row.get("Канал продаж") or "").strip()
+        by_ch = peers.get("by_channel") or {}
+        if channel and channel in by_ch:
+            return f"похожие по каналу «{channel}»: типичный чек ~{by_ch[channel]} р."
+        store = peers.get("store_median_check")
+        if store:
+            return f"похожее по магазину: медиана чека ~{store} р."
+        return None
+
+    @classmethod
+    def _intent_one_liner(cls, row: dict[str, Any]) -> str:
+        text = cls._collect_intent_text(row)
+        for keywords, label in cls._INTENT_HINTS:
+            if any(k in text for k in keywords):
+                return label
+        events = cls._dated_event_labels(row)
+        if events:
+            return events[0]
+        for order in row.get("_orders_context") or []:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            holiday = cls._holiday_for_order_date(year, month, day)
+            if holiday:
+                return str(holiday["occasion"])
+        return "повод не указан"
+
+    @classmethod
+    def _last_purchase_line(cls, row: dict[str, Any]) -> str:
+        orders = row.get("_orders_context") or []
+        if not orders:
+            last = row.get("Дата последнего заказа")
+            if last:
+                return f"последний заказ {str(last)[:10]}"
+            return "история заказов пуста"
+        order = orders[0]
+        # берём самый свежий по дате если возможно
+        best = order
+        best_key = (0, 0, 0)
+        for o in orders:
+            y, m, d = cls._order_ymd(o)
+            key = (y or 0, m or 0, d or 0)
+            if key >= best_key:
+                best_key = key
+                best = o
+        y, m, d = cls._order_ymd(best)
+        date_s = (
+            f"{d:02d}.{m:02d}.{y}" if y and m and d else str(best.get("Дата") or "")[:10] or "дата ?"
+        )
+        try:
+            amount = float(best.get("Сумма") or 0)
+            amount_s = f" на {int(amount)} р." if amount else ""
+        except (TypeError, ValueError):
+            amount_s = ""
+        return f"купил {date_s}{amount_s}"
+
+    @classmethod
+    def _contact_channel(cls, row: dict[str, Any]) -> str:
+        if row.get("ТГ ник"):
+            return "Telegram"
+        if row.get("Телефон"):
+            return "WhatsApp"
+        channel = str(row.get("Канал продаж") or "").strip()
+        if channel:
+            return channel
+        return "телефон"
+
+    @classmethod
+    def _primary_touch_plan(
+        cls, row: dict[str, Any]
+    ) -> tuple[str, str, str]:
+        """Вернуть (окно касания, повод, оффер). Всегда с праздником/датой."""
+        text = f"{row.get('Теги') or ''} {row.get('Саммари') or ''} {cls._collect_intent_text(row)}".lower()
+        events = cls._dated_event_labels(row)
+        order_patterns = cls.build_order_marketing_patterns(row)
+
+        # ДР с датой
+        if any("день рождения" in e for e in events) or any(
+            k in text for k in ("день рождения", "#деньрождения")
+        ):
+            month = day = None
+            for label in events:
+                if "день рождения" not in label:
+                    continue
+                month, day = cls._parse_month_day_from_text(label.replace("—", " "))
+                break
+            if month is None:
+                month, day = cls._parse_month_day_from_text(str(row.get("Дата рождения") or ""))
+            if month is None:
+                month = cls._month_from_order_dates(row)
+            window = cls._offer_window_for_month(month, day)
+            if month and day:
+                occ = f"ДР {day} {cls._MONTHS_GENITIVE[month]}"
+            elif month:
+                occ = f"ДР в {cls._MONTHS_PREPOSITIONAL[month]}"
+            else:
+                occ = "день рождения (уточнить дату)"
+            return window, occ, cls._offer_style_for_row(row, "день рождения")
+
+        if order_patterns:
+            p = order_patterns[0]
+            touch = str(p.get("marketing_touch_window") or "за 7–14 дней до повода")
+            occ = str(p.get("occasion") or "сезонный повод")
+            return touch, occ, cls._offer_style_for_row(row, occ)
+
+        for order in (row.get("_orders_context") or [])[:3]:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            holiday = cls._holiday_for_order_date(year, month, day)
+            if holiday:
+                return (
+                    str(holiday["marketing_touch_window"]),
+                    str(holiday["occasion"]),
+                    cls._offer_style_for_row(row, str(holiday["occasion"])),
+                )
+
+        if "8 марта" in text or "событие марта" in text:
+            return "1–5 марта", "8 марта", cls._offer_style_for_row(row, "8 марта")
+        if "14 февраля" in text or "валентин" in text:
+            return "5–12 февраля", "14 февраля", cls._offer_style_for_row(row, "14 февраля")
+
+        # Ближайший сильный праздник РФ от сегодня / от последнего заказа
+        from datetime import date
+
+        today = date.today()
+        upcoming: list[tuple[int, str, str]] = []
+        for h_month, h_day, name, touch, _lead in cls._RU_FLOWER_HOLIDAYS:
+            if h_day is None:
+                hm, hd = cls._mother_day_date(today.year)
+            else:
+                hm, hd = h_month, h_day
+            try:
+                hdate = date(today.year, hm, hd)
+            except ValueError:
+                continue
+            if hdate < today:
+                try:
+                    if h_day is None:
+                        hm, hd = cls._mother_day_date(today.year + 1)
+                        hdate = date(today.year + 1, hm, hd)
+                    else:
+                        hdate = date(today.year + 1, hm, hd)
+                except ValueError:
+                    continue
+            upcoming.append(((hdate - today).days, name, touch))
+        if upcoming:
+            upcoming.sort()
+            _days, name, touch = upcoming[0]
+            return touch, name, cls._offer_style_for_row(row, name)
+        return "1–5 марта", "8 марта", cls._offer_style_for_row(row, "8 марта")
+
+    @classmethod
     def _first_order_holiday_hints(cls, row: dict[str, Any], contact: str) -> list[str]:
         """Для 0–1 заказа: проверить близость к праздникам цветов в РФ."""
         hints: list[str] = []
@@ -1099,162 +1431,51 @@ class SegmentationService:
 
     @classmethod
     def _heuristic_recommendation(cls, row: dict[str, Any]) -> str | None:
-        """Практическая рекомендация оператору: оффер, календарный тайминг, канал."""
-        tags = str(row.get("Теги") or "").lower()
-        summary = str(row.get("Саммари") or "").lower()
-        text = f"{tags} {summary} {cls._collect_intent_text(row)}"
-        contact = "Telegram" if row.get("ТГ ник") else ("WhatsApp" if row.get("Телефон") else "телефон")
+        """Маркетинговый бриф: касание, оффер, контекст, похожие, канал."""
+        peers = row.get("_peer_benchmarks") if isinstance(row.get("_peer_benchmarks"), dict) else None
         orders_n = cls._orders_count(row)
-        hints: list[str] = []
+        contact = cls._contact_channel(row)
+        touch, occasion, offer = cls._primary_touch_plan(row)
+        check_line = cls._check_vs_average_line(row, peers)
+        purchase = cls._last_purchase_line(row)
+        intent = cls._intent_one_liner(row)
+        amount = cls._client_check_amount(row)
+        budget = f" ~{int(amount)} р." if amount else ""
 
-        # Мало/пустая история — сначала календарь праздников РФ по дате первого заказа.
+        lines = [
+            f"Касание: {touch} (к {occasion}).",
+            f"Оффер: {offer}{budget}.",
+            f"Контекст: {purchase}, цель — {intent}; {check_line}.",
+        ]
+
         if orders_n <= 1:
-            hints.extend(cls._first_order_holiday_hints(row, contact))
-
-        order_patterns = cls.build_order_marketing_patterns(row)
-        primary_occ = str(order_patterns[0]["occasion"]) if order_patterns else None
-        if primary_occ is None:
-            if "8 марта" in text or "событие марта" in text or "событие — марта" in text:
-                primary_occ = "8 марта (Международный женский день)"
-            elif "14 февраля" in text:
-                primary_occ = "14 февраля (День святого Валентина)"
-        offer_style = cls._offer_style_for_row(row, primary_occ)
-
-        events = cls._dated_event_labels(row)
-        birthday_hit = any("день рождения" in e for e in events) or any(
-            k in text for k in ("день рождения", "др ", "birthday", "#деньрождения")
-        )
-        if birthday_hit:
-            month = day = None
-            for label in events:
-                if "день рождения" not in label:
-                    continue
-                month, day = cls._parse_month_day_from_text(label.replace("—", " "))
-                if month is None:
-                    for stem, num in cls._MONTH_NAME_TO_NUM.items():
-                        if stem != "ма" and stem in label:
-                            month = num
-                            break
-                        if stem == "ма" and re.search(r"\bмая\b", label):
-                            month = num
-                            break
-                break
-            if month is None:
-                b_month, b_day = cls._parse_month_day_from_text(str(row.get("Дата рождения") or ""))
-                month, day = b_month, b_day
-            if month is None:
-                month = cls._month_from_order_dates(row)
-            window = cls._offer_window_for_month(month, day)
-            bday_offer = cls._offer_style_for_row(row, "день рождения")
-            if month and day:
-                hints.append(
-                    f"К ДР ({day} {cls._MONTHS_GENITIVE[month]}): {window}; "
-                    f"через {contact} предложить {bday_offer} с доставкой."
-                )
-            elif month:
-                hints.append(
-                    f"К ДР в {cls._MONTHS_PREPOSITIONAL[month]}: {window}; "
-                    f"через {contact} предложить {bday_offer} с доставкой."
+            peer_hint = cls._peer_hint_for_row(row, peers)
+            first_bits = cls._first_order_holiday_hints(row, contact)
+            if peer_hint:
+                lines.append(f"По похожим: {peer_hint}.")
+            elif first_bits:
+                # вытащить суть первого хинта без простыни
+                lines.append(
+                    f"По похожим: первый заказ к «{occasion}» — повторить касание "
+                    f"в окне «{touch}», бюджет как в первом заказе{budget or ''}."
                 )
             else:
-                hints.append(
-                    f"Уточнить дату ДР (месяц не найден в данных), затем через {contact} "
-                    f"предложить {bday_offer}; без даты не ставить шаблон «за 3 дня»."
+                lines.append(
+                    f"По похожим с первым заказом: обычно закрывают ближайший праздник цветов "
+                    f"(«{occasion}») касанием «{touch}», оффер в том же бюджете."
                 )
+            if first_bits and "Первый заказ" not in " ".join(lines):
+                lines[2] = lines[2].rstrip(".") + f"; Первый заказ под «{occasion}»."
+            elif not first_bits and "Первый заказ" not in " ".join(lines):
+                lines.append(f"Первый заказ / мало истории — опираемся на похожих и календарь «{occasion}».")
 
-        if any(k in text for k in ("8 марта", "8марта", "#8марта", "событие марта")) or any(
-            "8 марта" in e for e in events
-        ):
-            hints.append(
-                f"1–5 марта через {contact} отправить персональное предложение к 8 марта "
-                f"({cls._offer_style_for_row(row, '8 марта')})."
-            )
-        if any(k in text for k in ("14 февраля", "валентин")) or any(
-            "14 февраля" in e for e in events
-        ):
-            hints.append(
-                f"5–12 февраля через {contact} предложить "
-                f"{cls._offer_style_for_row(row, '14 февраля')} с доставкой к точному времени."
-            )
-        if any(k in text for k in ("23 февраля", "защитника")):
-            hints.append(
-                f"16–22 февраля через {contact} предложить "
-                f"{cls._offer_style_for_row(row, '23 февраля')}."
-            )
+        if row.get("ВИП") == "да" or "#vip" in str(row.get("Теги") or "").lower():
+            lines.append("VIP: персональный подбор и приоритетная доставка.")
+        if "#проблемный" in str(row.get("Теги") or "").lower():
+            lines.append("Учесть прошлый негатив: личный контакт перед оффером.")
 
-        # «событие <месяц>» без ДР — март трактуем как 8 марта (РФ).
-        for label in events:
-            if not label.startswith("событие —") and "годовщина" not in label and "свадьба" not in label:
-                continue
-            month, day = cls._parse_month_day_from_text(label)
-            if month is None:
-                for stem, num in cls._MONTH_NAME_TO_NUM.items():
-                    if stem != "ма" and stem in label:
-                        month = num
-                        break
-                    if stem == "ма" and re.search(r"\bмая\b", label):
-                        month = num
-                        break
-            if month == 3 and not birthday_hit:
-                # уже добавили блок 8 марта выше при «событие марта»
-                continue
-            if month and not birthday_hit:
-                occ = f"событие {cls._MONTHS_GENITIVE[month]}"
-                hints.append(
-                    f"К событию в {cls._MONTHS_PREPOSITIONAL[month]}: "
-                    f"{cls._offer_window_for_month(month, day)}; через {contact} — "
-                    f"{cls._offer_style_for_row(row, occ)}."
-                )
-
-        # Маркетинговые окна из истории заказов (декабрь, март, …).
-        for pattern in order_patterns[:3]:
-            occ = str(pattern.get("occasion") or "сезон")
-            touch = pattern.get("marketing_touch_window") or ""
-            avg = pattern.get("avg_check")
-            budget = f", бюджет ~{avg} р." if avg else ""
-            years = pattern.get("years") or []
-            years_txt = f" (было: {', '.join(str(y) for y in years)})" if years else ""
-            style = cls._offer_style_for_row(row, occ)
-            hints.append(
-                f"{touch}: через {contact} предложить {style} под «{occ}»{years_txt}{budget}."
-            )
-
-        if "#vip" in tags or row.get("ВИП") == "да":
-            hints.append("VIP: персональный премиум-подбор и приоритетная доставка.")
-        if "#проблемный" in tags:
-            hints.append("Связаться лично, уточнить прошлый опыт и предложить компенсационный букет.")
-        if "#доволен" in tags:
-            hints.append("Поблагодарить и предложить бонус на следующий заказ в любимом стиле.")
-
-        channel = row.get("Канал продаж") or ""
-        if not hints:
-            if orders_n > 2:
-                hints.append(
-                    f"Напомнить о регулярном заказе через {contact}"
-                    + (f" (канал: {channel})." if channel else ".")
-                )
-            elif orders_n == 1:
-                hints.append(
-                    f"Уточнить повод первого заказа и ближайший праздник (8 марта / 14 февраля / ДР); "
-                    f"через {contact} предложить повтор со скидкой на доставку в течение 2 недель."
-                )
-            else:
-                hints.append(
-                    f"Новый клиент без заказов: через {contact} welcome-оффер к ближайшему "
-                    f"празднику цветов в РФ (14 февраля, 23 февраля, 8 марта, 1 сентября, "
-                    f"День матери, Новый год) — {cls._offer_style_for_row(row, primary_occ)}."
-                )
-
-        # Не оставлять шаблон «привычный средний чек» при пустом чеке.
-        cleaned = []
-        for hint in dict.fromkeys(hints):
-            if "привычном среднем чеке" in hint and not (row.get("Средний чек") not in (None, "", "—", 0, "0")):
-                hint = hint.replace(
-                    "букет в привычном среднем чеке клиента",
-                    cls._offer_style_for_row(row, primary_occ),
-                )
-            cleaned.append(hint)
-        return " ".join(cleaned)
+        lines.append(f"Канал: {contact}.")
+        return "\n".join(lines)
 
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:

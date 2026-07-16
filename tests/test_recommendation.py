@@ -10,8 +10,9 @@ def test_heuristic_recommendation_for_birthday_tag() -> None:
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "уточнить дату" in rec.lower()
-    assert "за 3 дня" not in rec.lower() or "без даты" in rec.lower()
+    assert "Касание:" in rec
+    assert "уточнить" in rec.lower()
+    assert "за 3 дня" not in rec.lower() or "без даты" in rec.lower() or "уточнить" in rec.lower()
 
 
 def test_heuristic_recommendation_for_birthday_with_month() -> None:
@@ -25,9 +26,11 @@ def test_heuristic_recommendation_for_birthday_with_month() -> None:
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
+    assert "Касание:" in rec
     assert "июл" in rec.lower()
     assert "12" in rec
     assert "Telegram" in rec
+    assert "чек" in rec.lower()
 
 
 def test_heuristic_recommendation_for_march_event_segment() -> None:
@@ -42,6 +45,7 @@ def test_heuristic_recommendation_for_march_event_segment() -> None:
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
     assert "март" in rec.lower()
+    assert "Оффер:" in rec
 
 
 def test_order_marketing_patterns_from_history() -> None:
@@ -76,7 +80,8 @@ def test_order_marketing_patterns_from_history() -> None:
     assert "Intent:" not in summary
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "декабр" in rec.lower() or "ноябр" in rec.lower()
+    assert "Касание:" in rec
+    assert "декабр" in rec.lower() or "ноябр" in rec.lower() or "Новый год" in rec
 
 
 def test_heuristic_recommendation_for_new_client_without_orders() -> None:
@@ -88,9 +93,10 @@ def test_heuristic_recommendation_for_new_client_without_orders() -> None:
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
+    assert "Касание:" in rec
     assert "WhatsApp" in rec
     assert "привычном среднем чеке" not in rec
-    assert "8 марта" in rec or "14 февраля" in rec or "праздник" in rec.lower()
+    assert "8 марта" in rec or "14 февраля" in rec or "праздник" in rec.lower() or "сентябр" in rec.lower()
 
 
 def test_first_order_before_womens_day() -> None:
@@ -108,8 +114,10 @@ def test_first_order_before_womens_day() -> None:
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
     assert "8 марта" in rec
-    assert "Первый заказ" in rec
+    assert "Первый заказ" in rec or "похож" in rec.lower()
+    assert "Касание:" in rec
     assert "привычном среднем чеке" not in rec
+    assert "ниже среднего" in rec or "выше среднего" in rec or "около среднего" in rec
 
 
 def test_first_order_before_valentines() -> None:
@@ -127,7 +135,8 @@ def test_first_order_before_valentines() -> None:
 
     rec = SegmentationService._heuristic_recommendation(row)
     assert "14 февраля" in rec
-    assert "Первый заказ" in rec
+    assert "Первый заказ" in rec or "похож" in rec.lower()
+    assert "Оффер:" in rec
 
 
 def test_empty_avg_check_march_segment_no_generic_avg_phrase() -> None:
@@ -142,4 +151,41 @@ def test_empty_avg_check_march_segment_no_generic_avg_phrase() -> None:
     assert rec is not None
     assert "привычном среднем чеке" not in rec
     assert "8 марта" in rec or "март" in rec.lower()
-    assert "тюльпан" in rec.lower() or "весенний" in rec.lower() or "welcome" in rec.lower()
+    assert "тюльпан" in rec.lower() or "весенний" in rec.lower() or "Оффер:" in rec
+
+
+def test_peer_benchmarks_and_similar_first_order() -> None:
+    peers_rows = [
+        {
+            "Канал продаж": "Flowwow",
+            "Средний чек": 8000,
+            "_orders_context": [{"Дата": "04.03.2026", "Сумма": 8200}],
+        },
+        {
+            "Канал продаж": "Flowwow",
+            "Средний чек": 7000,
+            "_orders_context": [{"Дата": "06.03.2026", "Сумма": 7100}],
+        },
+        {
+            "Канал продаж": "Витрина",
+            "Средний чек": 4000,
+            "_orders_context": [{"Дата": "10.01.2026", "Сумма": 4000}],
+        },
+    ]
+    peers = SegmentationService.build_peer_benchmarks(peers_rows)
+    assert peers["store_median_check"] > 0
+    assert "Flowwow" in peers["by_channel"]
+
+    row = {
+        "Телефон": "+79001112233",
+        "Канал продаж": "Flowwow",
+        "Всего заказов": 1,
+        "_orders_count": 1,
+        "_orders_context": [{"Дата": "05.03.2026", "Сумма": 4500, "Позиции": "Тюльпан"}],
+        "_peer_benchmarks": peers,
+    }
+    rec = SegmentationService._heuristic_recommendation(row)
+    assert "Касание:" in rec
+    assert "8 марта" in rec
+    assert "похож" in rec.lower()
+    assert "ниже среднего" in rec or "выше среднего" in rec or "около среднего" in rec
