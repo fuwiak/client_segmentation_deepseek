@@ -114,14 +114,24 @@ class BackgroundJobService:
         self._poll_seq = 0
         self._poll_rows: list[dict[str, Any]] = []
         self._ai_provider_circuit_open = False
+        # Приоритет текущей страницы/карточки: прервать фон и обработать сначала.
+        self._preempt_requested = False
+        self._priority_rows: list[dict[str, Any]] = []
+        self._deferred_rows: list[dict[str, Any]] = []
+        self._force_keys: set[str] = set()
+        self._active_keys: set[str] = set()
+        self._run_generation = 0
 
     def ai_snapshot(self) -> dict[str, Any]:
-        return self.ai_progress.to_dict()
+        snap = self.ai_progress.to_dict()
+        snap["priority_pending"] = len(self._priority_rows)
+        snap["deferred_pending"] = len(self._deferred_rows)
+        return snap
 
     def poll_snapshot(self, since: int = 0) -> dict[str, Any]:
         rows = [row for seq, row in self._poll_rows if seq > since]
         return {
-            **self.ai_progress.to_dict(),
+            **self.ai_snapshot(),
             "seq": self._poll_seq,
             "rows": rows,
         }
@@ -134,7 +144,7 @@ class BackgroundJobService:
             self._poll_rows = self._poll_rows[-1000:]
 
     async def broadcast_progress(self) -> None:
-        await self.ws.broadcast({"type": "ai_progress", **self.ai_progress.to_dict()})
+        await self.ws.broadcast({"type": "ai_progress", **self.ai_snapshot()})
 
     async def broadcast_rows(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
@@ -147,14 +157,29 @@ class BackgroundJobService:
             }
         )
 
+    @staticmethod
+    def _merge_unique_rows(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_key: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for group in groups:
+            for row in group:
+                key = _row_key(row)
+                if key not in by_key:
+                    order.append(key)
+                by_key[key] = row
+        return [by_key[k] for k in order]
+
     def pending_ai_rows(
         self,
         hub: DataHub,
         rows: list[dict[str, Any]] | None = None,
+        *,
+        force_keys: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Строки без завершённой AI-обработки. Если rows задан — только среди них."""
         results_by_key = {_row_key(r): r for r in hub.results}
         pending: list[dict[str, Any]] = []
+        force_keys = force_keys or set()
         if rows is not None:
             base_rows = rows
         else:
@@ -162,6 +187,9 @@ class BackgroundJobService:
         for row in base_rows:
             key = _row_key(row)
             merged = results_by_key.get(key, row)
+            if force_keys and key in force_keys:
+                pending.append(dict(row))
+                continue
             if not merged.get("_ai_processed"):
                 pending.append(dict(row))
         return pending
@@ -169,8 +197,11 @@ class BackgroundJobService:
     def pending_ai_count(self) -> int:
         """Дешёвый счётчик из текущего прогресса (без скана всей базы)."""
         if self.ai_progress.status == "running":
-            return max(0, self.ai_progress.total - self.ai_progress.done)
-        return 0
+            return max(
+                0,
+                self.ai_progress.total - self.ai_progress.done,
+            ) + len(self._deferred_rows) + len(self._priority_rows)
+        return len(self._deferred_rows) + len(self._priority_rows)
 
     def _hub_merged_rows(self, hub: DataHub) -> list[dict[str, Any]]:
         results_by_key = {_row_key(r): r for r in hub.results}
@@ -246,36 +277,75 @@ class BackgroundJobService:
         messenger_attach: Callable[[list[dict[str, Any]]], Any] | None = None,
         force: bool = False,
         rows: list[dict[str, Any]] | None = None,
+        priority: bool = False,
+        force_keys: set[str] | None = None,
     ) -> bool:
-        """Запустить lazy AI в фоне. rows=None — вся база; иначе только переданные строки."""
+        """Запустить lazy AI. priority=True — прервать фон и сначала обработать rows."""
         if not settings.ai_auto_segment:
             pipeline_log("AI", "lazy schedule skipped ai_auto_segment=false")
             return False
-        pending = self.pending_ai_rows(hub, rows=rows)
+        force_keys = set(force_keys or ())
+        pending = self.pending_ai_rows(hub, rows=rows, force_keys=force_keys or None)
         if not pending:
-            if self.ai_progress.status == "running" and rows is None:
+            if self.ai_progress.status == "running" and rows is None and not priority:
                 self.ai_progress.status = "done"
                 self.ai_progress.done = self.ai_progress.total
                 await self.broadcast_progress()
             pipeline_log(
                 "AI",
-                "lazy schedule skipped pending=0 status=%s scope=%s",
+                "lazy schedule skipped pending=0 status=%s scope=%s priority=%s",
                 self.ai_progress.status,
                 "page" if rows is not None else "full",
+                priority,
             )
             return False
-        if self._ai_task and not self._ai_task.done() and not force:
-            pipeline_log("AI", "lazy schedule skipped already_running pending=%s", len(pending))
+
+        running = bool(self._ai_task and not self._ai_task.done())
+
+        # Приоритет видимой страницы/карточки: прервать текущий прогон, фон — в очередь.
+        if priority and running:
+            self._force_keys |= force_keys
+            self._priority_rows = self._merge_unique_rows(pending, self._priority_rows)
+            self._preempt_requested = True
+            pipeline_log(
+                "AI",
+                "lazy preempt requested priority_rows=%s deferred=%s",
+                len(self._priority_rows),
+                len(self._deferred_rows),
+            )
+            await self.broadcast_progress()
+            return True
+
+        if running and not force and not priority:
+            # Фон уже идёт — новые non-priority строки копятся в deferred.
+            self._deferred_rows = self._merge_unique_rows(self._deferred_rows, pending)
+            pipeline_log(
+                "AI",
+                "lazy schedule queued deferred=%s (already_running)",
+                len(self._deferred_rows),
+            )
             return False
+
+        if running and force:
+            self._preempt_requested = True
+            self._priority_rows = self._merge_unique_rows(pending, self._priority_rows)
+            self._force_keys |= force_keys
+            pipeline_log("AI", "lazy force-preempt priority_rows=%s", len(self._priority_rows))
+            await self.broadcast_progress()
+            return True
+
         pipeline_log(
             "AI",
-            "lazy schedule start pending=%s force=%s scope=%s",
+            "lazy schedule start pending=%s force=%s scope=%s priority=%s",
             len(pending),
             force,
             "page" if rows is not None else "full",
+            priority,
         )
+        if force_keys:
+            self._force_keys |= force_keys
         self._ai_task = asyncio.create_task(
-            self._run_lazy_ai(hub, settings, cache, pending, messenger_attach)
+            self._run_lazy_ai(hub, settings, cache, pending, messenger_attach, priority=priority)
         )
         return True
 
@@ -286,17 +356,29 @@ class BackgroundJobService:
         cache: Any,
         rows: list[dict[str, Any]],
         messenger_attach: Callable[[list[dict[str, Any]]], Any] | None,
+        *,
+        priority: bool = False,
     ) -> None:
         async with self._ai_lock:
             from app.services.messenger_enrichment import MessengerEnrichmentService
             from app.services.segmentation import SegmentationService
 
+            self._run_generation += 1
+            run_id = self._run_generation
+            self._preempt_requested = False
             self.ai_progress.status = "running"
             self.ai_progress.done = 0
             self.ai_progress.total = len(rows)
             self.ai_progress.error = ""
-            self.ai_progress.job = "lazy_ai"
-            pipeline_log("AI", "lazy run start rows=%s", len(rows))
+            self.ai_progress.job = "lazy_ai_priority" if priority else "lazy_ai"
+            self._active_keys = {_row_key(r) for r in rows}
+            pipeline_log(
+                "AI",
+                "lazy run start rows=%s priority=%s run_id=%s",
+                len(rows),
+                priority,
+                run_id,
+            )
             await self.broadcast_progress()
 
             try:
@@ -317,20 +399,35 @@ class BackgroundJobService:
                         )
                     pipeline_log("AI", "lazy messenger attach done rows=%s", len(rows))
 
-                from app.services.segmentation import SegmentationService
-
-                # Пол gender по всей базе дорогой — только строки текущего прогона.
                 results_by_key = {_row_key(r): r for r in hub.results}
                 rows = [
                     {**dict(row), **dict(results_by_key.get(_row_key(row), {}))}
                     for row in rows
                 ]
-                service = SegmentationService(settings)
+                # Force-refresh: сбросить флаг, чтобы LLM/эвристика пересчитали рекомендацию.
+                if self._force_keys:
+                    for row in rows:
+                        if _row_key(row) in self._force_keys:
+                            row["_ai_processed"] = False
+                    self._force_keys -= {_row_key(r) for r in rows}
 
+                service = SegmentationService(settings)
                 batch_size = max(1, settings.ai_lazy_batch_size)
                 processed: list[dict[str, Any]] = []
+                deferred_rest: list[dict[str, Any]] = []
 
                 for i in range(0, len(rows), batch_size):
+                    if self._preempt_requested and self._priority_rows:
+                        deferred_rest = rows[i:]
+                        pipeline_log(
+                            "AI",
+                            "lazy preempt hit run_id=%s remaining=%s priority=%s",
+                            run_id,
+                            len(deferred_rest),
+                            len(self._priority_rows),
+                        )
+                        break
+
                     chunk = rows[i : i + batch_size]
                     use_provider = bool(settings.openrouter_api_key) and not self._ai_provider_circuit_open
                     pipeline_log(
@@ -341,8 +438,6 @@ class BackgroundJobService:
                         "openrouter" if use_provider else "heuristic",
                     )
                     if use_provider:
-                        # Segmentation contains CPU-heavy fallback heuristics. Run
-                        # the whole batch outside Uvicorn's request event loop.
                         chunk_results = await asyncio.to_thread(
                             lambda: asyncio.run(service.segment_all(chunk))
                         )
@@ -369,7 +464,6 @@ class BackgroundJobService:
                         self.ai_progress.total,
                         self.ai_progress.done + len(finalized),
                     )
-                    # Не пишем весь hub в Redis после каждого батча — только progress/WS.
                     await self.broadcast_progress()
                     await self.broadcast_rows(finalized)
                     pipeline_log(
@@ -378,6 +472,11 @@ class BackgroundJobService:
                         i,
                         self.ai_progress.done,
                         self.ai_progress.total,
+                    )
+
+                if deferred_rest:
+                    self._deferred_rows = self._merge_unique_rows(
+                        deferred_rest, self._deferred_rows
                     )
 
                 meta = {
@@ -390,10 +489,49 @@ class BackgroundJobService:
                 if processed:
                     await self._persist_and_notify(hub, cache, processed)
 
+                # Следом: приоритет (карточка/фильтр), затем отложенный фон.
+                priority_next = list(self._priority_rows)
+                deferred_next = list(self._deferred_rows)
+                self._priority_rows = []
+                self._deferred_rows = []
+                self._preempt_requested = False
+
+                follow_candidates = self._merge_unique_rows(priority_next, deferred_next)
+                follow_up = self.pending_ai_rows(
+                    hub,
+                    rows=follow_candidates,
+                    force_keys=self._force_keys or None,
+                )
+
+                if follow_up:
+                    is_priority_follow = bool(priority_next)
+                    pipeline_log(
+                        "AI",
+                        "lazy follow-up start rows=%s priority_first=%s",
+                        len(follow_up),
+                        is_priority_follow,
+                    )
+                    self._ai_task = asyncio.create_task(
+                        self._run_lazy_ai(
+                            hub,
+                            settings,
+                            cache,
+                            follow_up,
+                            messenger_attach,
+                            priority=is_priority_follow,
+                        )
+                    )
+                    return
+
                 self.ai_progress.status = "done"
                 self.ai_progress.done = self.ai_progress.total
                 await self.broadcast_progress()
-                pipeline_log("AI", "lazy run done processed=%s hub_rows=%s", len(processed), len(hub.results))
+                pipeline_log(
+                    "AI",
+                    "lazy run done processed=%s hub_rows=%s",
+                    len(processed),
+                    len(hub.results),
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Lazy AI failed")
                 self.ai_progress.status = "error"

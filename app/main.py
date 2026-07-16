@@ -29,7 +29,7 @@ from app.crm.leads import LeadService
 from app.domain import Campaign, CampaignStatus
 from app.repository import get_repository
 from app.services.cache import get_cache, file_hash
-from app.services.data_hub import get_data_hub
+from app.services.data_hub import get_data_hub, _row_key
 from app.services.excel_parser import (
   AI_EXTRA_COLUMNS,
   AI_COLUMNS,
@@ -520,6 +520,8 @@ async def _schedule_lazy_ai(
   *,
   force: bool = False,
   rows: list[dict[str, Any]] | None = None,
+  priority: bool = False,
+  force_keys: set[str] | None = None,
 ) -> None:
   if not hub.has_data():
     pipeline_log("AI", "lazy schedule skipped has_data=false force=%s", force)
@@ -531,24 +533,55 @@ async def _schedule_lazy_ai(
     messenger_attach=_attach_messenger_for_ai,
     force=force,
     rows=rows,
+    priority=priority,
+    force_keys=force_keys,
   )
   pipeline_log(
     "AI",
-    "lazy schedule done started=%s force=%s scope=%s pending=%s status=%s",
+    "lazy schedule done started=%s force=%s scope=%s priority=%s pending=%s status=%s",
     started,
     force,
     "page" if rows is not None else "full",
-    len(jobs.pending_ai_rows(hub, rows=rows)),
+    priority,
+    len(jobs.pending_ai_rows(hub, rows=rows, force_keys=force_keys)),
     jobs.ai_snapshot().get("status"),
   )
 
 
 async def _schedule_page_lazy_ai(page_clients: list[dict[str, Any]]) -> None:
-  """AI только для видимой страницы таблицы — без фоновой прокачки всей базы."""
+  """AI для видимой страницы/фильтра — с приоритетом над фоновым прогоном."""
   if not page_clients:
     return
-  await _schedule_lazy_ai(rows=page_clients)
+  await _schedule_lazy_ai(rows=page_clients, priority=True)
 
+
+def _recommendation_needs_refresh(client: dict[str, Any]) -> bool:
+  rec = str(client.get("_ai_recommendation") or "")
+  return "Касание:" not in rec
+
+
+def _refresh_client_recommendation(client: dict[str, Any]) -> dict[str, Any]:
+  """Сразу обновить бриф эвристикой, пока приоритетный AI догоняет."""
+  from app.services.segmentation import SegmentationService
+
+  updated = dict(client)
+  rec = SegmentationService._heuristic_recommendation(updated)
+  if rec:
+    updated["_ai_recommendation"] = rec
+  return updated
+
+
+async def _schedule_client_priority_ai(
+  client: dict[str, Any],
+  *,
+  force: bool = False,
+) -> None:
+  """Приоритет открытой карточки: прервать/отложить фон, при необходимости force."""
+  if not client:
+    return
+  key = _row_key(client)
+  force_keys = {key} if force else None
+  await _schedule_lazy_ai(rows=[client], priority=True, force_keys=force_keys)
 
 async def _startup_background() -> None:
   """Тяжёлая инициализация в фоне — не блокирует healthcheck."""
@@ -1351,6 +1384,11 @@ async def client_card(
       "partials/error.html",
       _ctx(request, message="Клиент не найден"),
     )
+  needs_refresh = _recommendation_needs_refresh(client)
+  if needs_refresh:
+    client = _refresh_client_recommendation(client)
+    hub.upsert_results([client])
+  asyncio.create_task(_schedule_client_priority_ai(dict(client), force=needs_refresh))
   orders = hub.resolve_order_entities(client.get("_orders_context") or [])
   orders_total = order_count_for_row(client)
   template = "partials/client_card_drawer.html" if drawer else "partials/client_card.html"

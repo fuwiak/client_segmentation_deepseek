@@ -4,8 +4,14 @@
   {% set ai_total = ai_progress.total|default(0) if ai_progress is defined else total|default(0) %}
   {% set ai_percent = ai_progress.percent|default(0) if ai_progress is defined else percent|default(0) %}
   {% set ai_error = ai_progress.error|default('') if ai_progress is defined else error|default('') %}
+  {% set ai_job = ai_progress.job|default('') if ai_progress is defined else job|default('') %}
+  {% set ai_deferred = ai_progress.deferred_pending|default(0) if ai_progress is defined else 0 %}
   {% if ai_status == 'running' %}
-    <p class="hint">AI-сегментация в фоне… {{ ai_done }}/{{ ai_total }} ({{ ai_percent }}%)</p>
+    {% if ai_job == 'lazy_ai_priority' %}
+      <p class="hint">AI приоритет (текущий фильтр/карточка)… {{ ai_done }}/{{ ai_total }} ({{ ai_percent }}%){% if ai_deferred %} · в очереди {{ ai_deferred }}{% endif %}</p>
+    {% else %}
+      <p class="hint">AI-сегментация в фоне… {{ ai_done }}/{{ ai_total }} ({{ ai_percent }}%){% if ai_deferred %} · в очереди {{ ai_deferred }}{% endif %}</p>
+    {% endif %}
     <div class="progress-bar"><div class="progress-fill" style="width: {{ ai_percent }}%"></div></div>
   {% elif ai_status == 'done' and ai_total > 0 %}
     <p class="hint ok">AI готово: {{ ai_total }} клиентов обработано.</p>

@@ -43,9 +43,16 @@
     var total = data.total || 0;
     var percent = data.percent || (total ? Math.floor(done / total * 100) : 0);
     var error = data.error || "";
+    var job = data.job || "";
+    var deferred = data.deferred_pending || 0;
+    var deferredHint = deferred ? " · в очереди " + deferred : "";
     if (status === "running") {
+      var label =
+        job === "lazy_ai_priority"
+          ? "AI приоритет (текущий фильтр/карточка)… "
+          : "AI-сегментация в фоне… ";
       block.innerHTML =
-        '<p class="hint">AI-сегментация в фоне… ' + done + "/" + total + " (" + percent + '%)</p>' +
+        '<p class="hint">' + label + done + "/" + total + " (" + percent + "%)" + deferredHint + "</p>" +
         '<div class="progress-bar"><div class="progress-fill" style="width: ' + percent + '%"></div></div>';
     } else if (status === "done" && total > 0) {
       block.innerHTML = '<p class="hint ok">AI готово: ' + total + " клиентов обработано.</p>";
