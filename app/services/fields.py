@@ -1284,114 +1284,133 @@ def _format_rub_short(value: Any) -> str:
   return f"{num:,.0f}".replace(",", " ") + " р."
 
 
+def _client_display_name(row: dict[str, Any]) -> str:
+  """Имя для narrative; телефон как имя не используем."""
+  for key in (
+    "Имя (для ИП и физ. лиц)",
+    "Наименование",
+    "Заказчик или получатель",
+  ):
+    raw = str(row.get(key) or "").strip()
+    if not raw or _PHONE_RE.match(raw):
+      continue
+    if key == "Имя (для ИП и физ. лиц)":
+      fam = str(row.get("Фамилия (для ИП и физ. лиц)") or "").strip()
+      return f"{raw} {fam}".strip() if fam and not _PHONE_RE.match(fam) else raw
+    # Берём первое «человеческое» слово из наименования (без ИП/ООО).
+    cleaned = re.sub(r"\b(ИП|ООО|ОАО|ЗАО|АО)\b", "", raw, flags=re.IGNORECASE).strip()
+    parts = [p for p in cleaned.split() if p and not _PHONE_RE.match(p)]
+    if parts:
+      return parts[0] if len(parts) == 1 else " ".join(parts[:2])
+  return "Клиент"
+
+
 def build_client_history_summary(row: dict[str, Any]) -> str | None:
-  """Развёрнутое саммари истории клиента (профиль и заказы), не рекомендация оператору."""
-  parts: list[str] = []
-  name = str(row.get("Наименование") or "Клиент").strip()
+  """Narrative-саммари истории клиента (профиль и заказы), не дамп полей CRM."""
+  name = _client_display_name(row)
   orders_n = order_count_for_row(row)
-  status = row.get("Статус") or client_status_from_orders(row)
+  status = str(row.get("Статус") or client_status_from_orders(row) or "").strip()
+  is_vip = row.get("ВИП") == "да"
+  channel = str(
+    row.get("Канал продаж")
+    or row.get("Тип продаж")
+    or row.get("Тип канала продаж")
+    or ""
+  ).strip()
+  avg = None if is_empty_cell(row.get("Средний чек")) else _format_rub_short(row.get("Средний чек"))
 
-  profile_bits = [name]
-  role = row.get("Заказчик или получатель")
-  if role:
-    profile_bits.append(f"роль: {role}")
-  gender = row.get("Пол")
-  if gender and gender != GENDER_NOT_APPLICABLE:
-    profile_bits.append(f"пол: {gender}")
-  parts.append(" · ".join(profile_bits) + ".")
+  lead = f"Клиент {name}" if name != "Клиент" else "Клиент"
+  if orders_n <= 0:
+    lead += " пока без заказов в CRM"
+  else:
+    order_word = "заказом" if orders_n == 1 else "заказами"
+    lead += f" с {orders_n} {order_word}"
+  if channel:
+    lead += f", канал — {channel}"
+  if avg:
+    lead += f", средний чек {avg}"
+  bits: list[str] = []
+  if is_vip:
+    bits.append("VIP")
+  if row.get("Постоянный клиент") == "да" or status == "постоянный":
+    bits.append("постоянный клиент")
+  elif status == "повторный":
+    bits.append("повторный клиент")
+  elif status == "новый" and orders_n <= 1:
+    bits.append("новый клиент")
+  if bits:
+    lead += f". Статус — {', '.join(bits)}"
+  lead += "."
 
-  loyalty_bits = [f"статус {status}", f"{orders_n} заказов"]
-  if row.get("ВИП") == "да":
-    loyalty_bits.append("VIP")
-  if row.get("Постоянный клиент") == "да":
-    loyalty_bits.append("постоянный клиент")
-  if not is_empty_cell(row.get("Средний чек")):
-    loyalty_bits.append(f"средний чек {_format_rub_short(row.get('Средний чек'))}")
-  if not is_empty_cell(row.get("Баллы начисленные")):
-    loyalty_bits.append(f"баллы {row.get('Баллы начисленные')}")
-  if row.get("Дата последнего заказа"):
-    loyalty_bits.append(f"последний заказ {row.get('Дата последнего заказа')}")
-  parts.append("Лояльность: " + ", ".join(loyalty_bits) + ".")
-
-  groups = str(row.get("Группы") or "").strip()
-  if groups:
-    parts.append(f"Сегменты: {groups}.")
-  tags = str(row.get("Теги") or "").strip()
-  if tags:
-    parts.append(f"Теги: {tags}.")
+  parts: list[str] = [lead]
 
   try:
     from app.services.segmentation import SegmentationService
 
-    calendar = SegmentationService._dated_event_labels(row)
     prefs = SegmentationService._preference_labels(row)
     order_patterns = SegmentationService.build_order_marketing_patterns(row)
+    order_ymd = SegmentationService._order_ymd
   except Exception:  # noqa: BLE001 — саммари не должно падать из‑за эвристик
-    calendar, prefs, order_patterns = [], [], []
-  if order_patterns:
+    prefs, order_patterns, order_ymd = [], [], None
+
+  month_names = {
+    1: "январе", 2: "феврале", 3: "марте", 4: "апреле", 5: "мае", 6: "июне",
+    7: "июле", 8: "августе", 9: "сентябре", 10: "октябре", 11: "ноябре", 12: "декабре",
+  }
+  seen_months: list[str] = []
+  if order_ymd:
+    for order in row.get("_orders_context") or []:
+      _y, month, _d = order_ymd(order)
+      if month and 1 <= month <= 12:
+        label = month_names[month]
+        if label not in seen_months:
+          seen_months.append(label)
+
+  occasions = [
+    str(p.get("occasion") or "").strip()
+    for p in order_patterns[:5]
+    if str(p.get("occasion") or "").strip()
+  ]
+  if len(seen_months) >= 2:
     parts.append(
-      "Маркетинг по заказам: "
-      + "; ".join(
-        f"{p.get('summary')} → касание {p.get('marketing_touch_window')}"
-        + (f", чек ~{p.get('avg_check')} р." if p.get("avg_check") else "")
-        for p in order_patterns[:5]
-      )
+      "В заказах прослеживается сезонность: покупки в "
+      + ", ".join(seen_months[:4])
+      + " — возможны личные праздники или регулярные поздравления."
+    )
+  elif occasions:
+    parts.append(
+      "По заказам заметны поводы: "
+      + ", ".join(list(dict.fromkeys(occasions))[:4])
       + "."
     )
-  elif calendar:
-    parts.append("Календарь событий: " + "; ".join(calendar[:5]) + ".")
-  elif row.get("Дата рождения"):
-    parts.append(f"Дата рождения: {row.get('Дата рождения')}.")
+
   if prefs:
-    parts.append("Предпочтения: " + ", ".join(prefs) + ".")
-
-  sales_bits = [
-    str(row.get("Тип продаж") or row.get("Тип канала продаж") or "").strip(),
-    str(row.get("Канал продаж") or "").strip(),
-  ]
-  sales_bits = [bit for bit in sales_bits if bit]
-  if sales_bits:
-    parts.append("Каналы: " + " / ".join(dict.fromkeys(sales_bits)) + ".")
-
-  orders = row.get("_orders_context") or []
-  if orders:
-    order_lines: list[str] = []
-    for order in orders[-4:]:
-      num = order.get("№") or order.get("Номер") or "—"
-      date = str(order.get("Дата") or order.get("Момент времени") or "")[:10] or "—"
-      amount = _format_rub_short(order.get("Сумма"))
-      channel = str(order.get("Канал продаж") or "").strip()
-      line = f"№{num} ({date}, {amount}"
-      if channel:
-        line += f", {channel}"
-      line += ")"
-      order_lines.append(line)
-    if order_lines:
-      parts.append("История заказов: " + "; ".join(order_lines) + ".")
+    parts.append("Предпочитает " + ", ".join(prefs[:4]) + ".")
 
   positions = str(row.get("Заказанные позиции") or "").strip()
-  if positions:
-    parts.append(f"Позиции: {positions[:220]}{'…' if len(positions) > 220 else ''}.")
+  if positions and not prefs:
+    short = positions[:120].rstrip()
+    if len(positions) > 120:
+      short += "…"
+    # убрать голые артикулы в начале строк если возможно — оставить как есть коротко
+    parts.append(f"В заказах встречались позиции вроде «{short}».")
+
+  comments = collect_client_comments(row).strip().lower()
+  if any(k in comments for k in ("адрес", "получател", "время достав", "уточн")):
+    parts.append(
+      "В комментариях есть уточнения адреса или времени у получателя — "
+      "вероятно, доставка не себе."
+    )
 
   messages = row.get("_messenger_context") or []
   if messages:
     inbound = sum(1 for m in messages if m.get("direction") == "in")
-    outbound = sum(1 for m in messages if m.get("direction") == "out")
-    parts.append(
-      f"Переписка: {len(messages)} сообщений"
-      f" (входящих {inbound}, исходящих {outbound})."
-    )
-    last_text = str(messages[-1].get("text") or "").strip()
-    if last_text:
-      parts.append(f"Последнее сообщение: «{last_text[:160]}{'…' if len(last_text) > 160 else ''}».")
+    if inbound == 0:
+      parts.append("В переписке почти не участвует.")
+    else:
+      parts.append("Тон коммуникации по переписке в целом нейтральный.")
 
-  comments = collect_client_comments(row).strip()
-  if comments:
-    parts.append(
-      f"Комментарии: {comments[:200]}{'…' if len(comments) > 200 else ''}."
-    )
-
-  if len(parts) < 2:
+  if len(parts) < 2 and orders_n <= 0:
     return None
   return " ".join(parts)
 

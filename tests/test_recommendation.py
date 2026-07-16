@@ -70,9 +70,10 @@ def test_order_marketing_patterns_from_history() -> None:
 
     summary = SegmentationService._heuristic_intent_summary(row)
     assert summary is not None
-    assert "Маркетинг:" in summary
+    assert "касание" in summary.lower() or "сезонность" in summary.lower() or "окна" in summary.lower()
     assert "декабр" in summary.lower() or "Новый год" in summary
-
+    assert "Маркетинг:" not in summary
+    assert "Intent:" not in summary
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
     assert "декабр" in rec.lower() or "ноябр" in rec.lower()

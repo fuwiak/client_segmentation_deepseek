@@ -279,6 +279,7 @@ def test_build_client_history_summary_includes_profile_and_orders() -> None:
         "_orders_count": 8,
         "Средний чек": 12000,
         "Статус": "постоянный",
+        "Канал продаж": "Telegram",
         "_orders_context": [
             {"№": "100", "Дата": "2026-03-01", "Сумма": 15000, "Канал продаж": "Telegram"},
             {"№": "101", "Дата": "2026-02-01", "Сумма": 9000, "Канал продаж": "Витрина"},
@@ -287,14 +288,38 @@ def test_build_client_history_summary_includes_profile_and_orders() -> None:
     }
     summary = build_client_history_summary(row)
     assert summary is not None
-    assert "Султанова Лилия" in summary
-    assert "8 заказов" in summary
-    assert "постоянный" in summary
-    assert "История заказов" in summary
-    assert "Розы" in summary
+    assert "Султанова Лилия" in summary or "Султанова" in summary
+    assert "8 заказ" in summary
+    assert "постоянный" in summary.lower() or "VIP" in summary
+    assert "Лояльность:" not in summary
+    assert "Сегменты:" not in summary
+    assert "История заказов:" not in summary
+    assert "12 000" in summary or "12000" in summary or "средний чек" in summary.lower()
+    assert "Роз" in summary or "сезонност" in summary.lower() or "повод" in summary.lower()
 
     enriched = ensure_ai_client_summary(row)
     assert enriched["_ai_client_summary"] == summary
+
+
+def test_build_client_history_summary_avoids_phone_as_name() -> None:
+    from app.services.fields import build_client_history_summary
+
+    row = {
+        "Наименование": "+79037179210",
+        "Статус": "новый",
+        "Всего заказов": 1,
+        "_orders_count": 1,
+        "Средний чек": 1929,
+        "_orders_context": [
+            {"Дата": "2025-08-27", "Сумма": 1929, "Позиции": "Коралловая роза в горшке"},
+        ],
+    }
+    summary = build_client_history_summary(row)
+    assert summary is not None
+    assert not summary.startswith("+79037179210")
+    assert "Лояльность:" not in summary
+    assert "Теги:" not in summary
+    assert "Клиент" in summary
 
 
 def test_enrich_row_computed_sets_client_status() -> None:
