@@ -31,6 +31,16 @@ def test_public_paths() -> None:
     assert is_public_path("/clients") is False
 
 
+def test_safe_next_url_blocks_fragments() -> None:
+    from app.auth import safe_next_url
+
+    assert safe_next_url("/messenger/sidebar") == "/clients"
+    assert safe_next_url("/login?next=/foo") == "/clients"
+    assert safe_next_url("/clients?filter=all") == "/clients?filter=all"
+    assert safe_next_url("https://evil.com") == "/clients"
+    assert safe_next_url("//evil.com") == "/clients"
+
+
 def test_login_page_renders(monkeypatch) -> None:
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("AUTH_USERNAME", "admin")

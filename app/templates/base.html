@@ -6,17 +6,19 @@
   <meta name="htmx-config" content='{"historyCacheSize":6}'>
   <title>{% block title %}{{ page_title|default(title) }}{% endblock %} · Iris CRM</title>
   <link rel="icon" href="{{ static_asset('img/logo.svg') }}" type="image/svg+xml">
+  {% if active_page|default('') != 'login' %}
   <script src="{{ static_asset('vendor/htmx.min.js') }}" defer></script>
   <script src="{{ static_asset('vendor/htmx-ext-preload.js') }}" defer></script>
+  {% endif %}
   <link rel="stylesheet" href="{{ static_asset('style.css') }}">
 </head>
-<body hx-boost="true"
+<body {% if active_page|default('') == 'login' %}class="login-page"{% else %}hx-boost="true"
       hx-ext="preload"
       hx-target="#page-content"
       hx-select="#page-content"
       hx-swap="innerHTML show:top"
       hx-push-url="true"
-      hx-timeout="120000">
+      hx-timeout="120000"{% endif %}>
   <div id="nav-progress" class="nav-progress" aria-hidden="true"></div>
 
   <header class="site-header">
@@ -85,8 +87,11 @@
   </nav>
   {% endif %}
 
+  {% if active_page|default('') != 'login' %}
   {% include 'partials/diag_panel.html' %}
+  {% endif %}
 
+  {% if active_page|default('') != 'login' %}
   <div id="orders-modal-loading" class="modal-overlay orders-modal-loading-overlay" hidden aria-hidden="true">
     <div class="modal-card orders-modal">
       <h2 class="modal-title">Заказы</h2>
@@ -118,9 +123,12 @@
     </div>
     <div id="client-drawer-panel"></div>
   </aside>
+  {% endif %}
 
+  {% if active_page|default('') != 'login' %}
   <script src="{{ static_asset('clients_ws.js') }}" defer></script>
   <script src="{{ static_asset('app.js') }}" defer></script>
+  {% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

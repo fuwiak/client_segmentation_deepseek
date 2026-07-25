@@ -27,6 +27,7 @@ from app.auth import (
   current_user,
   login_user,
   logout_user,
+  safe_next_url,
   verify_credentials,
 )
 from app.config import get_settings
@@ -717,17 +718,18 @@ async def login_page(
   next: str = Query("/clients"),
   error: str = Query(""),
 ) -> HTMLResponse:
-  if auth_required(settings) and current_user(request):
-    from fastapi.responses import RedirectResponse
+  from fastapi.responses import RedirectResponse
 
-    return RedirectResponse(url=next or "/clients", status_code=303)
+  next_url = safe_next_url(next)
+  if auth_required(settings) and current_user(request):
+    return RedirectResponse(url=next_url, status_code=303)
   return templates.TemplateResponse(
     "login.html",
     _ctx(
       request,
       active_page="login",
       page_title="Вход",
-      next_url=next or "/clients",
+      next_url=next_url,
       error=error,
       layout_template="base.html",
     ),
@@ -743,12 +745,12 @@ async def login_submit(
 ) -> HTMLResponse:
   from fastapi.responses import RedirectResponse
 
+  next_url = safe_next_url(next)
   if not auth_required(settings):
-    return RedirectResponse(url=next or "/clients", status_code=303)
+    return RedirectResponse(url=next_url, status_code=303)
   if verify_credentials(settings, username, password):
     login_user(request, username)
-    target = next if next.startswith("/") else "/clients"
-    return RedirectResponse(url=target, status_code=303)
+    return RedirectResponse(url=next_url, status_code=303)
   logging.getLogger(__name__).warning("AUTH login failed user=%s", username.strip())
   return templates.TemplateResponse(
     "login.html",
@@ -756,7 +758,7 @@ async def login_submit(
       request,
       active_page="login",
       page_title="Вход",
-      next_url=next or "/clients",
+      next_url=next_url,
       username=username,
       error="Неверный логин или пароль",
       layout_template="base.html",

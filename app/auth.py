@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import secrets
 from typing import Any
+from urllib.parse import quote, urlparse
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,12 +17,29 @@ logger = logging.getLogger(__name__)
 
 SESSION_USER_KEY = "auth_user"
 
-# Публичные пути без логина
 PUBLIC_PATH_PREFIXES = (
     "/static/",
     "/health",
     "/login",
     "/logout",
+)
+
+# HTMX-фрагменты — не ставить в ?next= и не делать HX-Redirect (петля на /login).
+_FRAGMENT_PREFIXES = (
+    "/messenger/",
+    "/clients/page",
+    "/clients/table",
+    "/clients/ai/",
+    "/clients/tag-rules",
+    "/enrich/",
+    "/segment/progress",
+    "/segment/start",
+    "/moysklad/status",
+    "/moysklad/sync",
+    "/moysklad/push",
+    "/upload/",
+    "/diagnostics/",
+    "/ws/",
 )
 
 
@@ -39,6 +57,24 @@ def is_public_path(path: str) -> bool:
     return False
 
 
+def is_fragment_path(path: str) -> bool:
+    return any(path == p or path.startswith(p) for p in _FRAGMENT_PREFIXES)
+
+
+def safe_next_url(raw: str | None, *, default: str = "/clients") -> str:
+    """Разрешить только внутренние page-URL после логина."""
+    text = (raw or "").strip() or default
+    if not text.startswith("/") or text.startswith("//"):
+        return default
+    parsed = urlparse(text)
+    path = parsed.path or "/"
+    if is_public_path(path) or is_fragment_path(path):
+        return default
+    if parsed.query:
+        return f"{path}?{parsed.query}"
+    return path
+
+
 def verify_credentials(settings: Settings, username: str, password: str) -> bool:
     expected_user = (settings.auth_username or "admin").strip()
     expected_pass = settings.auth_password or ""
@@ -53,7 +89,6 @@ def current_user(request: Request) -> str | None:
     try:
         user = request.session.get(SESSION_USER_KEY)
     except AssertionError:
-        # SessionMiddleware не подключён
         return None
     if user and str(user).strip():
         return str(user).strip()
@@ -73,7 +108,6 @@ def logout_user(request: Request) -> None:
 
 class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: Any, **kwargs: Any) -> None:
-        # kwargs игнорируем — settings читаем динамически через get_settings()
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -87,11 +121,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if user:
             return await call_next(request)
         logger.info("AUTH redirect path=%s", path)
-        next_url = path
-        if request.url.query:
-            next_url = f"{path}?{request.url.query}"
+
         if request.headers.get("hx-request"):
+            # Фрагменты (sidebar и т.п.) — тихий 401 без HX-Redirect, иначе петля.
+            if is_fragment_path(path):
+                return Response(status_code=401)
+            next_url = safe_next_url(path)
             response = Response(status_code=401)
-            response.headers["HX-Redirect"] = f"/login?next={next_url}"
+            response.headers["HX-Redirect"] = f"/login?next={quote(next_url, safe='/?=&')}"
             return response
-        return RedirectResponse(url=f"/login?next={next_url}", status_code=303)
+
+        next_url = safe_next_url(path)
+        return RedirectResponse(
+            url=f"/login?next={quote(next_url, safe='/?=&')}",
+            status_code=303,
+        )
