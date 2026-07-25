@@ -11,7 +11,14 @@ on:
 
 concurrency:
   group: deploy-selectel
-  cancel-in-progress: true
+  # false (not true): request_pty is off, so cancelling the Actions job does
+  # NOT stop the remote git reset/docker build over SSH — it keeps running
+  # orphaned on the VDS. cancel-in-progress used to let a new push start a
+  # second deploy on top of that orphan, pegging the box until new SSH
+  # sessions sat silent for minutes before Actions gave up. With this false,
+  # a new push queues; GitHub auto-drops any older *queued* run for you, so
+  # you never get more than one deploy actually touching the VDS at a time.
+  cancel-in-progress: false
 
 jobs:
   deploy:

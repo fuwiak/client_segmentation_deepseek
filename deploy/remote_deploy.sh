@@ -160,6 +160,23 @@ log "log=$DEPLOY_LOG status=$DEPLOY_STATUS app=$APP_DIR"
 log "############################################################"
 status "START"
 
+# Serialize deploys on this host. Two overlapping runs (e.g. a workflow_dispatch
+# racing a push, or a process orphaned by a cancelled Actions job before
+# concurrency.cancel-in-progress was turned off) used to git reset --hard and
+# docker build at the same time, pegging the VDS until a fresh SSH session
+# couldn't even get scheduled long enough to print its first echo. Wait for
+# any prior instance to finish instead of racing it.
+exec 200>/var/run/kinetic-deploy.lock
+if ! flock -n 200; then
+  log "another deploy is already running on this host — waiting for it to finish…"
+  status "WAITING_FOR_PRIOR_DEPLOY"
+  flock -w 1200 200 || {
+    fail "timed out after 20m waiting for prior deploy's lock"
+    exit 1
+  }
+  log "prior deploy released the lock — proceeding"
+fi
+
 mkdir -p "$(dirname "$APP_DIR")"
 
 step 1 "Sync git repo"
