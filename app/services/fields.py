@@ -355,6 +355,116 @@ def client_status_from_orders(row: dict[str, Any]) -> str:
   return "новый"
 
 
+_BEZ_STATUS_MARKERS = frozenset({
+  "без статуса",
+  "безстатуса",
+  "no status",
+  "none",
+})
+
+
+def moysklad_counterparty_status(row: dict[str, Any]) -> str:
+  """Статус контрагента из МойСклад (state); пустой → «без статуса»."""
+  raw = str(
+    row.get("Статус контрагента")
+    or row.get("_moysklad_state")
+    or ""
+  ).strip()
+  if not raw:
+    # Если источник МойСклад и статус не задан — это «без статуса».
+    if str(row.get("_source") or "").lower() == "moysklad":
+      return "без статуса"
+    return ""
+  return raw
+
+
+def is_bez_statusa(row: dict[str, Any]) -> bool:
+  status = moysklad_counterparty_status(row).lower().replace("ё", "е")
+  compact = status.replace(" ", "")
+  return status in _BEZ_STATUS_MARKERS or compact in _BEZ_STATUS_MARKERS
+
+
+def is_archived_row(row: dict[str, Any]) -> bool:
+  raw = str(row.get("Архивный") or "").strip().lower()
+  if raw in {"да", "yes", "true", "1", "архив", "archived"}:
+    return True
+  return bool(row.get("_moysklad_archived"))
+
+
+def has_crm_contact(row: dict[str, Any]) -> bool:
+  """Есть телефон, почта или ТГ-ник — иначе контрагент не для CRM/рассылок."""
+  phone = str(row.get("Телефон") or "").strip()
+  email = str(row.get("E-mail") or row.get("Email") or "").strip()
+  tg = str(row.get("ТГ ник") or "").strip()
+  if phone and phone not in {"—", "-", "нет"}:
+    return True
+  if email and "@" in email:
+    return True
+  if tg and tg not in {"—", "-", "нет"}:
+    return True
+  return False
+
+
+def is_crm_eligible(row: dict[str, Any]) -> bool:
+  """CRM-выборка: не архив, не «без статуса», есть контакт."""
+  if is_archived_row(row):
+    return False
+  if is_bez_statusa(row):
+    return False
+  if not has_crm_contact(row):
+    return False
+  return True
+
+
+_PHONE_IN_TEXT_RE = re.compile(
+  r"(?:\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}"
+)
+
+
+def phones_in_text(text: str) -> list[str]:
+  from app.domain import normalize_phone
+
+  found: list[str] = []
+  seen: set[str] = set()
+  for match in _PHONE_IN_TEXT_RE.finditer(str(text or "")):
+    phone = normalize_phone(match.group(0))
+    if phone and phone not in seen:
+      seen.add(phone)
+      found.append(phone)
+  return found
+
+
+def customer_or_recipient_role(row: dict[str, Any]) -> str:
+  """заказчик / получатель / заказчик, получатель по комментариям заказов.
+
+  Если в комментарии к заказу есть номер, отличный от основного телефона клиента —
+  заказ считается «заказчик»; иначе — «получатель».
+  """
+  from app.domain import normalize_phone
+
+  client_phone = normalize_phone(str(row.get("Телефон") or "") or None)
+  has_customer = False
+  has_recipient = False
+  orders = row.get("_orders_context") or []
+  if not orders:
+    existing = str(row.get("Заказчик или получатель") or "").strip()
+    return existing or "получатель"
+
+  for order in orders:
+    comment = str(order.get("Комментарий") or order.get("Описание") or "")
+    other = [p for p in phones_in_text(comment) if p != client_phone]
+    if other:
+      has_customer = True
+    else:
+      has_recipient = True
+
+  if has_customer and has_recipient:
+    return "заказчик, получатель"
+  if has_customer:
+    return "заказчик"
+  return "получатель"
+
+
 def is_permanent(row: dict[str, Any]) -> bool:
   return order_count_for_row(row) >= 3
 
@@ -1230,6 +1340,13 @@ def enrich_row_computed(
   enriched[_SALES_FILTER_VALUE_CACHE_KEY] = sales_type.lower()
   enriched["Статус последнего заказа"] = last_order_status(row)
   enriched["Статус"] = client_status_from_orders(enriched)
+  # Сохраняем статус контрагента МойСклад отдельно (для исключения «без статуса»).
+  ms_state = moysklad_counterparty_status(enriched)
+  if ms_state:
+    enriched["Статус контрагента"] = ms_state
+  role = customer_or_recipient_role(enriched)
+  if role:
+    enriched["Заказчик или получатель"] = role
   enriched["ВИП"] = "да" if is_vip(row) else "нет"
   enriched["Постоянный клиент"] = "да" if is_permanent(row) else "нет"
   computed_date = last_order_date(row)

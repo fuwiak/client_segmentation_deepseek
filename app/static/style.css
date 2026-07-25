@@ -4,31 +4,32 @@
    ========================================================================== */
 
 :root {
-  --primary: #cc785c;
-  --primary-active: #a9583e;
-  --primary-soft: rgba(204, 120, 92, 0.12);
-  --link: #cc785c;
+  /* Slack-inspired tokens (DESIGN.md) */
+  --primary: #4a154b;
+  --primary-active: #611f69;
+  --primary-soft: rgba(74, 21, 75, 0.10);
+  --link: #1264a3;
 
-  --canvas: #faf9f5;
+  --canvas: #f4ede4;
   --surface-white: #ffffff;
-  --surface-soft: #f5f2ec;
+  --surface-soft: #f9f0ff;
   --surface-card: #ffffff;
-  --hairline: #e8e4dc;
-  --hairline-soft: #f0ece6;
+  --hairline: #e6e6e6;
+  --hairline-soft: #eee8f0;
 
-  --ink: #141413;
-  --body-strong: #2a2a28;
-  --body: #4a4a47;
-  --muted: #7a7872;
-  --muted-soft: #a09d96;
+  --ink: #1d1d1d;
+  --body-strong: #1d1d1d;
+  --body: #1d1d1d;
+  --muted: #696969;
+  --muted-soft: #8b8b8b;
   --on-primary: #ffffff;
 
-  --success: #5db872;
+  --success: #007a5a;
   --warning: #d4a017;
-  --error: #c64545;
+  --error: #cc4117;
 
-  --font-display: "Cormorant Garamond", "EB Garamond", Garamond, Georgia, serif;
-  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Lato", "Helvetica Neue", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: "Lato", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --xxs: 4px;
@@ -40,14 +41,14 @@
   --xxl: 48px;
   --section: 64px;
 
-  --r-sm: 6px;
+  --r-sm: 4px;
   --r-md: 8px;
   --r-lg: 12px;
   --r-xl: 16px;
   --r-pill: 9999px;
 
   --nav-h: 64px;
-  --shadow-soft: 0 1px 3px rgba(20, 20, 19, 0.06);
+  --shadow-soft: 0 1px 3px rgba(29, 29, 29, 0.08);
 }
 
 * { box-sizing: border-box; }
@@ -1097,20 +1098,81 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   flex-wrap: wrap;
   gap: 4px;
 }
+.group-chip-ms {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: 0.82em;
+  line-height: 1.3;
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  color: var(--body);
+}
 .ai-tag-chip {
   display: inline-block;
-  padding: 2px 6px;
-  border-radius: var(--r-sm);
-  font-size: 0.85em;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: 0.82em;
   line-height: 1.3;
   cursor: help;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border, var(--hairline));
   background: var(--surface-soft);
 }
 .ai-tag-chip.ai-tag-ai {
   border: 2px solid var(--success);
-  background: rgba(93, 184, 114, 0.06);
+  background: rgba(0, 122, 90, 0.10);
+  color: #0a5c45;
+  font-weight: 600;
 }
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.brand-logo {
+  display: block;
+  border-radius: 8px;
+}
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-logo {
+  display: block;
+  border-radius: 5px;
+}
+.crm-exclusion-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.filter-form-base select {
+  min-width: 140px;
+}
+
+.clients-table-wide { font-size: 13px; }
+.clients-table-wide th,
+.clients-table-wide td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.clients-table-wide th {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+  vertical-align: bottom;
+}
+.clients-table-wide th .th-label {
+  display: inline;
+  white-space: normal;
+  word-break: break-word;
+  font-weight: 600;
+}
+.clients-table-wide .tags-cell { max-width: 220px; white-space: normal; }
+.clients-table-wide .tg-conv-cell { max-width: 220px; white-space: normal; }
+.clients-table-wide .name-cell { max-width: 260px; overflow: visible; }
+.clients-table-wide th.col-hidden,
+.clients-table-wide td.col-hidden { display: none; }
 
 .ai-badge {
   display: inline-block;
@@ -1744,8 +1806,8 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 
 .clients-table-wide { font-size: 13px; }
 .clients-table-wide th,
-.clients-table-wide td { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-.clients-table-wide .tags-cell { max-width: 140px; }
+.clients-table-wide td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.clients-table-wide .tags-cell { max-width: 220px; white-space: normal; }
 .clients-table-wide .tg-conv-cell { max-width: 220px; white-space: normal; }
 .clients-table-wide .name-cell { max-width: 260px; overflow: visible; }
 .clients-table-wide th.col-hidden,

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="htmx-config" content='{"historyCacheSize":6}'>
   <title>{% block title %}{{ page_title|default(title) }}{% endblock %} · Client CRM</title>
+  <link rel="icon" href="{{ static_asset('img/logo.svg') }}" type="image/svg+xml">
   <script src="{{ static_asset('vendor/htmx.min.js') }}" defer></script>
   <script src="{{ static_asset('vendor/htmx-ext-preload.js') }}" defer></script>
   <link rel="stylesheet" href="{{ static_asset('style.css') }}">
@@ -20,7 +21,10 @@
 
   <header class="site-header">
     <div class="header-inner">
-      <a href="/clients" class="wordmark">Client <span class="wordmark-accent">CRM</span></a>
+      <a href="/clients" class="brand-lockup" aria-label="Client CRM — на главную">
+        <img src="{{ static_asset('img/logo.svg') }}" alt="Client CRM" class="brand-logo" width="32" height="32">
+        <span class="wordmark">Client <span class="wordmark-accent">CRM</span></span>
+      </a>
 
       <nav class="desktop-nav" aria-label="Основная навигация">
         {% include 'partials/nav_items.html' %}
@@ -52,7 +56,10 @@
 
     <footer class="footer">
       <div class="footer-inner">
-        <span>Client CRM</span>
+        <span class="footer-brand">
+          <img src="{{ static_asset('img/logo.svg') }}" alt="" class="footer-logo" width="20" height="20">
+          Client CRM
+        </span>
         <span>{{ model }} · {% if has_api_key %}AI активен{% else %}Нужен API-ключ{% endif %}</span>
       </div>
     </footer>

@@ -1,16 +1,36 @@
-<h3>Кампании</h3>
+<h3>Черновики рассылок</h3>
 {% if campaigns %}
 <ul class="campaign-list">
   {% for c in campaigns %}
   <li class="campaign-item">
     <strong>{{ c.title }}</strong>
-    <span class="chip">{{ c.status.value }}</span>
+    <span class="chip">{{ c.status }}</span>
+    <span class="chip">{{ c.mode|default('manual') }}</span>
     <span class="chip">{{ c.channel }}</span>
-    <p class="hint">Сегменты: {{ c.target_segments|join(', ') or '—' }}</p>
-    <p>{{ c.offer or '—' }}</p>
+    <p class="hint">Получателей: {{ (c.recipients or [])|length }} · отправлено (demo): {{ c.sent_count|default(0) }}</p>
+    <p>{{ c.message or c.offer or '—' }}</p>
+    {% if c.recipients %}
+    <details>
+      <summary class="btn-text">Получатели</summary>
+      <ul>
+        {% for r in c.recipients[:20] %}
+        <li>
+          {{ r.name }} · {{ r.tg or r.phone or '—' }}
+          <form style="display:inline" hx-post="/campaigns/{{ c.id }}/send" hx-target="#campaign-list" hx-swap="innerHTML">
+            <input type="hidden" name="recipient_id" value="{{ r.id }}">
+            <button type="submit" class="btn-text">Отправить (demo)</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      <form hx-post="/campaigns/{{ c.id }}/send" hx-target="#campaign-list" hx-swap="innerHTML">
+        <button type="submit" class="btn secondary small">Отправить всем (demo)</button>
+      </form>
+    </details>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>
 {% else %}
-<p class="hint">Кампаний пока нет.</p>
+<p class="hint">Кампаний пока нет. Создайте ручную или авто (Demo) рассылку.</p>
 {% endif %}

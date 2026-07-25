@@ -99,9 +99,14 @@ def _sex_label(value: Any) -> str | None:
     return SEX_LABELS.get(key, str(value))
 
 
-def _counterparty_status(tags: list[str]) -> str | None:
-    """Статус лояльности считается по числу заказов, не по тегам МойСклад."""
-    return None
+def _counterparty_status_label(counterparty: dict[str, Any]) -> str:
+    """Имя статуса контрагента МойСклад; пустой state → «без статуса»."""
+    state = counterparty.get("state") or {}
+    if isinstance(state, dict):
+        name = str(state.get("name") or "").strip()
+        if name:
+            return name
+    return "без статуса"
 
 
 def _address_full(counterparty: dict[str, Any], key: str) -> dict[str, Any]:
@@ -166,12 +171,15 @@ def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
     bank = _bank_fields(counterparty)
     name = counterparty.get("name")
     phone = resolve_counterparty_phone(counterparty)
+    ms_state = _counterparty_status_label(counterparty)
+    archived = bool(counterparty.get("archived"))
 
     return {
         "UUID": counterparty.get("id"),
         "Наименование": name,
         "Телефон": phone,
-        "Статус": _counterparty_status(tags),
+        "Статус": None,  # лояльность считается по заказам в enrich_row_computed
+        "Статус контрагента": ms_state,
         "Группы": groups,
         "Фактический адрес": counterparty.get("actualAddress"),
         "Фактический адрес (Комментарий)": actual_full.get("comment"),
@@ -206,6 +214,8 @@ def counterparty_to_row(counterparty: dict[str, Any]) -> dict[str, Any]:
         "_moysklad_id": counterparty.get("id"),
         "_moysklad_tags": tags,
         "_moysklad_tags_display": groups,
+        "_moysklad_state": ms_state,
+        "_moysklad_archived": archived,
         "_source": SourceType.MOYSKLAD.value,
     }
 
@@ -324,6 +334,7 @@ def order_to_row(
         "№": order.get("name"),
         "Контрагент": agent_name,
         "Дата": order.get("moment"),
+        "Дата отгрузки": order.get("deliveryPlannedMoment") or order.get("moment"),
         "Сумма": _minor_to_rub(order.get("sum")),
         "Статус": state_name,
         "Комментарий": order.get("description"),

@@ -52,7 +52,7 @@ from app.services.export_format import (
   merge_enriched_rows,
   row_for_export,
 )
-from app.services.fields import enrich_row_computed, finalize_ai_coverage_row, order_count_for_row
+from app.services.fields import enrich_row_computed, finalize_ai_coverage_row, order_count_for_row, ensure_ai_recommendation
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import (
@@ -931,9 +931,10 @@ def _pagination_pages(page: int, total_pages: int, *, radius: int = 2) -> list[i
 def _clients_ctx(
   request: Request,
   *,
-  sales_filter: str = "direct",
+  sales_filter: str = "all",
   tag: str = "",
   group: str = "",
+  channel: str = "",
   status: str = "",
   q: str = "",
   phone: str = "",
@@ -949,6 +950,7 @@ def _clients_ctx(
         sales_filter=sales_filter,
         tag=tag,
         group=group,
+        channel=channel,
         status=status,
         q=q,
         phone=phone,
@@ -960,6 +962,7 @@ def _clients_ctx(
         sales_filter=sales_filter,
         tag=tag,
         group=group,
+        channel=channel,
         status=status,
         q=q,
         phone=phone,
@@ -977,6 +980,21 @@ def _clients_ctx(
   end = start + per_page
   page_clients = rows[start:end]
   tg_export_ready = _tg_export_progress.get("status") == "done"
+  from app.services.export_format import collect_channel_options, collect_status_options
+
+  # Опции каналов/статусов считаем по срезу без этих фильтров
+  base_for_options = hub.filter_rows(
+    sales_filter=sales_filter,
+    tag=tag,
+    group=group,
+    channel="",
+    status="",
+    q=q,
+    phone=phone,
+  )
+  channel_options = collect_channel_options(base_for_options)
+  status_options = collect_status_options(base_for_options)
+  exclusion = hub.crm_exclusion_stats()
   ctx = _ctx(
     request,
     clients=page_clients,
@@ -992,11 +1010,15 @@ def _clients_ctx(
     group_filter=group,
     group_options=group_options,
     groups_total=groups_total,
+    channel_filter=channel,
+    channel_options=channel_options,
     status_filter=status,
+    status_options=status_options,
     q_filter=q,
     phone_filter=phone,
     sort_col=sort,
     sort_order=order if sort else "",
+    crm_excluded=exclusion,
     data_source=hub.data_source_label(),
     messenger_available=settings.messenger_enabled and (
       get_green_api_client(settings).enabled or get_telegram_client(settings).enabled
@@ -1022,9 +1044,10 @@ def _clients_ctx(
 async def _clients_ctx_with_tg(
   request: Request,
   *,
-  sales_filter: str = "direct",
+  sales_filter: str = "all",
   tag: str = "",
   group: str = "",
+  channel: str = "",
   status: str = "",
   q: str = "",
   phone: str = "",
@@ -1039,6 +1062,7 @@ async def _clients_ctx_with_tg(
     sales_filter=sales_filter,
     tag=tag,
     group=group,
+    channel=channel,
     status=status,
     q=q,
     phone=phone,
@@ -1178,7 +1202,7 @@ async def dashboard_page(
 @app.get("/clients", response_class=HTMLResponse)
 async def clients_page(
   request: Request,
-  filter: str = Query("direct"),
+  filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
   status: str = Query(""),
@@ -1230,7 +1254,7 @@ async def clients_page(
 @app.get("/clients/table", response_class=HTMLResponse)
 async def clients_table_partial(
   request: Request,
-  filter: str = Query("direct"),
+  filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
   status: str = Query(""),
@@ -1265,7 +1289,7 @@ async def clients_table_partial(
 @app.get("/clients/page", response_class=HTMLResponse)
 async def clients_page_partial(
   request: Request,
-  filter: str = Query("direct"),
+  filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
   status: str = Query(""),
@@ -1473,19 +1497,52 @@ async def segment_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/campaigns", response_class=HTMLResponse)
-async def campaigns_page(request: Request) -> HTMLResponse:
+async def campaigns_page(
+  request: Request,
+  filter: str = Query("all"),
+  tag: str = Query(""),
+  group: str = Query(""),
+  channel: str = Query(""),
+  status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  mode: str = Query("manual"),
+) -> HTMLResponse:
   pipeline_log("PIPE", "page campaigns")
+  await _hydrate_hub_from_cache()
   campaigns = await campaign_svc.list_campaigns()
-  rows = hub.active_rows()
+  rows = hub.filter_rows(
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    channel=channel,
+    status=status,
+    q=q,
+    phone=phone,
+  )
+  preview = []
+  for row in rows[:30]:
+    item = dict(row)
+    item["_demo_message"] = CampaignService.demo_ai_message(row)
+    preview.append(item)
   return templates.TemplateResponse(
     "campaigns.html",
     _ctx(
       request,
       active_page="campaigns",
-      page_title="Кампании",
-      subtitle="Рассылки по сегментам клиентов",
+      page_title="Рассылки",
+      subtitle="Ручные по фильтрам и авто по рекомендациям AI (Demo)",
       campaigns=campaigns,
-      total_clients=len(rows),
+      audience_count=len(rows),
+      preview_clients=preview,
+      mode=mode,
+      sales_filter=filter,
+      tag_filter=tag,
+      group_filter=group,
+      channel_filter=channel,
+      status_filter=status,
+      q_filter=q,
+      phone_filter=phone,
     ),
   )
 
@@ -1494,20 +1551,65 @@ async def campaigns_page(request: Request) -> HTMLResponse:
 async def campaign_create(
   request: Request,
   title: str = Form(...),
-  target_segments: str = Form(""),
+  mode: str = Form("manual"),
   channel: str = Form("whatsapp"),
   offer: str = Form(""),
+  filter: str = Form("all"),
+  tag: str = Form(""),
+  group: str = Form(""),
+  channel_filter: str = Form(""),
+  status: str = Form(""),
+  q: str = Form(""),
+  phone: str = Form(""),
 ) -> HTMLResponse:
-  segments = [s.strip() for s in target_segments.split(",") if s.strip()]
-  campaign = Campaign(
-    id=str(uuid.uuid4()),
-    title=title,
-    target_segments=segments,
-    channel=channel,
-    offer=offer,
-    status=CampaignStatus.DRAFT,
+  await _hydrate_hub_from_cache()
+  rows = hub.filter_rows(
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    channel=channel_filter,
+    status=status,
+    q=q,
+    phone=phone,
   )
-  await campaign_svc.create(campaign)
+  message = offer
+  if mode == "auto":
+    # Demo: общий шаблон; персонализация лежит в recipients.recommendation
+    message = offer or "Персональное сообщение по рекомендации AI (Demo)"
+    for row in rows:
+      if not row.get("_ai_recommendation") and not row.get("Рекомендация"):
+        ensure_ai_recommendation(row)
+  await campaign_svc.create_draft(
+    title=title,
+    mode=mode,
+    channel=channel,
+    message=message,
+    clients=rows,
+    filters={
+      "filter": filter,
+      "tag": tag,
+      "group": group,
+      "channel": channel_filter,
+      "status": status,
+      "q": q,
+      "phone": phone,
+    },
+  )
+  campaigns = await campaign_svc.list_campaigns()
+  return templates.TemplateResponse(
+    "partials/campaign_list.html",
+    _ctx(request, campaigns=campaigns),
+  )
+
+
+@app.post("/campaigns/{campaign_id}/send", response_class=HTMLResponse)
+async def campaign_send(
+  request: Request,
+  campaign_id: str,
+  recipient_id: str = Form(""),
+) -> HTMLResponse:
+  ids = [recipient_id] if recipient_id else None
+  await campaign_svc.mark_sent(campaign_id, ids)
   campaigns = await campaign_svc.list_campaigns()
   return templates.TemplateResponse(
     "partials/campaign_list.html",
@@ -1895,7 +1997,7 @@ async def download_clients_xlsx() -> StreamingResponse:
 async def enrich_start(
   request: Request,
   limit: int = Form(500),
-  filter: str = Query("direct"),
+  filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
   status: str = Query(""),
@@ -1986,7 +2088,7 @@ async def telegram_export_status() -> JSONResponse:
 @app.get("/enrich/progress", response_class=HTMLResponse)
 async def enrich_progress(
   request: Request,
-  filter: str = Query("direct"),
+  filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
   status: str = Query(""),

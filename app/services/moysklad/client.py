@@ -164,7 +164,11 @@ class MoySkladClient(MoySkladClientBase):
     async def fetch_all_counterparties(self, max_rows: int = 500) -> list[dict[str, Any]]:
         if not self._enabled:
             return []
-        return await self._fetch_all("/entity/counterparty", max_rows=max_rows)
+        return await self._fetch_all(
+            "/entity/counterparty",
+            max_rows=max_rows,
+            extra_params={"expand": "state", "filter": "archived=false"},
+        )
 
     async def fetch_all_sales_channels(self, max_rows: int = 200) -> list[dict[str, Any]]:
         if not self._enabled:

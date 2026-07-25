@@ -18,7 +18,7 @@ def _sample_hub() -> DataHub:
                 {
                     "UUID": "2",
                     "Наименование": "+78887776655",
-                    "Телефон": "",
+                    "Телефон": "+78887776655",
                     "Тип продаж": "прямые продажи",
                     "Группы": "новый",
                 },
@@ -46,10 +46,10 @@ def test_active_rows_merges_parsed_with_enrichment_overlay() -> None:
         ParsedWorkbook(
             source_type="contragents",
             rows=[
-                {"UUID": "1", "Наименование": "А"},
-                {"UUID": "2", "Наименование": "Б"},
+                {"UUID": "1", "Наименование": "А", "Телефон": "+79001111111"},
+                {"UUID": "2", "Наименование": "Б", "Телефон": "+79002222222"},
             ],
-            context_columns=["UUID", "Наименование"],
+            context_columns=["UUID", "Наименование", "Телефон"],
             segment_columns=[],
             total_rows=2,
             meta={"source": "moysklad"},
@@ -57,7 +57,8 @@ def test_active_rows_merges_parsed_with_enrichment_overlay() -> None:
         None,
     )
     hub.set_results(
-        [{"UUID": "1", "Наименование": "А", "Группы": "VIP", "_enrichment_fields": ["Группы"]}],
+        [{"UUID": "1",
+                    "Телефон": "+79000000001", "Наименование": "А", "Группы": "VIP", "_enrichment_fields": ["Группы"]}],
         {"enriched": True},
     )
 
@@ -72,7 +73,8 @@ def test_dashboard_rows_use_source_snapshot_without_ai_merge() -> None:
     hub = _sample_hub()
     source_rows = hub.parsed.rows
     hub.set_results(
-        [{"UUID": "1", "Наименование": "Анна", "Теги": "#vip"}],
+        [{"UUID": "1",
+                    "Телефон": "+79000000002", "Наименование": "Анна", "Теги": "#vip"}],
         {"processed": 1},
     )
 
@@ -100,6 +102,7 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
             rows=[
                 {
                     "UUID": "d1",
+                    "Телефон": "+79000000003",
                     "Наименование": "Прямой",
                     "_orders_context": [
                         {"Канал продаж": "Витрина"},
@@ -109,6 +112,7 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
                 },
                 {
                     "UUID": "m1",
+                    "Телефон": "+79000000004",
                     "Наименование": "MP",
                     "_orders_context": [
                         {"Канал продаж": "Flowwow"},
@@ -118,6 +122,7 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
                 },
                 {
                     "UUID": "h1",
+                    "Телефон": "+79000000005",
                     "Наименование": "Гибрид",
                     "_orders_context": [
                         {"Канал продаж": "Витрина"},
@@ -147,6 +152,7 @@ def test_cached_ai_overlay_cannot_replace_current_sales_classification() -> None
             source_type="contragents",
             rows=[{
                 "UUID": "m1",
+                    "Телефон": "+79000000006",
                 "Наименование": "MP",
                 "_order_channels_all": ["Flowwow"],
             }],
@@ -159,6 +165,7 @@ def test_cached_ai_overlay_cannot_replace_current_sales_classification() -> None
     )
     hub.set_results([{
         "UUID": "m1",
+                    "Телефон": "+79000000007",
         "Наименование": "MP",
         "Тип продаж": "прямые продажи",
         "_sales_filter_value": "прямые продажи",
@@ -222,6 +229,7 @@ def test_get_client_orders_resolves_full_order_entity() -> None:
             source_type="contragents",
             rows=[{
                 "UUID": "cp-orders",
+                    "Телефон": "+79000000008",
                 "Наименование": "Клиент",
                 "_orders_context": [{"№": "100", "Дата": "2026-03-01", "Сумма": 5000}],
                 "_orders_count": 1,
@@ -259,6 +267,7 @@ def test_get_client_orders_returns_context_without_active_rows_scan() -> None:
             source_type="contragents",
             rows=[{
                 "UUID": "cp-orders",
+                    "Телефон": "+79000000009",
                 "Наименование": "Клиент",
                 "_orders_context": [{"№": "100", "Дата": "2026-03-01", "Сумма": 5000}],
                 "_orders_count": 3,
@@ -291,6 +300,7 @@ def test_get_client_orders_finds_orders_from_cache_when_context_empty() -> None:
             source_type="contragents",
             rows=[{
                 "UUID": "cp-arenda",
+                    "Телефон": "+79000000010",
                 "Наименование": "Аренда",
                 "Всего заказов": 0,
             }],
@@ -337,6 +347,7 @@ def test_get_client_orders_prefers_full_orders_cache_over_partial_context() -> N
             source_type="contragents",
             rows=[{
                 "UUID": "cp-vip",
+                    "Телефон": "+79000000011",
                 "Наименование": "VIP",
                 "Всего заказов": 27,
                 "_orders_context": orders_rows[:1],
@@ -371,7 +382,8 @@ def test_touch_bumps_version_and_clears_filter_cache() -> None:
     assert len(rows_first) == 1
     hub.touch()
     assert hub.version == version_before + 1
-    hub.set_results([{"UUID": "9", "Наименование": "Новый"}], {"processed": 1})
+    hub.set_results([{"UUID": "9",
+                    "Телефон": "+79000000012", "Наименование": "Новый"}], {"processed": 1})
     assert hub.version == version_before + 2
 
 
@@ -383,6 +395,7 @@ def test_ai_upsert_patches_stable_pagination_cache_in_place() -> None:
 
     hub.upsert_results([{
         "UUID": "1",
+                    "Телефон": "+79000000013",
         "Наименование": "Анна",
         "Группы": "премиум",
         "Теги": "#vip",
@@ -403,6 +416,7 @@ def test_ai_upsert_invalidates_ai_sensitive_filters_only() -> None:
 
     hub.upsert_results([{
         "UUID": "1",
+                    "Телефон": "+79000000014",
         "Наименование": "Анна",
         "Группы": "премиум",
         "_ai_processed": True,
@@ -434,11 +448,13 @@ def test_filter_rows_with_groups_includes_sales_channels() -> None:
             rows=[
                 {
                     "UUID": "cp-1",
+                    "Телефон": "+79000000015",
                     "Наименование": "Анна",
                     "Группы": "VIP",
                 },
                 {
                     "UUID": "cp-2",
+                    "Телефон": "+79000000016",
                     "Наименование": "Борис",
                     "Группы": "новый",
                 },
@@ -472,15 +488,18 @@ def test_filter_rows_with_groups_includes_sales_channels() -> None:
     )
     rows, group_options, groups_total = hub.filter_rows_with_groups(sales_filter="all")
     names = {item["name"] for item in group_options}
-    assert "Flowwow" in names
-    assert "Ozon" in names
     assert "VIP" in names
-    filtered, _, _ = hub.filter_rows_with_groups(sales_filter="all", group="Flowwow")
+    assert "Flowwow" not in names  # каналы — отдельный фильтр
+    from app.services.export_format import collect_channel_options
+    channels = {item["name"] for item in collect_channel_options(rows)}
+    assert "Flowwow" in channels or "Ozon" in channels
+    filtered = hub.filter_rows(sales_filter="all", channel="Flowwow")
     assert len(filtered) == 1
     assert filtered[0]["UUID"] == "cp-1"
 
 
 def test_filter_rows_with_groups_includes_sales_channel_types() -> None:
+    """Тип канала — вкладки/фильтр продаж, не облако групп."""
     from app.services.fields import SALES_CHANNEL_TYPE_MARKETPLACE
 
     hub = DataHub()
@@ -488,8 +507,10 @@ def test_filter_rows_with_groups_includes_sales_channel_types() -> None:
         ParsedWorkbook(
             source_type="contragents",
             rows=[
-                {"UUID": "cp-1", "Наименование": "Анна"},
-                {"UUID": "cp-2", "Наименование": "Борис"},
+                {"UUID": "cp-1",
+                    "Телефон": "+79000000017", "Наименование": "Анна"},
+                {"UUID": "cp-2",
+                    "Телефон": "+79000000018", "Наименование": "Борис"},
             ],
             context_columns=["UUID", "Наименование"],
             segment_columns=[],
@@ -518,14 +539,13 @@ def test_filter_rows_with_groups_includes_sales_channel_types() -> None:
     )
     _, group_options, _ = hub.filter_rows_with_groups(sales_filter="all")
     names = {item["name"] for item in group_options}
-    assert SALES_CHANNEL_TYPE_MARKETPLACE in names
-    assert "прямые продажи" in names
-    filtered, _, _ = hub.filter_rows_with_groups(
-        sales_filter="all",
-        group=SALES_CHANNEL_TYPE_MARKETPLACE,
-    )
-    assert len(filtered) == 1
-    assert filtered[0]["UUID"] == "cp-1"
+    assert SALES_CHANNEL_TYPE_MARKETPLACE not in names
+    mp = hub.filter_rows(sales_filter="marketplace")
+    assert len(mp) == 1
+    assert mp[0]["UUID"] == "cp-1"
+    direct = hub.filter_rows(sales_filter="direct")
+    assert len(direct) == 1
+    assert direct[0]["UUID"] == "cp-2"
 
 
 def test_group_cloud_does_not_rescan_the_full_orders_collection() -> None:
@@ -537,7 +557,8 @@ def test_group_cloud_does_not_rescan_the_full_orders_collection() -> None:
     hub.set_workbook(
         ParsedWorkbook(
             source_type="contragents",
-            rows=[{"UUID": "cp-1", "Наименование": "Анна"}],
+            rows=[{"UUID": "cp-1",
+                    "Телефон": "+79000000019", "Наименование": "Анна"}],
             context_columns=["UUID", "Наименование"],
             segment_columns=[],
             total_rows=1,
@@ -562,7 +583,8 @@ def test_group_cloud_does_not_rescan_the_full_orders_collection() -> None:
     rows, group_options, _ = hub.filter_rows_with_groups(sales_filter="marketplace")
 
     assert [row["UUID"] for row in rows] == ["cp-1"]
-    assert any(item["name"] == "Flowwow" for item in group_options)
+    # Каналы не в облаке групп; важнее, что сканирование orders.rows не запускается.
+    assert all(item["name"] != "Flowwow" for item in group_options)
 
 
 def test_group_cloud_is_cached_until_structure_changes() -> None:

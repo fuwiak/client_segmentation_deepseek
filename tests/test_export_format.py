@@ -80,7 +80,10 @@ def test_collect_group_counts() -> None:
     assert names == {"VIP", "постоянный", "новый"}
 
 
-def test_collect_group_counts_includes_sales_channels() -> None:
+def test_collect_group_counts_only_moysklad_groups() -> None:
+    """Облако групп — только группы МойСклад; каналы — отдельный фильтр."""
+    from app.services.export_format import collect_channel_options
+
     rows = [
         {
             "UUID": "cp-1",
@@ -97,19 +100,15 @@ def test_collect_group_counts_includes_sales_channels() -> None:
             "_orders_context": [{"Канал продаж": "Flowwow"}],
         },
     ]
-    agent_channels = {
-        "cp-1": {"Flowwow", "Витрина"},
-        "cp-2": {"Ozon"},
-        "cp-3": {"Flowwow"},
-    }
-    counts = collect_group_counts(rows, agent_channels=agent_channels)
+    counts = collect_group_counts(rows)
     names = {item["name"] for item in counts}
-    assert names == {"VIP", "новый", "Flowwow", "Ozon", "Витрина", "маркетплейс"}
-    flowwow = next(item for item in counts if item["name"] == "Flowwow")
-    assert flowwow["count"] == 2
+    assert names == {"VIP", "новый"}
+    channels = {item["name"] for item in collect_channel_options(rows)}
+    assert "Flowwow" in channels
+    assert "Ozon" in channels
 
 
-def test_row_has_group_matches_sales_channel() -> None:
+def test_row_has_group_matches_only_groups() -> None:
     from app.services.export_format import row_has_group
 
     row = {
@@ -117,13 +116,13 @@ def test_row_has_group_matches_sales_channel() -> None:
         "Группы": "VIP",
         "_orders_context": [{"Канал продаж": "Flowwow"}],
     }
-    assert row_has_group(row, "Flowwow") is True
+    assert row_has_group(row, "Flowwow") is False
     assert row_has_group(row, "VIP") is True
     assert row_has_group(row, "Ozon") is False
 
 
-def test_collect_group_counts_includes_sales_channel_types() -> None:
-    from app.services.fields import SALES_CHANNEL_TYPE_MARKETPLACE
+def test_collect_channel_options_separate_from_groups() -> None:
+    from app.services.export_format import collect_channel_options
 
     rows = [
         {
@@ -136,17 +135,14 @@ def test_collect_group_counts_includes_sales_channel_types() -> None:
             "_orders_context": [{"Канал продаж": "Витрина"}],
         },
     ]
-    agent_channel_types = {
-        "cp-1": SALES_CHANNEL_TYPE_MARKETPLACE,
-        "cp-2": "прямые продажи",
-    }
-    counts = collect_group_counts(rows, agent_channel_types=agent_channel_types)
-    names = {item["name"] for item in counts}
-    assert SALES_CHANNEL_TYPE_MARKETPLACE in names
-    assert "прямые продажи" in names
+    group_names = {item["name"] for item in collect_group_counts(rows)}
+    assert group_names == {"VIP"}
+    channel_names = {item["name"] for item in collect_channel_options(rows)}
+    assert "Flowwow" in channel_names
+    assert "Витрина" in channel_names
 
 
-def test_row_has_group_matches_sales_channel_type() -> None:
+def test_row_has_group_does_not_match_sales_channel_type() -> None:
     from app.services.export_format import row_has_group
     from app.services.fields import SALES_CHANNEL_TYPE_MARKETPLACE
 
@@ -157,7 +153,7 @@ def test_row_has_group_matches_sales_channel_type() -> None:
             {"Канал продаж": "Витрина"},
         ],
     }
-    assert row_has_group(row, SALES_CHANNEL_TYPE_MARKETPLACE) is True
+    assert row_has_group(row, SALES_CHANNEL_TYPE_MARKETPLACE) is False
 
 
 def test_sort_client_rows_numeric() -> None:
@@ -194,11 +190,11 @@ def test_merge_enriched_rows_preserves_moysklad_sales_channel() -> None:
     assert client_cell_value(merged[0], "Канал продаж") == "Ozon"
 
 
-def test_client_display_columns_include_tags() -> None:
+def test_client_display_columns_merge_tags_into_groups() -> None:
     from app.services.excel_parser import CLIENT_DISPLAY_COLUMNS
 
-    assert "Теги" in CLIENT_DISPLAY_COLUMNS
-    assert CLIENT_DISPLAY_COLUMNS.index("Теги") == CLIENT_DISPLAY_COLUMNS.index("Группы") + 1
+    assert "Группы" in CLIENT_DISPLAY_COLUMNS
+    assert "Теги" not in CLIENT_DISPLAY_COLUMNS  # AI-теги в колонке Группы
 
 
 def test_client_cell_value_normalizes_tags() -> None:

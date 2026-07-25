@@ -7,56 +7,92 @@
 
 <div id="clients-live-region">
 <section class="card toolbar-card">
-  <div class="filter-tabs" role="tablist">
-    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+  <div class="filter-tabs" role="tablist" aria-label="Тип канала продаж">
+    <a href="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        hx-boost="false"
-       hx-get="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-get="/clients?{{ build_clients_query(sales_filter='all', tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        hx-target="#clients-live-region"
        hx-select="#clients-live-region"
        hx-swap="outerHTML"
        hx-push-url="true"
        class="filter-tab {% if sales_filter == 'all' %}active{% endif %}">Все</a>
-    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+    <a href="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        hx-boost="false"
-       hx-get="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-get="/clients?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        hx-target="#clients-live-region"
        hx-select="#clients-live-region"
        hx-swap="outerHTML"
        hx-push-url="true"
        class="filter-tab {% if sales_filter == 'marketplace' %}active{% endif %}">Маркетплейс</a>
-    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+    <a href="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        hx-boost="false"
-       hx-get="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       hx-get="/clients?{{ build_clients_query(sales_filter='direct', tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        hx-target="#clients-live-region"
        hx-select="#clients-live-region"
        hx-swap="outerHTML"
        hx-push-url="true"
        class="filter-tab {% if sales_filter == 'direct' %}active{% endif %}">Прямые</a>
   </div>
-  {% include 'partials/group_filter_cloud.html' %}
-  <form class="filter-form" method="get">
+
+  <form class="filter-form filter-form-base" method="get" action="/clients">
     <input type="hidden" name="filter" value="{{ sales_filter }}">
-    {% if group_filter %}<input type="hidden" name="group" value="{{ group_filter }}">{% endif %}
     {% if sort_col %}<input type="hidden" name="sort" value="{{ sort_col }}">{% endif %}
     {% if sort_order %}<input type="hidden" name="order" value="{{ sort_order }}">{% endif %}
     <label class="filter-field">
+      <span class="filter-label">Канал продаж</span>
+      <select name="channel">
+        <option value="">Все каналы</option>
+        {% for item in channel_options|default([]) %}
+        <option value="{{ item.name }}" {% if channel_filter|default('')|lower == item.name|lower %}selected{% endif %}>{{ item.name }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Статус</span>
+      <select name="status">
+        <option value="">Все статусы</option>
+        {% for item in status_options|default([]) %}
+        <option value="{{ item.name }}" {% if status_filter|lower == item.name|lower %}selected{% endif %}>{{ item.name }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Группа</span>
+      <select name="group">
+        <option value="">Все группы</option>
+        {% for item in group_options|default([]) %}
+        <option value="{{ item.name }}" {% if group_filter|default('')|lower == item.name|lower %}selected{% endif %}>{{ item.name }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
       <span class="filter-label">Ключевые слова</span>
-      <input type="search" name="q" placeholder="Имя, адрес, группа…" value="{{ q_filter|default('') }}">
+      <input type="search" name="q" placeholder="Имя, адрес…" value="{{ q_filter|default('') }}">
     </label>
     <label class="filter-field">
       <span class="filter-label">Телефон</span>
       <input type="search" name="phone" placeholder="+7…" value="{{ phone_filter|default('') }}">
     </label>
     <label class="filter-field">
-      <span class="filter-label">Тег</span>
-      <input type="search" name="tag" placeholder="Тег AI…" value="{{ tag_filter }}">
+      <span class="filter-label">Тег AI</span>
+      <input type="search" name="tag" placeholder="#vip…" value="{{ tag_filter }}">
     </label>
-    <label class="filter-field">
-      <span class="filter-label">Статус заказа</span>
-      <input type="search" name="status" placeholder="Статус заказа…" value="{{ status_filter }}">
-    </label>
-    <button type="submit" class="btn secondary small">Найти</button>
+    <button type="submit" class="btn secondary small">Применить</button>
   </form>
+
+  {% if crm_excluded %}
+  <p class="hint crm-exclusion-hint">
+    Из CRM исключено:
+    {% if crm_excluded.archived %}архив {{ crm_excluded.archived }}{% endif %}{% if crm_excluded.archived and (crm_excluded.bez_statusa or crm_excluded.no_contact) %}, {% endif %}
+    {% if crm_excluded.bez_statusa %}без статуса {{ crm_excluded.bez_statusa }}{% endif %}{% if crm_excluded.bez_statusa and crm_excluded.no_contact %}, {% endif %}
+    {% if crm_excluded.no_contact %}без контактов {{ crm_excluded.no_contact }}{% endif %}
+    {% if not crm_excluded.archived and not crm_excluded.bez_statusa and not crm_excluded.no_contact %}нет{% endif %}.
+    Вкладка «Прямые» — клиенты с типом канала прямых продаж (для рассылок).
+  </p>
+  {% endif %}
+
+  {% include 'partials/group_filter_cloud.html' %}
+
   <div class="toolbar-actions">
     {% if moysklad_enabled %}
     <button type="button" class="btn secondary small toolbar-action-btn"
@@ -75,13 +111,16 @@
     <button type="button" class="btn secondary small toolbar-action-btn"
             hx-boost="false"
             hx-push-url="false"
-            hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+            hx-post="/enrich/start?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
             hx-target="#enrich-progress-block"
             hx-swap="outerHTML"
             {% if not messenger_available %}title="Задайте GREEN_API_* или TELEGRAM_BOT_TOKEN"{% endif %}>
       Обогатить из мессенджеров
     </button>
-    <a href="/download/clients/xlsx" class="btn secondary small toolbar-action-btn export-xlsx-btn">Экспорт .xlsx</a>
+    <a href="/download/clients/xlsx?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       class="btn secondary small toolbar-action-btn export-xlsx-btn">Экспорт .xlsx</a>
+    <a href="/campaigns?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+       class="btn primary small toolbar-action-btn">Рассылка</a>
     <button type="button" class="btn secondary small toolbar-action-btn tag-rules-btn" onclick="openTagRulesDrawer(event)" title="Условия AI-тегов">
       <span class="btn-action-icon" aria-hidden="true">ⓘ</span> Правила AI
     </button>

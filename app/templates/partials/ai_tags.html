@@ -1,12 +1,19 @@
 {% macro render(row) %}
+{# Группы МойСклад + AI-теги в одной ячейке; AI визуально выделено. #}
+{% set groups_raw = row.get('Группы') or row.get('_moysklad_tags_display') or '' %}
 {% set tags_raw = row.get('Теги') or '' %}
 {% set reasons = tag_reasons(row) %}
-{% set is_ai = 'Теги' in (row.get('_ai_fields') or []) or 'Теги' in (row.get('_enrichment_fields') or []) %}
-{% if tags_raw %}
-<span class="ai-tags-list">
-  {% for tag in tags_raw.split() %}
-  {% if tag %}
-  <span class="ai-tag-chip {% if is_ai %}ai-tag-ai{% endif %}"
+{% if groups_raw or tags_raw %}
+<span class="ai-tags-list groups-tags-merged">
+  {% for part in groups_raw.replace('/', ',').split(',') %}
+  {% set g = part.strip() %}
+  {% if g %}
+  <span class="group-chip-ms" title="Группа МойСклад">{{ g }}</span>
+  {% endif %}
+  {% endfor %}
+  {% for tag in tags_raw.replace(',', ' ').split() %}
+  {% if tag.strip() %}
+  <span class="ai-tag-chip ai-tag-ai"
         title="{{ reasons.get(tag, 'Тег AI') }}"
         aria-label="{{ tag }}: {{ reasons.get(tag, 'Тег AI') }}">{{ tag }}</span>
   {% endif %}

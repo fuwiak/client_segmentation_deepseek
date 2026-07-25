@@ -323,26 +323,9 @@ def row_segment_names(
     agent_channels: dict[str, set[str]] | None = None,
     agent_channel_types: dict[str, str] | None = None,
 ) -> list[str]:
-    """Сегменты для фильтра «Группы»: теги, каналы и типы канала продаж."""
-    seen: set[str] = set()
-    names: list[str] = []
-    candidates = list(row_groups(row))
-    candidates.extend(unique_sales_channels(row))
-    candidates.extend(unique_sales_channel_types(row))
-    cp_id = str(row.get("UUID") or row.get("_moysklad_id") or "").strip()
-    if agent_channels and cp_id:
-        candidates.extend(agent_channels.get(cp_id, ()))
-    if agent_channel_types and cp_id:
-        channel_type = agent_channel_types.get(cp_id)
-        if channel_type:
-            candidates.append(channel_type)
-    for name in candidates:
-        text = str(name).strip()
-        key = text.lower()
-        if text and key not in seen:
-            seen.add(key)
-            names.append(text)
-    return names
+    """Сегменты для облака «Группы»: только группы МойСклад (не каналы и не AI-теги)."""
+    del agent_channels, agent_channel_types  # каналы — отдельный фильтр
+    return row_groups(row)
 
 
 def row_has_group(
@@ -355,14 +338,7 @@ def row_has_group(
     target = group.strip().lower()
     if not target:
         return True
-    return any(
-        n.lower() == target
-        for n in row_segment_names(
-            row,
-            agent_channels=agent_channels,
-            agent_channel_types=agent_channel_types,
-        )
-    )
+    return any(n.lower() == target for n in row_groups(row))
 
 
 def collect_group_counts(
@@ -371,15 +347,12 @@ def collect_group_counts(
     agent_channels: dict[str, set[str]] | None = None,
     agent_channel_types: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Уникальные группы, каналы и типы канала продаж с числом клиентов."""
+    """Уникальные группы МойСклад с числом клиентов."""
+    del agent_channels, agent_channel_types
     counter: Counter[str] = Counter()
     display: dict[str, str] = {}
     for row in rows:
-        for name in row_segment_names(
-            row,
-            agent_channels=agent_channels,
-            agent_channel_types=agent_channel_types,
-        ):
+        for name in row_groups(row):
             key = name.lower()
             counter[key] += 1
             display.setdefault(key, name)
@@ -388,6 +361,42 @@ def collect_group_counts(
         for key in counter
     ]
     items.sort(key=lambda item: (-int(item["count"]), str(item["name"]).lower()))
+    return items
+
+
+def collect_channel_options(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counter: Counter[str] = Counter()
+    display: dict[str, str] = {}
+    for row in rows:
+        for name in unique_sales_channels(row):
+            key = name.lower()
+            counter[key] += 1
+            display.setdefault(key, name)
+    items = [
+        {"name": display[key], "count": counter[key]}
+        for key in counter
+    ]
+    items.sort(key=lambda item: (-int(item["count"]), str(item["name"]).lower()))
+    return items
+
+
+def collect_status_options(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counter: Counter[str] = Counter()
+    display: dict[str, str] = {}
+    for row in rows:
+        status = str(row.get("Статус") or "").strip()
+        if not status:
+            continue
+        key = status.lower()
+        counter[key] += 1
+        display.setdefault(key, status)
+    items = [
+        {"name": display[key], "count": counter[key]}
+        for key in counter
+    ]
+    # стабильный порядок: постоянный → повторный → новый → прочее
+    order = {"постоянный": 0, "повторный": 1, "новый": 2}
+    items.sort(key=lambda item: (order.get(str(item["name"]).lower(), 9), -int(item["count"])))
     return items
 
 
@@ -411,9 +420,10 @@ def client_url_id(row_or_id: dict[str, Any] | str) -> str:
 
 def build_clients_query(
     *,
-    sales_filter: str = "direct",
+    sales_filter: str = "all",
     tag: str = "",
     group: str = "",
+    channel: str = "",
     status: str = "",
     q: str = "",
     phone: str = "",
@@ -426,6 +436,7 @@ def build_clients_query(
         "filter": sales_filter,
         "tag": tag,
         "group": group,
+        "channel": channel,
         "status": status,
         "q": q,
         "phone": phone,

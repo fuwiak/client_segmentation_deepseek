@@ -578,32 +578,28 @@ class SegmentationService:
     _OCCASION_IN_ORDER_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
         (("невест", "свадьб", "бракосочет"), "свадьба"),
         (("новогод", "ёлк", "елк", "амариллис", "корпоратив"), "Новый год / корпоратив"),
-        (("8 марта", "8марта", "международн"), "8 марта"),
         (("день рождения", "др ", "др.", "birthday"), "день рождения"),
         (("валентин", "14 февраля"), "14 февраля"),
         (("23 февраля", "день защитника", "защитника отечества"), "23 февраля"),
         (("день матери", "днём матери"), "День матери"),
-        (("день учителя", "учителю", "учительниц"), "День учителя"),
         (("1 сентября", "день знаний", "линейк"), "1 сентября"),
         (("годовщин",), "годовщина"),
         (("маме", "матери", "мамочк"), "подарок маме"),
     )
-    # Российские праздники, когда дарят цветы: (месяц, день|None, название, окно касания, дней до праздника для матчинга заказа).
-    # day=None → окно по месяцу / вычисляемая дата (День матери).
+    # Календарные праздники больше не назначают повод автоматически (кроме 8 марта по дате отгрузки 5–9 марта).
     _RU_FLOWER_HOLIDAYS: tuple[tuple[int, int | None, str, str, int], ...] = (
-        (2, 14, "14 февраля (День святого Валентина)", "5–12 февраля", 12),
-        (2, 23, "23 февраля (День защитника Отечества)", "16–22 февраля", 10),
-        (3, 8, "8 марта (Международный женский день)", "1–5 марта", 14),
-        (5, 9, "9 мая (День Победы)", "4–8 мая", 7),
-        (9, 1, "1 сентября (День знаний)", "25 августа – 1 сентября", 10),
-        (10, 5, "5 октября (День учителя)", "28 сентября – 4 октября", 10),
-        (11, None, "День матери (последнее воскресенье ноября)", "за 5–7 дней до Дня матери", 10),
-        (12, 31, "Новый год / корпоратив", "25 ноября – 20 декабря", 40),
+        (3, 8, "8 марта", "за 5 дней до отгрузки", 0),
     )
 
     @classmethod
     def _order_ymd(cls, order: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
-        raw = str(order.get("Дата") or order.get("Момент времени") or "").strip()
+        # Точная дата события = дата отгрузки; fallback — дата заказа.
+        raw = str(
+            order.get("Дата отгрузки")
+            or order.get("Дата")
+            or order.get("Момент времени")
+            or ""
+        ).strip()
         if not raw:
             return None, None, None
         iso = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw)
@@ -623,6 +619,30 @@ class SegmentationService:
         return year, month, day
 
     @classmethod
+    def _touch_window_before_shipment(cls, year: int | None, month: int, day: int | None) -> str:
+        """Окно касания = 5 дней до даты отгрузки."""
+        if not day:
+            prev_month = 12 if month == 1 else month - 1
+            return (
+                f"за 5 дней до отгрузки "
+                f"(конец {cls._MONTHS_GENITIVE[prev_month]} / начало {cls._MONTHS_PREPOSITIONAL[month]})"
+            )
+        from datetime import date, timedelta
+
+        y = year or date.today().year
+        try:
+            ship = date(y, month, day)
+        except ValueError:
+            return "за 5 дней до отгрузки"
+        touch = ship - timedelta(days=5)
+        return f"{touch.day:02d}.{touch.month:02d}–{ship.day:02d}.{ship.month:02d} (за 5 дней до отгрузки)"
+
+    @classmethod
+    def _is_march8_shipment(cls, month: int | None, day: int | None) -> bool:
+        """Повод 8 марта — только по дате отгрузки 5–9 марта."""
+        return month == 3 and day is not None and 5 <= day <= 9
+
+    @classmethod
     def _mother_day_date(cls, year: int) -> tuple[int, int]:
         """День матери в РФ — последнее воскресенье ноября."""
         from datetime import date, timedelta
@@ -639,63 +659,17 @@ class SegmentationService:
         month: int,
         day: int | None,
     ) -> dict[str, Any] | None:
-        """Если заказ перед/в день праздника цветов РФ — вернуть повод и окно касания."""
-        from datetime import date
-
-        if not day:
-            # Только месяц: грубые эвристики
-            for h_month, h_day, name, touch, _lead in cls._RU_FLOWER_HOLIDAYS:
-                if month == h_month and h_day is not None:
-                    return {"occasion": name, "marketing_touch_window": touch, "holiday_month": h_month, "holiday_day": h_day}
-                if month == 11 and h_day is None:
-                    return {"occasion": name, "marketing_touch_window": touch, "holiday_month": 11, "holiday_day": None}
+        """Повод по дате отгрузки: только 8 марта (5–9 марта). Группу «8 марта» не используем."""
+        if not cls._is_march8_shipment(month, day):
             return None
-
-        y = year or date.today().year
-        try:
-            order_dt = date(y, month, day)
-        except ValueError:
-            return None
-
-        best: dict[str, Any] | None = None
-        best_delta: int | None = None
-        for h_month, h_day, name, touch, lead_days in cls._RU_FLOWER_HOLIDAYS:
-            if h_day is None:
-                # День матери
-                if year:
-                    hm, hd = cls._mother_day_date(year)
-                else:
-                    hm, hd = cls._mother_day_date(y)
-            else:
-                hm, hd = h_month, h_day
-            try:
-                holiday_dt = date(y, hm, hd)
-            except ValueError:
-                continue
-            # Заказ в том же сезоне: за lead_days до праздника или в день праздника (+1)
-            delta = (holiday_dt - order_dt).days
-            if delta < -1:
-                # заказ после праздника в этом году — смотрим следующий год
-                try:
-                    if h_day is None:
-                        hm2, hd2 = cls._mother_day_date(y + 1)
-                        holiday_dt = date(y + 1, hm2, hd2)
-                    else:
-                        holiday_dt = date(y + 1, hm, hd)
-                    delta = (holiday_dt - order_dt).days
-                except ValueError:
-                    continue
-            if -1 <= delta <= lead_days:
-                if best_delta is None or delta < best_delta:
-                    best_delta = delta
-                    best = {
-                        "occasion": name,
-                        "marketing_touch_window": touch,
-                        "holiday_month": hm,
-                        "holiday_day": hd,
-                        "days_before_holiday": delta,
-                    }
-        return best
+        return {
+            "occasion": "8 марта",
+            "marketing_touch_window": cls._touch_window_before_shipment(year, month, day),
+            "holiday_month": 3,
+            "holiday_day": 8,
+            "event_date": f"{day:02d}.{month:02d}.{year}" if year and day else None,
+            "seasonality": cls._MONTHS_PREPOSITIONAL[month] if 1 <= month <= 12 else "марте",
+        }
 
     @classmethod
     def _offer_style_for_row(cls, row: dict[str, Any], occasion: str | None = None) -> str:
@@ -719,8 +693,6 @@ class SegmentationService:
             return "композиция / букет к 23 февраля"
         if "матери" in occ:
             return "букет ко Дню матери"
-        if "учител" in occ:
-            return "букет ко Дню учителя"
         if "1 сентября" in occ or "знаний" in occ:
             return "школьный букет к 1 сентября"
         if "новый год" in occ or "корпоратив" in occ:
@@ -758,17 +730,21 @@ class SegmentationService:
                 amount_f = None
             text = " ".join(
                 str(order.get(k) or "")
-                for k in ("Комментарий", "Описание", "Позиции", "Статус")
+                for k in ("Комментарий", "Описание", "Позиции")
             ).lower()
+            # Поводы — только из комментария/карточки, НЕ из группы «8 марта».
             occasion = None
             for keywords, label in cls._OCCASION_IN_ORDER_HINTS:
                 if any(k in text for k in keywords):
                     occasion = label
                     break
-            # Заказ перед важным праздником цветов в РФ (даже без текста в комментарии).
+            # 8 марта — только по дате отгрузки 5–9 марта.
             holiday = cls._holiday_for_order_date(year, month, day)
-            touch_from_holiday = holiday.get("marketing_touch_window") if holiday else None
-            if occasion is None and holiday:
+            touch = cls._touch_window_before_shipment(year, month, day)
+            event_date = (
+                f"{day:02d}.{month:02d}.{year}" if year and month and day else None
+            )
+            if holiday:
                 occasion = str(holiday["occasion"])
             by_month[month].append(
                 {
@@ -776,7 +752,9 @@ class SegmentationService:
                     "day": day,
                     "amount": amount_f,
                     "occasion": occasion,
-                    "touch": touch_from_holiday,
+                    "touch": touch,
+                    "event_date": event_date,
+                    "seasonality": cls._MONTHS_PREPOSITIONAL[month] if month else None,
                     "channel": str(order.get("Канал продаж") or "").strip() or None,
                     "positions": str(order.get("Позиции") or "").strip()[:120] or None,
                     "comment": str(order.get("Комментарий") or "").strip()[:160] or None,
@@ -796,27 +774,11 @@ class SegmentationService:
             recurrent = len(years) >= 2
             prev_month = 12 if month == 1 else month - 1
             touch_from_items = next((i.get("touch") for i in items if i.get("touch")), None)
-            if touch_from_items:
-                touch = touch_from_items
-            elif occasion and "8 марта" in occasion:
-                touch = "1–5 марта"
-            elif occasion and "14 февраля" in occasion:
-                touch = "5–12 февраля"
-            elif occasion and "23 февраля" in occasion:
-                touch = "16–22 февраля"
-            elif occasion and "День матери" in occasion:
-                touch = "за 5–7 дней до Дня матери (конец ноября)"
-            elif occasion and "День учителя" in occasion:
-                touch = "28 сентября – 4 октября"
-            elif occasion and "1 сентября" in occasion:
-                touch = "25 августа – 1 сентября"
-            elif occasion and "Новый год" in occasion:
-                touch = "25 ноября – 20 декабря"
-            else:
-                touch = (
-                    f"конец {cls._MONTHS_GENITIVE[prev_month]} / "
-                    f"начало {cls._MONTHS_PREPOSITIONAL[month]}"
-                )
+            touch = touch_from_items or (
+                f"за 5 дней до отгрузки "
+                f"(конец {cls._MONTHS_GENITIVE[prev_month]} / начало {cls._MONTHS_PREPOSITIONAL[month]})"
+            )
+            event_dates = [i.get("event_date") for i in items if i.get("event_date")]
             label = occasion or f"сезон {cls._MONTHS_GENITIVE[month]}"
             if recurrent:
                 years_txt = ", ".join(str(y) for y in years)
@@ -834,12 +796,14 @@ class SegmentationService:
                 {
                     "month": month,
                     "month_name": cls._MONTHS_GENITIVE[month],
+                    "seasonality": cls._MONTHS_PREPOSITIONAL[month],
                     "years": years,
                     "orders_in_month": len(items),
                     "recurrent_yearly": recurrent,
                     "occasion": label,
                     "avg_check": avg_amount,
                     "marketing_touch_window": touch,
+                    "event_date": event_dates[0] if event_dates else None,
                     "summary": summary,
                     "sample_positions": next(
                         (i["positions"] for i in items if i.get("positions")), None
@@ -862,10 +826,11 @@ class SegmentationService:
 
     @classmethod
     def _collect_intent_text(cls, row: dict[str, Any]) -> str:
+        """Текст для поводов: комментарии и переписка. Группы МойСклад не используем как повод."""
         parts = [collect_client_comments(row).lower()]
         for msg in row.get("_messenger_context") or []:
             parts.append(str(msg.get("text") or "").lower())
-        for key in ("Группы", "Теги", "Саммари", "Дата рождения"):
+        for key in ("Теги", "Саммари", "Дата рождения"):
             val = row.get(key)
             if val:
                 parts.append(str(val).lower())
@@ -1313,12 +1278,12 @@ class SegmentationService:
     def _primary_touch_plan(
         cls, row: dict[str, Any]
     ) -> tuple[str, str, str]:
-        """Вернуть (окно касания, повод, оффер). Всегда с праздником/датой."""
+        """Вернуть (окно касания, повод, оффер). Повод — из комментариев/даты отгрузки, не из группы."""
         text = f"{row.get('Теги') or ''} {row.get('Саммари') or ''} {cls._collect_intent_text(row)}".lower()
         events = cls._dated_event_labels(row)
         order_patterns = cls.build_order_marketing_patterns(row)
 
-        # ДР с датой
+        # ДР с датой из комментария/карточки
         if any("день рождения" in e for e in events) or any(
             k in text for k in ("день рождения", "#деньрождения")
         ):
@@ -1343,11 +1308,11 @@ class SegmentationService:
 
         if order_patterns:
             p = order_patterns[0]
-            touch = str(p.get("marketing_touch_window") or "за 7–14 дней до повода")
-            occ = str(p.get("occasion") or "сезонный повод")
+            touch = str(p.get("marketing_touch_window") or "за 5 дней до отгрузки")
+            occ = str(p.get("occasion") or p.get("seasonality") or "сезонный повод")
             return touch, occ, cls._offer_style_for_row(row, occ)
 
-        for order in (row.get("_orders_context") or [])[:3]:
+        for order in (row.get("_orders_context") or [])[:5]:
             year, month, day = cls._order_ymd(order)
             if not month:
                 continue
@@ -1358,78 +1323,23 @@ class SegmentationService:
                     str(holiday["occasion"]),
                     cls._offer_style_for_row(row, str(holiday["occasion"])),
                 )
-
-        if "8 марта" in text or "событие марта" in text:
-            return "1–5 марта", "8 марта", cls._offer_style_for_row(row, "8 марта")
-        if "14 февраля" in text or "валентин" in text:
-            return "5–12 февраля", "14 февраля", cls._offer_style_for_row(row, "14 февраля")
-
-        # Ближайший сильный праздник РФ от сегодня / от последнего заказа
-        from datetime import date
-
-        today = date.today()
-        upcoming: list[tuple[int, str, str]] = []
-        for h_month, h_day, name, touch, _lead in cls._RU_FLOWER_HOLIDAYS:
-            if h_day is None:
-                hm, hd = cls._mother_day_date(today.year)
-            else:
-                hm, hd = h_month, h_day
-            try:
-                hdate = date(today.year, hm, hd)
-            except ValueError:
-                continue
-            if hdate < today:
-                try:
-                    if h_day is None:
-                        hm, hd = cls._mother_day_date(today.year + 1)
-                        hdate = date(today.year + 1, hm, hd)
-                    else:
-                        hdate = date(today.year + 1, hm, hd)
-                except ValueError:
-                    continue
-            upcoming.append(((hdate - today).days, name, touch))
-        if upcoming:
-            upcoming.sort()
-            _days, name, touch = upcoming[0]
-            return touch, name, cls._offer_style_for_row(row, name)
-        return "1–5 марта", "8 марта", cls._offer_style_for_row(row, "8 марта")
-
-    @classmethod
-    def _first_order_holiday_hints(cls, row: dict[str, Any], contact: str) -> list[str]:
-        """Для 0–1 заказа: проверить близость к праздникам цветов в РФ."""
-        hints: list[str] = []
-        orders = row.get("_orders_context") or []
-        for order in orders[:3]:
-            year, month, day = cls._order_ymd(order)
-            if not month:
-                continue
-            holiday = cls._holiday_for_order_date(year, month, day)
-            if not holiday:
-                continue
-            occ = str(holiday["occasion"])
-            touch = str(holiday["marketing_touch_window"])
-            offer = cls._offer_style_for_row(row, occ)
-            amount = order.get("Сумма")
-            try:
-                amount_f = float(amount) if amount not in (None, "") else None
-            except (TypeError, ValueError):
-                amount_f = None
-            budget = f", ориентир по первому заказу ~{int(amount_f)} р." if amount_f else ""
-            days = holiday.get("days_before_holiday")
-            when = (
-                f"заказ за {days} дн. до праздника"
-                if isinstance(days, int) and days >= 0
-                else "заказ рядом с праздником"
+            # Сезонность = месяц покупки/отгрузки, без привязки к календарному празднику.
+            return (
+                cls._touch_window_before_shipment(year, month, day),
+                f"сезон {cls._MONTHS_GENITIVE[month]}",
+                cls._offer_style_for_row(row),
             )
-            hints.append(
-                f"Первый заказ похож на «{occ}» ({when}). "
-                f"Следующее касание: {touch} через {contact} — предложить {offer}{budget}."
-            )
-        return hints
+
+        return "за 5 дней до отгрузки", "сезонный повод", cls._offer_style_for_row(row)
 
     @classmethod
     def _heuristic_recommendation(cls, row: dict[str, Any]) -> str | None:
         """Живая маркетинговая рекомендация: когда писать, что предложить, зачем покупал."""
+        from app.services.fields import has_crm_contact
+
+        if not has_crm_contact(row):
+            return None
+
         peers = row.get("_peer_benchmarks") if isinstance(row.get("_peer_benchmarks"), dict) else None
         orders_n = cls._orders_count(row)
         contact = cls._contact_channel(row)
@@ -1488,6 +1398,34 @@ class SegmentationService:
 
         return " ".join(sentences)
 
+    @classmethod
+    def _first_order_holiday_hints(cls, row: dict[str, Any], contact: str) -> list[str]:
+        """Для 0–1 заказа: подсказки по дате отгрузки (в т.ч. 8 марта 5–9 марта)."""
+        hints: list[str] = []
+        orders = row.get("_orders_context") or []
+        for order in orders[:3]:
+            year, month, day = cls._order_ymd(order)
+            if not month:
+                continue
+            holiday = cls._holiday_for_order_date(year, month, day)
+            if not holiday:
+                continue
+            occ = str(holiday["occasion"])
+            touch = str(holiday["marketing_touch_window"])
+            offer = cls._offer_style_for_row(row, occ)
+            amount = order.get("Сумма")
+            try:
+                amount_f = float(amount) if amount not in (None, "") else None
+            except (TypeError, ValueError):
+                amount_f = None
+            budget = f", ориентир по первому заказу ~{int(amount_f)} р." if amount_f else ""
+            event = holiday.get("event_date") or "дата отгрузки"
+            hints.append(
+                f"Первый заказ похож на «{occ}» (отгрузка {event}). "
+                f"Следующее касание: {touch} через {contact} — предложить {offer}{budget}."
+            )
+        return hints
+
     @staticmethod
     def _heuristic_group(row: dict[str, Any]) -> str | None:
         parts: list[str] = []
@@ -1518,26 +1456,9 @@ class SegmentationService:
 
     @staticmethod
     def _extract_recipient(row: dict[str, Any]) -> str | None:
-        for order in row.get("_orders_context", []) or []:
-            for value in order.values():
-                text = str(value)
-                match = re.search(r"[Пп]олучатель\t?\s*([А-ЯЁ][а-яё]+)", text)
-                if match:
-                    return match.group(1)
+        from app.services.fields import customer_or_recipient_role
 
-        comments = collect_client_comments(row)
-        if comments:
-            match = re.search(
-                r"[Пп]олучатель[:\s]+([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){0,2})",
-                comments,
-            )
-            if match:
-                return match.group(1).strip()
-
-        name = row.get("Наименование")
-        if name and not _PHONE_RE.match(str(name).strip()):
-            return str(name)
-        return None
+        return customer_or_recipient_role(row)
 
     @staticmethod
     def _extract_tg(row: dict[str, Any]) -> str | None:

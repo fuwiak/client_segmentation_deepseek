@@ -1,27 +1,95 @@
 {% extends layout_template|default("base.html") %}
 
 {% block content %}
-<section class="card">
-  <h3>Новая кампания</h3>
-  <form hx-post="/campaigns/create"
-        hx-target="#campaign-list"
-        hx-swap="innerHTML"
-        class="campaign-form">
-    <label>Название <input type="text" name="title" required></label>
-    <label>Сегменты (через запятую) <input type="text" name="target_segments" placeholder="vip, постоянный"></label>
-    <label>Канал
-      <select name="channel">
-        <option value="whatsapp">WhatsApp</option>
-        <option value="telegram">Telegram</option>
-      </select>
-    </label>
-    <label>Оффер <textarea name="offer" rows="3"></textarea></label>
-    <button type="submit" class="btn">Создать черновик</button>
-  </form>
-  <p class="hint">База: {{ total_clients }} клиентов. AI-ассистент для таргетинга — в разработке.</p>
+<section class="card toolbar-card">
+  <div class="filter-tabs" role="tablist">
+    <button type="button" class="filter-tab {% if mode|default('manual') == 'manual' %}active{% endif %}"
+            onclick="document.getElementById('mode-manual').hidden=false;document.getElementById('mode-auto').hidden=true;this.classList.add('active');this.nextElementSibling.classList.remove('active')">Ручная</button>
+    <button type="button" class="filter-tab {% if mode|default('manual') == 'auto' %}active{% endif %}"
+            onclick="document.getElementById('mode-auto').hidden=false;document.getElementById('mode-manual').hidden=true;this.classList.add('active');this.previousElementSibling.classList.remove('active')">Авто (Demo)</button>
+  </div>
+  <p class="hint">Получателей: <strong>{{ audience_count }}</strong> (по текущим фильтрам CRM). Сообщения можно отправить индивидуально или массово — demo без реальной отправки в мессенджер.</p>
+
+  <div id="mode-manual" {% if mode|default('manual') != 'manual' %}hidden{% endif %}>
+    <form class="campaign-form" method="post" action="/campaigns/create"
+          hx-post="/campaigns/create"
+          hx-target="#campaign-list"
+          hx-swap="innerHTML">
+      <input type="hidden" name="mode" value="manual">
+      <input type="hidden" name="filter" value="{{ sales_filter|default('all') }}">
+      <input type="hidden" name="tag" value="{{ tag_filter|default('') }}">
+      <input type="hidden" name="group" value="{{ group_filter|default('') }}">
+      <input type="hidden" name="channel_filter" value="{{ channel_filter|default('') }}">
+      <input type="hidden" name="status" value="{{ status_filter|default('') }}">
+      <input type="hidden" name="q" value="{{ q_filter|default('') }}">
+      <input type="hidden" name="phone" value="{{ phone_filter|default('') }}">
+      <label>Название <input type="text" name="title" required placeholder="Рассылка по фильтрам"></label>
+      <label>Канал
+        <select name="channel">
+          <option value="whatsapp">WhatsApp</option>
+          <option value="telegram">Telegram</option>
+        </select>
+      </label>
+      <label>Текст сообщения
+        <textarea name="offer" rows="4" placeholder="Текст рассылки…"></textarea>
+      </label>
+      <button type="submit" class="btn">Создать черновик</button>
+    </form>
+  </div>
+
+  <div id="mode-auto" {% if mode|default('manual') == 'manual' %}hidden{% endif %}>
+    <form class="campaign-form" method="post" action="/campaigns/create"
+          hx-post="/campaigns/create"
+          hx-target="#campaign-list"
+          hx-swap="innerHTML">
+      <input type="hidden" name="mode" value="auto">
+      <input type="hidden" name="filter" value="{{ sales_filter|default('all') }}">
+      <input type="hidden" name="tag" value="{{ tag_filter|default('') }}">
+      <input type="hidden" name="group" value="{{ group_filter|default('') }}">
+      <input type="hidden" name="channel_filter" value="{{ channel_filter|default('') }}">
+      <input type="hidden" name="status" value="{{ status_filter|default('') }}">
+      <input type="hidden" name="q" value="{{ q_filter|default('') }}">
+      <input type="hidden" name="phone" value="{{ phone_filter|default('') }}">
+      <label>Название <input type="text" name="title" value="Авто по рекомендациям AI" required></label>
+      <label>Канал
+        <select name="channel">
+          <option value="whatsapp">WhatsApp</option>
+          <option value="telegram">Telegram</option>
+        </select>
+      </label>
+      <p class="hint">Текст для каждого клиента сгенерируется из рекомендации AI (Demo).</p>
+      <button type="submit" class="btn">Создать авто-черновик</button>
+    </form>
+  </div>
 </section>
 
 <section class="card" id="campaign-list">
   {% include 'partials/campaign_list.html' %}
 </section>
+
+{% if preview_clients %}
+<section class="card">
+  <h3>Аудитория (превью)</h3>
+  <div class="table-wrap">
+    <table class="clients-table">
+      <thead>
+        <tr>
+          <th>Клиент</th>
+          <th>Контакт</th>
+          <th>Рекомендация / Demo-текст</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_clients %}
+        <tr>
+          <td>{{ row.get('Наименование') }}</td>
+          <td>{{ row.get('ТГ ник') or row.get('Телефон') or row.get('E-mail') or '—' }}</td>
+          <td class="reasoning">{{ row.get('_demo_message') or row.get('_ai_recommendation') or row.get('Рекомендация') or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

@@ -44,12 +44,12 @@ def test_heuristic_recommendation_for_march_event_segment() -> None:
         "Телефон": "+79001234567",
         "Всего заказов": 10,
         "_orders_context": [
-            {"Дата": "09.03.2026", "Комментарий": "Flowwow", "Сумма": 5000},
+            {"Дата отгрузки": "09.03.2026", "Комментарий": "Flowwow", "Сумма": 5000},
         ],
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None
-    assert "март" in rec.lower()
+    assert "8 марта" in rec.lower() or "март" in rec.lower()
     assert "предложите" in rec.lower()
     assert "Касание:" not in rec
 
@@ -126,22 +126,27 @@ def test_first_order_before_womens_day() -> None:
     assert "ниже среднего" in rec or "выше среднего" in rec or "около среднего" in rec
 
 
-def test_first_order_before_valentines() -> None:
+def test_first_order_march8_by_shipment_window() -> None:
+    """Повод 8 марта — только по дате отгрузки 5–9 марта, окно касания за 5 дней."""
     row = {
         "Телефон": "+79001234567",
         "Всего заказов": 1,
         "_orders_count": 1,
         "_orders_context": [
-            {"Дата": "12.02.2026", "Сумма": 6000, "Комментарий": "доставка к 18:00"},
+            {"Дата отгрузки": "07.03.2026", "Сумма": 6000, "Комментарий": "доставка к 18:00"},
         ],
     }
-    holiday = SegmentationService._holiday_for_order_date(2026, 2, 12)
+    holiday = SegmentationService._holiday_for_order_date(2026, 3, 7)
     assert holiday is not None
-    assert "14 февраля" in holiday["occasion"]
+    assert "8 марта" in holiday["occasion"]
+    assert "за 5 дней" in holiday["marketing_touch_window"]
+
+    # Вне окна 5–9 марта повод 8 марта не ставится
+    assert SegmentationService._holiday_for_order_date(2026, 2, 12) is None
 
     rec = SegmentationService._heuristic_recommendation(row)
-    assert "14 февраля" in rec
-    assert "Первый заказ" in rec or "похож" in rec.lower()
+    assert rec is not None
+    assert "8 марта" in rec
     assert "предложите" in rec.lower()
     assert "Оффер:" not in rec
 
@@ -153,6 +158,9 @@ def test_empty_avg_check_march_segment_no_generic_avg_phrase() -> None:
         "Всего заказов": 0,
         "Средний чек": None,
         "Заказчик или получатель": "+79587570138 доб. 06793",
+        "_orders_context": [
+            {"Дата отгрузки": "08.03.2026", "Сумма": 5000},
+        ],
     }
     rec = SegmentationService._heuristic_recommendation(row)
     assert rec is not None

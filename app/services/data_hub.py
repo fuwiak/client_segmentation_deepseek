@@ -26,6 +26,11 @@ from app.services.fields import (
   enrich_tg_nick_by_phone,
   is_empty_cell,
   is_non_person_label,
+  is_crm_eligible,
+  is_archived_row,
+  is_bez_statusa,
+  has_crm_contact,
+  unique_sales_channels,
 )
 
 
@@ -177,9 +182,32 @@ class DataHub:
     if _rows_need_gender_enrich(rows):
       rows = enrich_gender_by_unique_naimenovanie(rows)
     rows = enrich_tg_nick_by_phone(rows, self._phone_username_map)
-    self._active_rows_cache = (self._structure_version, rows)
-    self._active_rows_by_key = {_row_key(row): row for row in rows}
-    return rows
+    # CRM-выборка: без архива, без «без статуса», только с контактами.
+    excluded = {
+      "archived": sum(1 for r in rows if is_archived_row(r)),
+      "bez_statusa": sum(1 for r in rows if is_bez_statusa(r) and not is_archived_row(r)),
+      "no_contact": sum(
+        1
+        for r in rows
+        if not has_crm_contact(r) and not is_archived_row(r) and not is_bez_statusa(r)
+      ),
+    }
+    eligible = [r for r in rows if is_crm_eligible(r)]
+    self.meta = dict(self.meta or {})
+    self.meta["crm_excluded"] = excluded
+    self.meta["crm_raw_total"] = len(rows)
+    self._active_rows_cache = (self._structure_version, eligible)
+    self._active_rows_by_key = {_row_key(row): row for row in eligible}
+    return eligible
+
+  def crm_exclusion_stats(self) -> dict[str, int]:
+    stats = (self.meta or {}).get("crm_excluded") or {}
+    return {
+      "archived": int(stats.get("archived") or 0),
+      "bez_statusa": int(stats.get("bez_statusa") or 0),
+      "no_contact": int(stats.get("no_contact") or 0),
+      "raw_total": int((self.meta or {}).get("crm_raw_total") or 0),
+    }
 
   def dashboard_rows(self) -> list[dict[str, Any]]:
     """Sales snapshot without expensive AI display/recommendation overlays."""
@@ -286,7 +314,11 @@ class DataHub:
 
   @staticmethod
   def _filter_key_depends_on_ai(key: tuple[str, ...]) -> bool:
-    _, tag, group, _, q, _, sort, _ = key
+    # (sales_filter, tag, group, channel, status, q, phone, sort, order)
+    if len(key) >= 9:
+      _, tag, group, _channel, _status, q, _phone, sort, _order = key
+    else:
+      _, tag, group, _status, q, _phone, sort, _order = key
     return bool(tag or group or q or sort in {
       "Группы",
       "Теги",
@@ -423,13 +455,14 @@ class DataHub:
     sales_filter: str = "all",
     tag: str = "",
     group: str = "",
+    channel: str = "",
     status: str = "",
     q: str = "",
     phone: str = "",
     sort: str = "",
     order: str = "asc",
   ) -> list[dict[str, Any]]:
-    cache_key = (sales_filter, tag, group, status, q, phone, sort, order)
+    cache_key = (sales_filter, tag, group, channel, status, q, phone, sort, order)
     cached = self._filter_cache.get(cache_key)
     if cached is not None:
       return cached
@@ -439,6 +472,14 @@ class DataHub:
       rows = [r for r in rows if row_matches_sales_filter(r, sales_filter)]
     if group:
       rows = [r for r in rows if row_has_group(r, group)]
+    if channel:
+      channel_l = channel.strip().lower()
+      rows = [
+        r
+        for r in rows
+        if any(c.lower() == channel_l for c in unique_sales_channels(r))
+        or channel_l in str(r.get("Канал продаж") or "").lower()
+      ]
     if tag:
       tag_l = tag.lower().lstrip("#")
       rows = [
@@ -448,10 +489,12 @@ class DataHub:
         or tag_l in str(r.get("Группы") or "").lower()
       ]
     if status:
+      status_l = status.lower().strip()
       rows = [
         r
         for r in rows
-        if status.lower() in str(r.get("Статус последнего заказа") or "").lower()
+        if status_l == str(r.get("Статус") or "").lower().strip()
+        or status_l in str(r.get("Статус последнего заказа") or "").lower()
       ]
     if q:
       q_l = q.lower().strip()
@@ -468,6 +511,7 @@ class DataHub:
     sales_filter: str = "all",
     tag: str = "",
     group: str = "",
+    channel: str = "",
     status: str = "",
     q: str = "",
     phone: str = "",
@@ -479,6 +523,7 @@ class DataHub:
       sales_filter=sales_filter,
       tag=tag,
       group="",
+      channel=channel,
       status=status,
       q=q,
       phone=phone,
@@ -488,6 +533,7 @@ class DataHub:
     group_cache_key = (
       sales_filter,
       tag,
+      channel,
       status,
       q,
       phone,
