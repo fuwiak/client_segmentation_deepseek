@@ -7,7 +7,8 @@ on:
 
 concurrency:
   group: deploy-selectel
-  cancel-in-progress: false
+  # New push cancels a stuck/old deploy so progress logs stay current.
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -15,7 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Deploy over SSH
+      - name: Deploy link
+        run: |
+          echo "### Selectel deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "Live logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Watch this job for STEP 1/9 … DEPLOY_OK." >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Deploy over SSH (live progress)
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SELECTEL_HOST }}
@@ -23,11 +31,17 @@ jobs:
           key: ${{ secrets.SELECTEL_SSH_KEY }}
           port: 22
           command_timeout: 25m
+          # PTY + unbuffered remote script → step logs appear in Actions in real time.
+          request_pty: true
           script: |
             set -euo pipefail
+            export PYTHONUNBUFFERED=1
+            export BUILDKIT_PROGRESS=plain
+            export COMPOSE_PROGRESS=plain
             APP_DIR=/opt/app
             REPO_URL=https://github.com/fuwiak/client_segmentation_deepseek.git
 
+            echo "[$(date +%H:%M:%S)] SSH session open → sync + remote_deploy.sh"
             if [ ! -d "$APP_DIR/.git" ]; then
               mkdir -p /opt
               rm -rf "$APP_DIR"
@@ -35,8 +49,10 @@ jobs:
             fi
 
             cd "$APP_DIR"
-            git fetch origin
+            git fetch origin --progress
             git checkout main
             git reset --hard origin/main
             chmod +x deploy/remote_deploy.sh
-            APP_DIR="$APP_DIR" bash deploy/remote_deploy.sh
+            echo "[$(date +%H:%M:%S)] starting remote_deploy.sh (log also on VDS: /var/log/kinetic-deploy.log)"
+            APP_DIR="$APP_DIR" bash -c 'stdbuf -oL -eL bash deploy/remote_deploy.sh' 2>&1
+            echo "[$(date +%H:%M:%S)] remote_deploy.sh finished"
