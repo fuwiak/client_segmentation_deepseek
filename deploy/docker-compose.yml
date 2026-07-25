@@ -19,7 +19,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 20s
 
   web:
     build:
