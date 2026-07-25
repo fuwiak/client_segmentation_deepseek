@@ -13,6 +13,8 @@ def _sample_hub() -> DataHub:
                     "Наименование": "Анна",
                     "Телефон": "+79991112233",
                     "Тип продаж": "прямые продажи",
+                    "Канал продаж": "Витрина",
+                    "_orders_context": [{"Канал продаж": "Витрина"}],
                     "Группы": "VIP",
                 },
                 {
@@ -20,6 +22,8 @@ def _sample_hub() -> DataHub:
                     "Наименование": "+78887776655",
                     "Телефон": "+78887776655",
                     "Тип продаж": "прямые продажи",
+                    "Канал продаж": "Telegram",
+                    "_orders_context": [{"Канал продаж": "Telegram"}],
                     "Группы": "новый",
                 },
                 {
@@ -27,6 +31,8 @@ def _sample_hub() -> DataHub:
                     "Наименование": "OBI",
                     "Телефон": "OBI",
                     "Тип продаж": "маркетплейс",
+                    "Канал продаж": "Flowwow Floday",
+                    "_orders_context": [{"Канал продаж": "Flowwow Floday"}],
                     "Группы": "корп",
                 },
             ],
@@ -46,10 +52,10 @@ def test_active_rows_merges_parsed_with_enrichment_overlay() -> None:
         ParsedWorkbook(
             source_type="contragents",
             rows=[
-                {"UUID": "1", "Наименование": "А", "Телефон": "+79001111111"},
+                {"UUID": "1", "Наименование": "А", "Телефон": "+79001111111", "Группы": "база"},
                 {"UUID": "2", "Наименование": "Б", "Телефон": "+79002222222"},
             ],
-            context_columns=["UUID", "Наименование", "Телефон"],
+            context_columns=["UUID", "Наименование", "Телефон", "Группы"],
             segment_columns=[],
             total_rows=2,
             meta={"source": "moysklad"},
@@ -57,15 +63,23 @@ def test_active_rows_merges_parsed_with_enrichment_overlay() -> None:
         None,
     )
     hub.set_results(
-        [{"UUID": "1",
-                    "Телефон": "+79000000001", "Наименование": "А", "Группы": "VIP", "_enrichment_fields": ["Группы"]}],
+        [{
+            "UUID": "1",
+            "Телефон": "+79000000001",
+            "Наименование": "А",
+            "Теги": "#vip",
+            "Группы": "VIP-из-AI",
+            "_enrichment_fields": ["Теги", "Группы"],
+        }],
         {"enriched": True},
     )
 
     rows = hub.active_rows()
 
     assert len(rows) == 2
-    assert rows[0]["Группы"] == "VIP"
+    assert rows[0]["Теги"] == "#vip"
+    # Группы остаются из МойСклад/источника — AI не перезаписывает
+    assert rows[0]["Группы"] == "база"
     assert rows[1]["Наименование"] == "Б"
 
 
@@ -115,10 +129,10 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
                     "Телефон": "+79000000004",
                     "Наименование": "MP",
                     "_orders_context": [
-                        {"Канал продаж": "Flowwow"},
+                        {"Канал продаж": "Flowwow Floday"},
                         {"Канал продаж": "Ozon"},
                     ],
-                    "_order_channels_all": ["Flowwow", "Ozon"],
+                    "_order_channels_all": ["Flowwow Floday", "Ozon"],
                 },
                 {
                     "UUID": "h1",
@@ -140,8 +154,8 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
     )
     direct = hub.filter_rows(sales_filter="direct")
     market = hub.filter_rows(sales_filter="marketplace")
-    assert {r["UUID"] for r in direct} == {"d1"}
-    assert {r["UUID"] for r in market} == {"m1", "h1"}
+    assert {r["UUID"] for r in direct} == {"d1", "h1"}  # h1 имеет Витрину
+    assert {r["UUID"] for r in market} == {"m1"}  # только Flowwow
     assert len(hub.filter_rows(sales_filter="all")) == 3
 
 
@@ -154,7 +168,7 @@ def test_cached_ai_overlay_cannot_replace_current_sales_classification() -> None
                 "UUID": "m1",
                     "Телефон": "+79000000006",
                 "Наименование": "MP",
-                "_order_channels_all": ["Flowwow"],
+                "_order_channels_all": ["Flowwow Floday"],
             }],
             context_columns=["UUID", "Наименование"],
             segment_columns=[],
@@ -406,7 +420,7 @@ def test_ai_upsert_patches_stable_pagination_cache_in_place() -> None:
     assert hub.active_rows() is active_before
     assert hub.filter_rows(sales_filter="direct") is direct_before
     assert direct_before[0]["Теги"] == "#vip"
-    assert direct_before[0]["Группы"] == "премиум"
+    assert direct_before[0]["Группы"] == "VIP"  # AI не перезаписывает группы МС
 
 
 def test_ai_upsert_invalidates_ai_sensitive_filters_only() -> None:
@@ -424,8 +438,9 @@ def test_ai_upsert_invalidates_ai_sensitive_filters_only() -> None:
 
     assert hub.filter_rows(sales_filter="direct") is direct_before
     assert hub.filter_rows(sales_filter="all", group="VIP") is not vip_before
-    assert hub.filter_rows(sales_filter="all", group="VIP") == []
-    assert len(hub.filter_rows(sales_filter="all", group="премиум")) == 1
+    # Группы из AI не применяются — фильтр по VIP из источника остаётся
+    assert len(hub.filter_rows(sales_filter="all", group="VIP")) == 1
+    assert hub.filter_rows(sales_filter="all", group="премиум") == []
 
 
 def test_filter_rows_with_groups_single_pass() -> None:
@@ -471,7 +486,7 @@ def test_filter_rows_with_groups_includes_sales_channels() -> None:
                     "№": "100",
                     "Контрагент": "Анна",
                     "_moysklad_agent_id": "cp-1",
-                    "Канал продаж": "Flowwow",
+                    "Канал продаж": "Flowwow Floday",
                 },
                 {
                     "№": "101",
@@ -489,11 +504,11 @@ def test_filter_rows_with_groups_includes_sales_channels() -> None:
     rows, group_options, groups_total = hub.filter_rows_with_groups(sales_filter="all")
     names = {item["name"] for item in group_options}
     assert "VIP" in names
-    assert "Flowwow" not in names  # каналы — отдельный фильтр
+    assert "Flowwow Floday" not in names  # каналы — отдельный фильтр
     from app.services.export_format import collect_channel_options
     channels = {item["name"] for item in collect_channel_options(rows)}
-    assert "Flowwow" in channels or "Ozon" in channels
-    filtered = hub.filter_rows(sales_filter="all", channel="Flowwow")
+    assert "Flowwow Floday" in channels or "Ozon" in channels
+    filtered = hub.filter_rows(sales_filter="all", channel="Flowwow Floday")
     assert len(filtered) == 1
     assert filtered[0]["UUID"] == "cp-1"
 
@@ -523,7 +538,7 @@ def test_filter_rows_with_groups_includes_sales_channel_types() -> None:
                 {
                     "№": "100",
                     "_moysklad_agent_id": "cp-1",
-                    "Канал продаж": "Flowwow",
+                    "Канал продаж": "Flowwow Floday",
                 },
                 {
                     "№": "101",
@@ -569,7 +584,7 @@ def test_group_cloud_does_not_rescan_the_full_orders_collection() -> None:
             rows=[{
                 "№": "100",
                 "_moysklad_agent_id": "cp-1",
-                "Канал продаж": "Flowwow",
+                "Канал продаж": "Flowwow Floday",
             }],
             context_columns=[],
             segment_columns=[],
@@ -584,7 +599,7 @@ def test_group_cloud_does_not_rescan_the_full_orders_collection() -> None:
 
     assert [row["UUID"] for row in rows] == ["cp-1"]
     # Каналы не в облаке групп; важнее, что сканирование orders.rows не запускается.
-    assert all(item["name"] != "Flowwow" for item in group_options)
+    assert all(item["name"] != "Flowwow Floday" for item in group_options)
 
 
 def test_group_cloud_is_cached_until_structure_changes() -> None:

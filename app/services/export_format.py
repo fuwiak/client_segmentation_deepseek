@@ -259,20 +259,10 @@ def sort_client_rows(
 
 
 def row_groups(row: dict[str, Any]) -> list[str]:
-    """Отдельные группы клиента из поля «Группы» (МойСклад / AI)."""
-    raw = str(row.get("Группы") or row.get("_moysklad_tags_display") or "").strip()
-    if not raw:
-        return []
-    parts = re.split(r"[,/|;]", raw)
-    seen: set[str] = set()
-    groups: list[str] = []
-    for part in parts:
-        name = part.strip()
-        key = name.lower()
-        if name and key not in seen:
-            seen.add(key)
-            groups.append(name)
-    return groups
+    """Отдельные группы клиента только из МойСклад tags."""
+    from app.services.fields import moysklad_group_tokens
+
+    return moysklad_group_tokens(row)
 
 
 def sales_channels_index(order_rows: list[dict[str, Any]]) -> dict[str, set[str]]:
@@ -381,22 +371,25 @@ def collect_channel_options(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def collect_status_options(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Опции фильтра — статусы контрагента МойСклад (state), не эвристика «новый/постоянный»."""
     counter: Counter[str] = Counter()
     display: dict[str, str] = {}
     for row in rows:
-        status = str(row.get("Статус") or "").strip()
+        status = str(
+            row.get("Статус контрагента") or row.get("_moysklad_state") or ""
+        ).strip()
         if not status:
             continue
         key = status.lower()
+        if key in {"без статуса", "безстатуса"}:
+            continue
         counter[key] += 1
         display.setdefault(key, status)
     items = [
         {"name": display[key], "count": counter[key]}
         for key in counter
     ]
-    # стабильный порядок: постоянный → повторный → новый → прочее
-    order = {"постоянный": 0, "повторный": 1, "новый": 2}
-    items.sort(key=lambda item: (order.get(str(item["name"]).lower(), 9), -int(item["count"])))
+    items.sort(key=lambda item: (-int(item["count"]), str(item["name"]).lower()))
     return items
 
 
@@ -473,7 +466,7 @@ def merge_enriched_rows(
         "Отчество (для ИП и физ. лиц)",
         "E-mail",
         "Дата рождения",
-    ])
+    ]) - {"Группы"}  # Группы = только МойСклад, AI не перезаписывает
     ai_meta_keys = frozenset({
         "_ai_fields",
         "_enrichment_fields",
@@ -497,6 +490,13 @@ def merge_enriched_rows(
         "Всего заказов",
         "Статус",
         "Постоянный клиент",
+        "Группы",
+        "_moysklad_tags",
+        "_moysklad_tags_display",
+        "Статус контрагента",
+        "_moysklad_state",
+        "_moysklad_archived",
+        "Архивный",
     })
     preserve_from_base = (
         "_orders_context",
@@ -521,6 +521,12 @@ def merge_enriched_rows(
         "Пол",
         "E-mail",
         "Группы",
+        "_moysklad_tags",
+        "_moysklad_tags_display",
+        "Статус контрагента",
+        "_moysklad_state",
+        "_moysklad_archived",
+        "Архивный",
     )
 
     enriched_map = {key_fn(r): r for r in enriched}
@@ -542,8 +548,22 @@ def merge_enriched_rows(
                     combined[field] = value
             for field in preserve_from_base:
                 base_val = base.get(field)
+                if field in (
+                    "Группы",
+                    "_moysklad_tags",
+                    "_moysklad_tags_display",
+                    "Статус контрагента",
+                    "_moysklad_state",
+                ):
+                    # Всегда берём актуальные данные МойСклад из base (после sync).
+                    if not is_empty_cell(base_val):
+                        combined[field] = base_val
+                    continue
                 if not is_empty_cell(base_val) and is_empty_cell(combined.get(field)):
                     combined[field] = base_val
+            from app.services.fields import sync_groups_from_moysklad
+
+            sync_groups_from_moysklad(combined)
             base_orders = base.get("_orders_context") or []
             combined_orders = combined.get("_orders_context") or []
             if len(base_orders) > len(combined_orders):

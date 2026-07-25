@@ -71,12 +71,85 @@ DIRECT_SALES_CHANNEL_EXACT = frozenset({
   "витрина",
   "прямые продажи",
   "сайт vereskflowers.ru",
+  "сайт",
 })
 
 DIRECT_SALES_CHANNEL_SUBSTRINGS = (
   "vereskflowers.ru",
   "telegram",
   "whatsapp",
+  "вотсап",
+  "телеграм",
+)
+
+# Вкладка «Прямые»: клиент попадает, если совпал канал ИЛИ статус МС ИЛИ группа МС.
+DIRECT_AUDIENCE_CHANNELS = (
+  "прямые продажи",
+  "whatsapp/max",
+  "whatsapp",
+  "max",
+  "вотсап",
+  "telegram",
+  "телеграм",
+  "сайт",
+  "витрина",
+  "vereskflowers",
+)
+DIRECT_AUDIENCE_STATUSES = (
+  "постоянный прямые продажи",
+  "постоянный прямые",
+  "корпоративный клиент",
+)
+DIRECT_AUDIENCE_GROUPS = (
+  "8 марта",
+  "день мам",
+  "день матери",
+  "лофт гарден",
+  "новый год",
+  "цветы для интерьера",
+  "корпоративный клиент",
+)
+# «события по всем месяцам» → любое «событие …»
+DIRECT_AUDIENCE_GROUP_PATTERNS = (
+  r"событи",
+)
+
+# Вкладка «Маркетплейсы»: FlowWow-каналы + статусы/группы из ТЗ.
+MARKETPLACE_AUDIENCE_CHANNELS = (
+  "flowwow floday",
+  "flowwowfloday",
+  "flowwow сокольники",
+  "flowwowсокольники",
+  "flowwow университет",
+  "flowwowуниверситет",
+  "flow wow floday",
+  "floday",
+  "флау вау",
+  "флаувай",
+)
+MARKETPLACE_AUDIENCE_STATUSES = (
+  "постоянный маркетплейсы",
+  "постоянный маркетплейс",
+  "новый",
+)
+MARKETPLACE_AUDIENCE_GROUPS = (
+  "8 марта",
+  "день мам",
+  "день матери",
+  "букет от 10000",
+  "букет от 10 000",
+  "новый год",
+  "цветы для интерьера",
+  "постоянный",
+  "флау вау",
+  "флау вай скайлофт",
+  "флаувай скайлофт",
+  "скайлофт",
+)
+MARKETPLACE_AUDIENCE_GROUP_PATTERNS = (
+  r"событи",
+  r"flow\s*wow",
+  r"флау",
 )
 
 SALES_CHANNEL_TYPE_MARKETPLACE = "маркетплейс"
@@ -97,20 +170,156 @@ def _normalize_channel(channel: str) -> str:
 
 
 def is_direct_sales_channel(channel: str | None) -> bool:
-  """Прямые продажи: Telegram, WhatsApp/MAX, Витрина, Прямые продажи, vereskflowers.ru."""
+  """Прямые продажи: Telegram, WhatsApp/MAX, Витрина, Прямые продажи, сайт, vereskflowers.ru."""
   if not channel or not str(channel).strip():
     return False
   text = _normalize_channel(str(channel))
   if text in DIRECT_SALES_CHANNEL_EXACT:
     return True
+  if text == "сайт" or text.startswith("сайт "):
+    return True
   return any(part in text for part in DIRECT_SALES_CHANNEL_SUBSTRINGS)
 
 
 def is_marketplace_channel(channel: str | None) -> bool:
-  """Маркетплейс: любой канал, не входящий в список прямых продаж."""
+  """Маркетплейс: канал не из списка прямых продаж (для типа канала/классификации)."""
   if not channel or not str(channel).strip():
     return False
   return not is_direct_sales_channel(channel)
+
+
+def _norm_token(value: str) -> str:
+  return (
+    str(value or "")
+    .strip()
+    .lower()
+    .replace("ё", "е")
+    .replace("—", " ")
+    .replace("-", " ")
+  )
+
+
+def _token_matches_any(value: str, needles: tuple[str, ...] | list[str]) -> bool:
+  text = _norm_token(value)
+  if not text:
+    return False
+  compact = re.sub(r"\s+", " ", text)
+  compact_nospace = re.sub(r"\s+", "", compact)
+  for needle in needles:
+    n = _norm_token(needle)
+    if not n:
+      continue
+    n_space = re.sub(r"\s+", " ", n)
+    n_nospace = re.sub(r"\s+", "", n_space)
+    # Только needle ⊂ value (или равенство). Не value ⊂ needle —
+    # иначе группа «новый» ложно матчит allowlist «новый год».
+    if (
+      compact == n_space
+      or n_space in compact
+      or compact_nospace == n_nospace
+      or n_nospace in compact_nospace
+    ):
+      return True
+  return False
+
+
+def _token_matches_patterns(value: str, patterns: tuple[str, ...] | list[str]) -> bool:
+  text = _norm_token(value)
+  if not text:
+    return False
+  return any(re.search(pat, text, flags=re.IGNORECASE) for pat in patterns)
+
+
+def moysklad_group_tokens(row: dict[str, Any]) -> list[str]:
+  """Только группы МойСклад (tags), без AI-эвристик."""
+  raw = str(
+    row.get("_moysklad_tags_display")
+    or " ".join(str(t) for t in (row.get("_moysklad_tags") or []))
+    or row.get("Группы")
+    or ""
+  ).strip()
+  if not raw:
+    return []
+  parts = re.split(r"[,/|;]", raw)
+  seen: set[str] = set()
+  out: list[str] = []
+  for part in parts:
+    name = part.strip()
+    key = name.lower()
+    if name and key not in seen:
+      seen.add(key)
+      out.append(name)
+  return out
+
+
+def moysklad_status_tokens(row: dict[str, Any]) -> list[str]:
+  """Только статус контрагента из МойСклад (state), без групп."""
+  status = str(row.get("Статус контрагента") or row.get("_moysklad_state") or "").strip()
+  return [status] if status else []
+
+
+def _status_matches_allowlist(value: str, needles: tuple[str, ...] | list[str]) -> bool:
+  """Точное/префиксное совпадение статуса, без ложных «новый» ⊂ «новый год»."""
+  text = re.sub(r"\s+", " ", _norm_token(value))
+  if not text or text in {"без статуса", "безстатуса"}:
+    return False
+  for needle in needles:
+    n = re.sub(r"\s+", " ", _norm_token(needle))
+    if not n:
+      continue
+    if text == n:
+      return True
+    # Короткие статусы («новый») — только exact, иначе «новый год» ложно матчится.
+    if len(n) < 6:
+      continue
+    if text.startswith(n + " ") or n.startswith(text + " "):
+      return True
+  return False
+
+
+def _row_matches_audience(
+  row: dict[str, Any],
+  *,
+  channels: tuple[str, ...],
+  statuses: tuple[str, ...],
+  groups: tuple[str, ...],
+  group_patterns: tuple[str, ...] = (),
+) -> bool:
+  for ch in unique_sales_channels(row):
+    if _token_matches_any(ch, channels):
+      return True
+  stored_channel = str(row.get("Канал продаж") or "")
+  if stored_channel and _token_matches_any(stored_channel, channels):
+    return True
+  for status in moysklad_status_tokens(row):
+    if _status_matches_allowlist(status, statuses):
+      return True
+  for group in moysklad_group_tokens(row):
+    if _token_matches_any(group, groups) or _token_matches_patterns(group, group_patterns):
+      return True
+  return False
+
+
+def row_matches_direct_audience(row: dict[str, Any]) -> bool:
+  """Аудитория «Прямые»: канал ∪ статус ∪ группа из ТЗ."""
+  return _row_matches_audience(
+    row,
+    channels=DIRECT_AUDIENCE_CHANNELS,
+    statuses=DIRECT_AUDIENCE_STATUSES,
+    groups=DIRECT_AUDIENCE_GROUPS,
+    group_patterns=DIRECT_AUDIENCE_GROUP_PATTERNS,
+  )
+
+
+def row_matches_marketplace_audience(row: dict[str, Any]) -> bool:
+  """Аудитория «Маркетплейсы»: FlowWow-каналы ∪ статусы ∪ группы из ТЗ."""
+  return _row_matches_audience(
+    row,
+    channels=MARKETPLACE_AUDIENCE_CHANNELS,
+    statuses=MARKETPLACE_AUDIENCE_STATUSES,
+    groups=MARKETPLACE_AUDIENCE_GROUPS,
+    group_patterns=MARKETPLACE_AUDIENCE_GROUP_PATTERNS,
+  )
 
 
 def channel_type_from_channel(channel: str | None) -> str:
@@ -544,15 +753,28 @@ def row_sales_type_filter_value(row: dict[str, Any]) -> str:
 
 
 def row_matches_sales_filter(row: dict[str, Any], sales_filter: str) -> bool:
-  """Разделение вкладок: direct = только чистые прямые; marketplace = маркетплейс + гибрид."""
+  """Вкладки аудитории CRM: direct/marketplace по allowlist канала∪статуса∪группы."""
   if sales_filter in ("", "all"):
     return True
-  value = row_sales_type_filter_value(row)
   if sales_filter == "marketplace":
-    return "маркетплейс" in value
+    return row_matches_marketplace_audience(row)
   if sales_filter == "direct":
-    return "прямы" in value and "маркетплейс" not in value
+    return row_matches_direct_audience(row)
   return True
+
+
+def sync_groups_from_moysklad(row: dict[str, Any]) -> dict[str, Any]:
+  """Группы в CRM = только актуальные tags МойСклад (не AI и не устаревший кэш)."""
+  tags = row.get("_moysklad_tags")
+  if isinstance(tags, list):
+    groups = ", ".join(str(t).strip() for t in tags if str(t).strip())
+    row["_moysklad_tags_display"] = groups
+    row["Группы"] = groups
+    return row
+  display = str(row.get("_moysklad_tags_display") or "").strip()
+  if display:
+    row["Группы"] = display
+  return row
 
 
 def ensure_sales_classification(row: dict[str, Any]) -> dict[str, Any]:
@@ -560,6 +782,7 @@ def ensure_sales_classification(row: dict[str, Any]) -> dict[str, Any]:
   row.pop(_SALES_CHANNELS_CACHE_KEY, None)
   row.pop(_SALES_CHANNEL_TYPES_CACHE_KEY, None)
   row.pop(_SALES_FILTER_VALUE_CACHE_KEY, None)
+  sync_groups_from_moysklad(row)
   channel = sales_channel_for_row(row)
   if channel:
     row["Канал продаж"] = channel
@@ -1331,6 +1554,7 @@ def enrich_row_computed(
   enriched.pop(_SALES_CHANNELS_CACHE_KEY, None)
   enriched.pop(_SALES_CHANNEL_TYPES_CACHE_KEY, None)
   enriched.pop(_SALES_FILTER_VALUE_CACHE_KEY, None)
+  sync_groups_from_moysklad(enriched)
   channel = sales_channel_for_row(enriched)
   if channel:
     enriched["Канал продаж"] = channel

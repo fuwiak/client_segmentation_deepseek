@@ -407,11 +407,6 @@ class SegmentationService:
         merged = dict(row)
         ai_fields: list[str] = []
 
-        if not merged.get("Группы"):
-            group = self._heuristic_group(row)
-            if group:
-                apply_ai_field(merged, "Группы", group, ai_fields)
-
         recipient = self._extract_recipient(row)
         if recipient and not merged.get("Заказчик или получатель"):
             apply_ai_field(merged, "Заказчик или получатель", recipient, ai_fields)

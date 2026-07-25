@@ -493,8 +493,9 @@ class DataHub:
       rows = [
         r
         for r in rows
-        if status_l == str(r.get("Статус") or "").lower().strip()
-        or status_l in str(r.get("Статус последнего заказа") or "").lower()
+        if status_l == str(
+          r.get("Статус контрагента") or r.get("_moysklad_state") or ""
+        ).lower().strip()
       ]
     if q:
       q_l = q.lower().strip()

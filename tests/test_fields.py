@@ -139,19 +139,66 @@ def test_row_matches_sales_filter_by_channel_rules() -> None:
 
     direct = {
         "_order_channels_all": ["Витрина", "Telegram"],
+        "_orders_context": [
+            {"Канал продаж": "Витрина"},
+            {"Канал продаж": "Telegram"},
+        ],
     }
     market = {
-        "_order_channels_all": ["Flowwow"],
+        "_order_channels_all": ["Flowwow Floday"],
+        "_orders_context": [{"Канал продаж": "Flowwow Floday"}],
+    }
+    ozon_only = {
+        "_order_channels_all": ["Ozon"],
+        "_orders_context": [{"Канал продаж": "Ozon"}],
     }
     hybrid = {
         "_order_channels_all": ["Витрина", "Ozon"],
+        "_orders_context": [
+            {"Канал продаж": "Витрина"},
+            {"Канал продаж": "Ozon"},
+        ],
     }
     assert row_matches_sales_filter(direct, "direct") is True
     assert row_matches_sales_filter(direct, "marketplace") is False
     assert row_matches_sales_filter(market, "marketplace") is True
     assert row_matches_sales_filter(market, "direct") is False
-    assert row_matches_sales_filter(hybrid, "marketplace") is True
-    assert row_matches_sales_filter(hybrid, "direct") is False
+    # Ozon больше не попадает в вкладку маркетплейсов без FlowWow/нужного статуса/группы
+    assert row_matches_sales_filter(ozon_only, "marketplace") is False
+    assert row_matches_sales_filter(hybrid, "direct") is True
+    assert row_matches_sales_filter(hybrid, "marketplace") is False
+
+
+def test_row_matches_audience_by_moysklad_status_and_group() -> None:
+    from app.services.fields import row_matches_sales_filter
+
+    by_status = {
+        "Статус контрагента": "постоянный прямые продажи",
+        "_moysklad_state": "постоянный прямые продажи",
+        "_orders_context": [{"Канал продаж": "Ozon"}],
+    }
+    by_group = {
+        "_moysklad_tags": ["8 марта", "лофт гарден"],
+        "_moysklad_tags_display": "8 марта, лофт гарден",
+        "_orders_context": [{"Канал продаж": "Ozon"}],
+    }
+    mp_status = {
+        "Статус контрагента": "постоянный маркетплейсы",
+        "_moysklad_state": "постоянный маркетплейсы",
+    }
+    assert row_matches_sales_filter(by_status, "direct") is True
+    assert row_matches_sales_filter(by_group, "direct") is True
+    assert row_matches_sales_filter(mp_status, "marketplace") is True
+    assert row_matches_sales_filter(by_group, "marketplace") is True  # группа 8 марта
+    # «новый» ≠ «новый год»
+    assert row_matches_sales_filter(
+        {"Статус контрагента": "новый год", "_moysklad_state": "новый год"},
+        "marketplace",
+    ) is False
+    assert row_matches_sales_filter(
+        {"Статус контрагента": "новый", "_moysklad_state": "новый"},
+        "marketplace",
+    ) is True
 
 
 def test_sales_filter_reuses_precomputed_classification() -> None:
@@ -161,11 +208,26 @@ def test_sales_filter_reuses_precomputed_classification() -> None:
         def __iter__(self):
             raise AssertionError("filter must reuse the precomputed sales type")
 
-    row = ensure_sales_classification({"_order_channels_all": ["Flowwow", "Ozon"]})
+    row = ensure_sales_classification({
+        "_order_channels_all": ["Flowwow Floday"],
+        "_orders_context": [{"Канал продаж": "Flowwow Floday"}],
+    })
     row["_order_channels_all"] = NoIteration(row["_order_channels_all"])
-
+    # Каналы уже закешированы в _sales_channels_unique
     assert row_matches_sales_filter(row, "marketplace") is True
     assert row_matches_sales_filter(row, "direct") is False
+
+
+def test_sync_groups_from_moysklad_overwrites_stale_ai_groups() -> None:
+    from app.services.fields import sync_groups_from_moysklad
+
+    row = {
+        "Группы": "старая группа / AI мусор",
+        "_moysklad_tags": ["8 марта", "день мам"],
+        "_moysklad_tags_display": "8 марта, день мам",
+    }
+    sync_groups_from_moysklad(row)
+    assert row["Группы"] == "8 марта, день мам"
 
 
 def test_sales_channel_type_marketplace_for_only_missing_channel() -> None:
