@@ -26,21 +26,25 @@
         <span class="wordmark visually-hidden">Iris CRM</span>
       </a>
 
+      {% if active_page|default('') != 'login' %}
       <nav class="desktop-nav" aria-label="Основная навигация">
         {% include 'partials/nav_items.html' %}
       </nav>
 
       <button type="button" class="nav-toggle" onclick="toggleMobileNav()" aria-label="Меню" aria-expanded="false" id="nav-toggle-btn">☰</button>
+      {% endif %}
       {% if auth_enabled and current_user %}
       <a href="/logout" class="nav-logout" hx-boost="false">Выйти</a>
       {% endif %}
     </div>
 
+    {% if active_page|default('') != 'login' %}
     <div class="mobile-drawer" id="mobile-drawer" hidden>
       <nav class="mobile-drawer-nav" aria-label="Мобильное меню">
         {% include 'partials/nav_items.html' %}
       </nav>
     </div>
+    {% endif %}
   </header>
 
   <main id="page-content" class="main-content">
@@ -68,6 +72,7 @@
     </footer>
   </main>
 
+  {% if active_page|default('') != 'login' %}
   <nav class="bottom-nav" aria-label="Быстрая навигация">
     <a href="/clients" data-nav-path="/clients" preload="mouseover always" hx-sync="#page-content:replace" class="bottom-nav-item {% if active_page|default('') == 'clients' %}active{% endif %}">
       <span class="bottom-nav-icon">👥</span>
@@ -78,6 +83,7 @@
       <span>Дашборд</span>
     </a>
   </nav>
+  {% endif %}
 
   {% include 'partials/diag_panel.html' %}
 

@@ -1,17 +1,14 @@
 {% extends layout_template|default("base.html") %}
 
-{% block page_header %}
-<header class="page-header">
-  <div>
-    <h1>Вход</h1>
-    <p class="subtitle">Iris CRM</p>
-  </div>
-</header>
-{% endblock %}
+{% block page_header %}{% endblock %}
 
 {% block content %}
 <section class="card login-card">
-  <form class="login-form" method="post" action="/login">
+  <div class="login-brand">
+    <img src="{{ static_asset('img/iris-logo.svg') }}" alt="Iris CRM" class="login-logo">
+    <p class="login-tagline">Вход в Iris CRM</p>
+  </div>
+  <form class="login-form" method="post" action="/login" hx-boost="false">
     <input type="hidden" name="next" value="{{ next_url|default('/clients') }}">
     {% if error %}
     <p class="hint warn-hint">{{ error }}</p>

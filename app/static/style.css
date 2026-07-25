@@ -1177,6 +1177,26 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 }
 .nav-logout:hover { color: var(--primary); }
 .login-card { max-width: 420px; margin: 24px auto; }
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+.login-logo {
+  display: block;
+  height: 56px;
+  width: auto;
+  max-width: min(260px, 70vw);
+  object-fit: contain;
+}
+.login-tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
 .login-form {
   display: flex;
   flex-direction: column;

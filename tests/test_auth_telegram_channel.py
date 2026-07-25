@@ -31,7 +31,10 @@ def test_public_paths() -> None:
     assert is_public_path("/clients") is False
 
 
-def test_login_page_renders() -> None:
+def test_login_page_renders(monkeypatch) -> None:
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("AUTH_USERNAME", "admin")
+    monkeypatch.setenv("AUTH_PASSWORD", "admin")
     get_settings.cache_clear()
     from fastapi.testclient import TestClient
     import app.main as m
@@ -40,7 +43,39 @@ def test_login_page_renders() -> None:
     resp = client.get("/login")
     assert resp.status_code == 200
     assert "password" in resp.text.lower() or "Пароль" in resp.text
+    assert "iris-logo.svg" in resp.text
+    assert 'class="login-logo"' in resp.text
+    assert 'class="brand-logo brand-logo-wide"' in resp.text
 
+
+def test_login_submit_ok_and_protects(monkeypatch) -> None:
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("AUTH_USERNAME", "admin")
+    monkeypatch.setenv("AUTH_PASSWORD", "admin")
+    get_settings.cache_clear()
+    from fastapi.testclient import TestClient
+    import app.main as m
+
+    client = TestClient(m.app)
+    denied = client.get("/clients", follow_redirects=False)
+    assert denied.status_code in (303, 302)
+    assert "/login" in denied.headers.get("location", "")
+
+    bad = client.post(
+        "/login",
+        data={"username": "admin", "password": "wrong", "next": "/clients"},
+        follow_redirects=False,
+    )
+    assert bad.status_code == 401
+
+    ok = client.post(
+        "/login",
+        data={"username": "admin", "password": "admin", "next": "/clients"},
+        follow_redirects=False,
+    )
+    assert ok.status_code in (303, 302)
+    assert ok.headers.get("location", "").endswith("/clients")
+    get_settings.cache_clear()
 
 @pytest.mark.asyncio
 async def test_send_telegram_channel_post() -> None:
