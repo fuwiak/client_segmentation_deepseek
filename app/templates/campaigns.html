@@ -6,9 +6,14 @@
     <button type="button" class="filter-tab {% if mode|default('manual') == 'manual' %}active{% endif %}"
             onclick="document.getElementById('mode-manual').hidden=false;document.getElementById('mode-auto').hidden=true;this.classList.add('active');this.nextElementSibling.classList.remove('active')">Ручная</button>
     <button type="button" class="filter-tab {% if mode|default('manual') == 'auto' %}active{% endif %}"
-            onclick="document.getElementById('mode-auto').hidden=false;document.getElementById('mode-manual').hidden=true;this.classList.add('active');this.previousElementSibling.classList.remove('active')">Авто (Demo)</button>
+            onclick="document.getElementById('mode-auto').hidden=false;document.getElementById('mode-manual').hidden=true;this.classList.add('active');this.previousElementSibling.classList.remove('active')">Авто (AI)</button>
   </div>
-  <p class="hint">Получателей: <strong>{{ audience_count }}</strong> (по текущим фильтрам CRM). Сообщения можно отправить индивидуально или массово — demo без реальной отправки в мессенджер.</p>
+
+  {% if tg_enabled %}
+  <p class="hint">Telegram бот активен{% if telegram_bot_username %} · <a href="https://t.me/{{ telegram_bot_username }}" target="_blank" rel="noopener">@{{ telegram_bot_username }}</a>{% endif %}. Получателей по фильтрам: <strong>{{ audience_count }}</strong>. Клиент должен хотя бы раз написать боту (или иметь @ник).</p>
+  {% else %}
+  <p class="hint warn-hint">Telegram не настроен (<code>TELEGRAM_ENABLED</code> + <code>TELEGRAM_BOT_TOKEN</code>). Черновики создаются, отправка будет в demo-режиме. Получателей: <strong>{{ audience_count }}</strong>.</p>
+  {% endif %}
 
   <div id="mode-manual" {% if mode|default('manual') != 'manual' %}hidden{% endif %}>
     <form class="campaign-form" method="post" action="/campaigns/create"
@@ -26,8 +31,8 @@
       <label>Название <input type="text" name="title" required placeholder="Рассылка по фильтрам"></label>
       <label>Канал
         <select name="channel">
-          <option value="whatsapp">WhatsApp</option>
-          <option value="telegram">Telegram</option>
+          <option value="telegram" selected>Telegram</option>
+          <option value="whatsapp">WhatsApp (demo)</option>
         </select>
       </label>
       <label>Текст сообщения
@@ -53,11 +58,11 @@
       <label>Название <input type="text" name="title" value="Авто по рекомендациям AI" required></label>
       <label>Канал
         <select name="channel">
-          <option value="whatsapp">WhatsApp</option>
-          <option value="telegram">Telegram</option>
+          <option value="telegram" selected>Telegram</option>
+          <option value="whatsapp">WhatsApp (demo)</option>
         </select>
       </label>
-      <p class="hint">Текст для каждого клиента сгенерируется из рекомендации AI (Demo).</p>
+      <p class="hint">Текст для каждого клиента — из рекомендации AI (точки касания).</p>
       <button type="submit" class="btn">Создать авто-черновик</button>
     </form>
   </div>
@@ -76,7 +81,7 @@
         <tr>
           <th>Клиент</th>
           <th>Контакт</th>
-          <th>Рекомендация / Demo-текст</th>
+          <th>Рекомендация / текст</th>
         </tr>
       </thead>
       <tbody>

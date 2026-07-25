@@ -1525,13 +1525,14 @@ async def campaigns_page(
     item = dict(row)
     item["_demo_message"] = CampaignService.demo_ai_message(row)
     preview.append(item)
+  tg = get_telegram_client(settings)
   return templates.TemplateResponse(
     "campaigns.html",
     _ctx(
       request,
       active_page="campaigns",
       page_title="Рассылки",
-      subtitle="Ручные по фильтрам и авто по рекомендациям AI (Demo)",
+      subtitle="Telegram-рассылки по фильтрам CRM и рекомендациям AI",
       campaigns=campaigns,
       audience_count=len(rows),
       preview_clients=preview,
@@ -1543,6 +1544,8 @@ async def campaigns_page(
       status_filter=status,
       q_filter=q,
       phone_filter=phone,
+      tg_enabled=tg.enabled,
+      telegram_bot_username=settings.telegram_bot_username,
     ),
   )
 
@@ -1552,7 +1555,7 @@ async def campaign_create(
   request: Request,
   title: str = Form(...),
   mode: str = Form("manual"),
-  channel: str = Form("whatsapp"),
+  channel: str = Form("telegram"),
   offer: str = Form(""),
   filter: str = Form("all"),
   tag: str = Form(""),
@@ -1575,10 +1578,11 @@ async def campaign_create(
   message = offer
   if mode == "auto":
     # Demo: общий шаблон; персонализация лежит в recipients.recommendation
-    message = offer or "Персональное сообщение по рекомендации AI (Demo)"
+    message = offer or "Персональное сообщение по рекомендации AI"
     for row in rows:
       if not row.get("_ai_recommendation") and not row.get("Рекомендация"):
         ensure_ai_recommendation(row)
+  messenger_index = await cache.get_messenger_index() or {}
   await campaign_svc.create_draft(
     title=title,
     mode=mode,
@@ -1594,11 +1598,18 @@ async def campaign_create(
       "q": q,
       "phone": phone,
     },
+    messenger_index=messenger_index if isinstance(messenger_index, dict) else {},
   )
   campaigns = await campaign_svc.list_campaigns()
+  tg = get_telegram_client(settings)
   return templates.TemplateResponse(
     "partials/campaign_list.html",
-    _ctx(request, campaigns=campaigns),
+    _ctx(
+      request,
+      campaigns=campaigns,
+      tg_enabled=tg.enabled,
+      telegram_bot_username=settings.telegram_bot_username,
+    ),
   )
 
 
@@ -1609,11 +1620,29 @@ async def campaign_send(
   recipient_id: str = Form(""),
 ) -> HTMLResponse:
   ids = [recipient_id] if recipient_id else None
-  await campaign_svc.mark_sent(campaign_id, ids)
+  campaign = await campaign_svc.get(campaign_id)
+  channel = str((campaign or {}).get("channel") or "").lower()
+  tg = get_telegram_client(settings)
+  if channel == "telegram":
+    messenger_index = await cache.get_messenger_index() or {}
+    await campaign_svc.send_telegram(
+      campaign_id,
+      telegram_client=tg,
+      messenger_index=messenger_index if isinstance(messenger_index, dict) else {},
+      recipient_ids=ids,
+    )
+  else:
+    # WhatsApp и прочие каналы — пока demo-пометка (Green API отдельно).
+    await campaign_svc.mark_sent(campaign_id, ids)
   campaigns = await campaign_svc.list_campaigns()
   return templates.TemplateResponse(
     "partials/campaign_list.html",
-    _ctx(request, campaigns=campaigns),
+    _ctx(
+      request,
+      campaigns=campaigns,
+      tg_enabled=tg.enabled,
+      telegram_bot_username=settings.telegram_bot_username,
+    ),
   )
 
 

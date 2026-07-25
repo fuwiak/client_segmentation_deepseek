@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import httpx
 
@@ -55,16 +56,31 @@ class TelegramBotClient:
     except httpx.HTTPError:
       return False
 
-  async def send_message(self, chat_id: str | int, text: str) -> dict:
+  async def send_message(
+    self,
+    chat_id: str | int,
+    text: str,
+    *,
+    parse_mode: str | None = None,
+  ) -> dict:
     if not self.enabled:
       raise RuntimeError("Telegram бот не настроен")
+    payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+      payload["parse_mode"] = parse_mode
     async with httpx.AsyncClient(timeout=self._timeout) as client:
-      resp = await client.post(
-        self._url("sendMessage"),
-        json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-      )
-      resp.raise_for_status()
-      return resp.json()
+      resp = await client.post(self._url("sendMessage"), json=payload)
+      if resp.status_code >= 400:
+        detail = ""
+        try:
+          detail = str(resp.json())
+        except Exception:  # noqa: BLE001
+          detail = resp.text[:300]
+        raise RuntimeError(f"Telegram API {resp.status_code}: {detail}")
+      data = resp.json()
+      if not data.get("ok"):
+        raise RuntimeError(f"Telegram API error: {data}")
+      return data
 
   async def get_updates(self, *, offset: int | None = None, limit: int = 100) -> list[dict]:
     if not self.enabled:

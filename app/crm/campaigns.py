@@ -2,10 +2,14 @@
 
 Ручной режим — по текущим фильтрам клиентов.
 Авто (Demo) — по рекомендациям AI (точки касания).
+Канал Telegram — реальная отправка через Bot API (если TELEGRAM_ENABLED).
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -14,6 +18,54 @@ from app.domain import Campaign, CampaignStatus
 from app.repository.base import CustomerRepository
 from app.services.fields import has_crm_contact
 from app.services.segmentation import SegmentationService
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize_tg(value: str | None) -> str:
+    if not value:
+        return ""
+    text = str(value).strip()
+    if text.startswith("@"):
+        text = text[1:]
+    return text.strip()
+
+
+def resolve_telegram_chat_id(
+    recipient: dict[str, Any],
+    *,
+    messenger_index: dict[str, Any] | None = None,
+) -> str | int | None:
+    """chat_id для Bot API: явный id, @username или индекс getUpdates."""
+    explicit = recipient.get("tg_chat_id") or recipient.get("chat_id")
+    if explicit is not None and str(explicit).strip():
+        raw = str(explicit).strip()
+        return int(raw) if raw.lstrip("-").isdigit() else raw
+
+    tg = _normalize_tg(recipient.get("tg") or recipient.get("ТГ ник"))
+    index = messenger_index or {}
+    if tg:
+        by_user = index.get("by_username") or {}
+        msgs = by_user.get(tg.lower()) or by_user.get(tg) or []
+        for msg in reversed(msgs):
+            cid = msg.get("chat_id")
+            if cid is not None and str(cid).strip():
+                return cid
+        # Bot API принимает @username, если пользователь уже писал боту.
+        return f"@{tg}"
+
+    phone_digits = re.sub(r"\D", "", str(recipient.get("phone") or recipient.get("Телефон") or ""))
+    if phone_digits.startswith("8") and len(phone_digits) == 11:
+        phone_digits = "7" + phone_digits[1:]
+    phone_key = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    if phone_key:
+        by_phone = index.get("by_phone") or {}
+        msgs = by_phone.get(phone_key) or []
+        for msg in reversed(msgs):
+            cid = msg.get("chat_id")
+            if cid is not None and str(cid).strip():
+                return cid
+    return None
 
 
 class CampaignService:
@@ -34,7 +86,30 @@ class CampaignService:
         message: str,
         clients: list[dict[str, Any]],
         filters: dict[str, str] | None = None,
+        messenger_index: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        recipients: list[dict[str, Any]] = []
+        for r in clients:
+            if not has_crm_contact(r):
+                continue
+            tg = str(r.get("ТГ ник") or "").strip()
+            phone = str(r.get("Телефон") or "").strip()
+            rec = {
+                "id": str(r.get("UUID") or r.get("Наименование") or ""),
+                "name": str(r.get("Наименование") or ""),
+                "phone": phone,
+                "tg": tg,
+                "recommendation": str(
+                    r.get("_ai_recommendation") or r.get("Рекомендация") or ""
+                ),
+                "send_status": "pending",
+                "send_error": "",
+            }
+            chat_id = resolve_telegram_chat_id(rec, messenger_index=messenger_index)
+            if chat_id is not None:
+                rec["tg_chat_id"] = chat_id
+            recipients.append(rec)
+
         item = {
             "id": str(uuid.uuid4()),
             "title": title,
@@ -44,18 +119,10 @@ class CampaignService:
             "status": CampaignStatus.DRAFT.value,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "filters": filters or {},
-            "recipients": [
-                {
-                    "id": str(r.get("UUID") or r.get("Наименование") or ""),
-                    "name": str(r.get("Наименование") or ""),
-                    "phone": str(r.get("Телефон") or ""),
-                    "tg": str(r.get("ТГ ник") or ""),
-                    "recommendation": str(r.get("_ai_recommendation") or r.get("Рекомендация") or ""),
-                }
-                for r in clients
-                if has_crm_contact(r)
-            ],
+            "recipients": recipients,
             "sent_count": 0,
+            "failed_count": 0,
+            "last_error": "",
         }
         self._campaigns.insert(0, item)
         return item
@@ -69,17 +136,25 @@ class CampaignService:
                 return item
         return None
 
-    async def mark_sent(self, campaign_id: str, recipient_ids: list[str] | None = None) -> dict[str, Any] | None:
+    async def mark_sent(
+        self, campaign_id: str, recipient_ids: list[str] | None = None
+    ) -> dict[str, Any] | None:
+        """Пометить отправку без API (demo / fallback)."""
         item = await self.get(campaign_id)
         if not item:
             return None
         recipients = item.get("recipients") or []
         if recipient_ids:
             wanted = set(recipient_ids)
-            sent = [r for r in recipients if r.get("id") in wanted]
+            targets = [r for r in recipients if r.get("id") in wanted]
         else:
-            sent = recipients
-        item["sent_count"] = int(item.get("sent_count") or 0) + len(sent)
+            targets = recipients
+        for rec in targets:
+            if rec.get("send_status") == "sent":
+                continue
+            rec["send_status"] = "demo"
+            rec["sent_at"] = datetime.now(timezone.utc).isoformat()
+        item["sent_count"] = sum(1 for r in recipients if r.get("send_status") in {"sent", "demo"})
         item["status"] = (
             CampaignStatus.ACTIVE.value
             if item["sent_count"] < len(recipients)
@@ -88,11 +163,97 @@ class CampaignService:
         item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
         return item
 
+    async def send_telegram(
+        self,
+        campaign_id: str,
+        *,
+        telegram_client: Any,
+        messenger_index: dict[str, Any] | None = None,
+        recipient_ids: list[str] | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any] | None:
+        """Реальная (или dry-run) отправка кампании в Telegram."""
+        item = await self.get(campaign_id)
+        if not item:
+            return None
+        if str(item.get("channel") or "").lower() != "telegram":
+            raise ValueError("Кампания не для канала Telegram")
+
+        recipients = item.get("recipients") or []
+        if recipient_ids:
+            wanted = set(recipient_ids)
+            targets = [r for r in recipients if r.get("id") in wanted]
+        else:
+            targets = [r for r in recipients if r.get("send_status") != "sent"]
+
+        enabled = bool(getattr(telegram_client, "enabled", False))
+        if not enabled and not dry_run:
+            # Без токена — demo-пометка, чтобы UI не ломался.
+            return await self.mark_sent(campaign_id, recipient_ids)
+
+        base_message = str(item.get("message") or "").strip()
+        mode = str(item.get("mode") or "manual")
+        sent = 0
+        failed = 0
+        last_error = ""
+
+        for rec in targets:
+            if rec.get("send_status") == "sent":
+                continue
+            text = base_message
+            if mode == "auto":
+                text = self.demo_ai_message({
+                    "Наименование": rec.get("name"),
+                    "_ai_recommendation": rec.get("recommendation"),
+                    "Рекомендация": rec.get("recommendation"),
+                })
+            if not text:
+                text = "Здравствуйте!"
+
+            chat_id = resolve_telegram_chat_id(rec, messenger_index=messenger_index)
+            if chat_id is None:
+                rec["send_status"] = "failed"
+                rec["send_error"] = "Нет Telegram (@ник или chat_id). Клиент должен написать боту."
+                failed += 1
+                last_error = rec["send_error"]
+                continue
+
+            if dry_run or not enabled:
+                rec["send_status"] = "demo"
+                rec["tg_chat_id"] = chat_id
+                rec["sent_at"] = datetime.now(timezone.utc).isoformat()
+                sent += 1
+                continue
+
+            try:
+                await telegram_client.send_message(chat_id, text, parse_mode=None)
+                rec["send_status"] = "sent"
+                rec["tg_chat_id"] = chat_id
+                rec["send_error"] = ""
+                rec["sent_at"] = datetime.now(timezone.utc).isoformat()
+                sent += 1
+            except Exception as exc:  # noqa: BLE001 — фиксируем ошибку по получателю
+                logger.warning("Telegram send failed for %s: %s", rec.get("id"), exc)
+                rec["send_status"] = "failed"
+                rec["send_error"] = str(exc)[:240]
+                failed += 1
+                last_error = rec["send_error"]
+            await asyncio.sleep(0.05)
+
+        item["sent_count"] = sum(1 for r in recipients if r.get("send_status") in {"sent", "demo"})
+        item["failed_count"] = sum(1 for r in recipients if r.get("send_status") == "failed")
+        item["last_error"] = last_error
+        item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
+        pending = sum(1 for r in recipients if r.get("send_status") in {"pending", "failed"})
+        item["status"] = (
+            CampaignStatus.DONE.value if pending == 0 else CampaignStatus.ACTIVE.value
+        )
+        return item
+
     @staticmethod
     def demo_ai_message(row: dict[str, Any]) -> str:
         rec = str(row.get("_ai_recommendation") or row.get("Рекомендация") or "").strip()
         if rec:
-            # Короткий demo-текст для рассылки
             name = str(row.get("Наименование") or "клиент").split()[0]
             return f"Здравствуйте, {name}! {rec[:280]}"
         touch = SegmentationService._primary_touch_plan(row)
@@ -111,4 +272,5 @@ class CampaignService:
             "filters": {"segments": ",".join(campaign.target_segments)},
             "recipients": [],
             "sent_count": 0,
+            "failed_count": 0,
         }

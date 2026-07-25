@@ -7,24 +7,35 @@
     <span class="chip">{{ c.status }}</span>
     <span class="chip">{{ c.mode|default('manual') }}</span>
     <span class="chip">{{ c.channel }}</span>
-    <p class="hint">Получателей: {{ (c.recipients or [])|length }} · отправлено (demo): {{ c.sent_count|default(0) }}</p>
+    <p class="hint">
+      Получателей: {{ (c.recipients or [])|length }}
+      · отправлено: {{ c.sent_count|default(0) }}
+      {% if c.failed_count %} · ошибки: {{ c.failed_count }}{% endif %}
+    </p>
+    {% if c.last_error %}<p class="hint warn-hint">{{ c.last_error }}</p>{% endif %}
     <p>{{ c.message or c.offer or '—' }}</p>
     {% if c.recipients %}
     <details>
       <summary class="btn-text">Получатели</summary>
-      <ul>
-        {% for r in c.recipients[:20] %}
+      <ul class="campaign-recipients">
+        {% for r in c.recipients[:30] %}
         <li>
-          {{ r.name }} · {{ r.tg or r.phone or '—' }}
+          <span>{{ r.name }} · {{ r.tg or r.phone or '—' }}</span>
+          {% if r.send_status and r.send_status != 'pending' %}
+          <span class="chip chip-{{ r.send_status }}">{{ r.send_status }}</span>
+          {% endif %}
+          {% if r.send_error %}<span class="hint warn-hint">{{ r.send_error }}</span>{% endif %}
+          {% if r.send_status not in ['sent'] %}
           <form style="display:inline" hx-post="/campaigns/{{ c.id }}/send" hx-target="#campaign-list" hx-swap="innerHTML">
             <input type="hidden" name="recipient_id" value="{{ r.id }}">
-            <button type="submit" class="btn-text">Отправить (demo)</button>
+            <button type="submit" class="btn-text">{% if tg_enabled and c.channel == 'telegram' %}Отправить в TG{% else %}Отправить (demo){% endif %}</button>
           </form>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>
       <form hx-post="/campaigns/{{ c.id }}/send" hx-target="#campaign-list" hx-swap="innerHTML">
-        <button type="submit" class="btn secondary small">Отправить всем (demo)</button>
+        <button type="submit" class="btn secondary small">{% if tg_enabled and c.channel == 'telegram' %}Отправить всем в Telegram{% else %}Отправить всем (demo){% endif %}</button>
       </form>
     </details>
     {% endif %}
@@ -32,5 +43,5 @@
   {% endfor %}
 </ul>
 {% else %}
-<p class="hint">Кампаний пока нет. Создайте ручную или авто (Demo) рассылку.</p>
+<p class="hint">Кампаний пока нет. Создайте ручную или авто-рассылку в Telegram.</p>
 {% endif %}

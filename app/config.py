@@ -48,9 +48,9 @@ class Settings(BaseSettings):
 
     # --- Модули CRM (placeholder до реализации) ---
     leads_enabled: bool = False
-    campaigns_enabled: bool = False
+    campaigns_enabled: bool = True
 
-    app_title: str = "Client CRM"
+    app_title: str = "Iris CRM"
     max_upload_mb: int = 20
     ai_batch_size: int = 10
     ai_concurrency: int = 4

@@ -1120,9 +1120,10 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 }
 .ai-tag-chip.ai-tag-ai {
   border: 2px solid var(--success);
-  background: rgba(0, 122, 90, 0.10);
+  background: rgba(0, 122, 90, 0.12);
   color: #0a5c45;
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 90, 0.15);
 }
 
 .brand-lockup {
@@ -1135,6 +1136,25 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .brand-logo {
   display: block;
   border-radius: 8px;
+}
+.brand-logo-wide {
+  height: 40px;
+  width: auto;
+  max-width: min(220px, 42vw);
+  object-fit: contain;
+  border-radius: 0;
+  background: transparent;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .footer-brand {
   display: inline-flex;
@@ -1149,6 +1169,25 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   margin: 8px 0 0;
   font-size: 12px;
 }
+.warn-hint {
+  color: var(--error);
+}
+.campaign-recipients {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+}
+.campaign-recipients li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.chip-sent { background: rgba(0, 122, 90, 0.12); color: #0a5c45; }
+.chip-demo { background: rgba(18, 100, 163, 0.12); color: #1264a3; }
+.chip-failed { background: rgba(204, 65, 23, 0.12); color: #cc4117; }
 .filter-form-base select {
   min-width: 140px;
 }
@@ -1156,6 +1195,12 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .clients-table-wide { font-size: 13px; }
 .clients-table-wide th,
 .clients-table-wide td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.clients-table-wide td.tags-cell {
+  white-space: normal;
+  max-width: 320px;
+  overflow: visible;
+  text-overflow: unset;
+}
 .clients-table-wide th {
   max-width: none;
   overflow: visible;
