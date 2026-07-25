@@ -1,0 +1,43 @@
+name: Deploy Selectel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-selectel
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy to VDS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          port: 22
+          script_stop: true
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            APP_DIR=/opt/app
+            REPO_URL=https://github.com/fuwiak/client_segmentation_deepseek.git
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p /opt
+              rm -rf "$APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
+            chmod +x deploy/remote_deploy.sh
+            APP_DIR="$APP_DIR" bash deploy/remote_deploy.sh
