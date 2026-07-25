@@ -42,29 +42,40 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
 fi
 
 ensure_postgres_volume_compatible() {
-  # Existing PGDATA from an older major (e.g. 16) crashes postgres:18 immediately → unhealthy.
+  # Postgres 18+ mounts /var/lib/postgresql (not .../data). Legacy PGDATA layouts must be wiped.
   if ! docker volume inspect "$PG_VOLUME" >/dev/null 2>&1; then
     echo "Postgres volume $PG_VOLUME does not exist yet — will be created fresh."
     return 0
   fi
-  local vol_major
-  vol_major="$(
-    docker run --rm -v "${PG_VOLUME}:/var/lib/postgresql/data:ro" alpine:3.20 \
-      sh -c 'cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null || true' \
-      | tr -d '[:space:]'
+  local layout
+  layout="$(
+    docker run --rm -v "${PG_VOLUME}:/pgvol:ro" alpine:3.20 \
+      sh -c '
+        if [ -f /pgvol/18/docker/PG_VERSION ]; then echo "ok18:$(cat /pgvol/18/docker/PG_VERSION)"
+        elif [ -f /pgvol/*/docker/PG_VERSION ]; then
+          v=$(cat /pgvol/*/docker/PG_VERSION 2>/dev/null | head -1 | tr -d "[:space:]")
+          echo "okmaj:$v"
+        elif [ -f /pgvol/data/PG_VERSION ]; then echo "legacy:$(cat /pgvol/data/PG_VERSION)"
+        elif [ -f /pgvol/PG_VERSION ]; then echo "legacy:$(cat /pgvol/PG_VERSION)"
+        else echo "empty"
+        fi
+      ' | tr -d "[:space:]"
   )"
-  if [[ -z "$vol_major" ]]; then
-    echo "Postgres volume empty or unreadable — compose will init."
-    return 0
+  echo "Postgres volume layout=$layout image_major=$PG_IMAGE_MAJOR"
+  local need_reset=0
+  case "$layout" in
+    empty) return 0 ;;
+    ok18:"$PG_IMAGE_MAJOR") return 0 ;;
+    okmaj:"$PG_IMAGE_MAJOR") return 0 ;;
+    legacy:*|ok18:*|okmaj:*) need_reset=1 ;;
+    *) need_reset=1 ;;
+  esac
+  if [[ "$need_reset" -eq 1 ]]; then
+    echo "WARNING: resetting incompatible postgres volume ($layout)."
+    docker compose -f "$COMPOSE_FILE" stop web postgres 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" rm -f postgres 2>/dev/null || true
+    docker volume rm "$PG_VOLUME"
   fi
-  echo "Postgres volume major=$vol_major image_major=$PG_IMAGE_MAJOR"
-  if [[ "$vol_major" == "$PG_IMAGE_MAJOR" ]]; then
-    return 0
-  fi
-  echo "WARNING: PGDATA major $vol_major incompatible with postgres:${PG_IMAGE_MAJOR}. Recreating volume."
-  docker compose -f "$COMPOSE_FILE" stop web postgres 2>/dev/null || true
-  docker compose -f "$COMPOSE_FILE" rm -f postgres 2>/dev/null || true
-  docker volume rm "$PG_VOLUME"
 }
 
 wait_postgres_healthy() {

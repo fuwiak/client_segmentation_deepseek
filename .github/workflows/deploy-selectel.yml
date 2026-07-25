@@ -22,7 +22,6 @@ jobs:
           username: ${{ secrets.SELECTEL_USER }}
           key: ${{ secrets.SELECTEL_SSH_KEY }}
           port: 22
-          script_stop: true
           command_timeout: 25m
           script: |
             set -euo pipefail
