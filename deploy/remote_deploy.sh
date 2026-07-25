@@ -31,9 +31,42 @@ if [[ ! -f deploy/.env ]]; then
   exit 1
 fi
 
+# Keep /root/deploy.env as the source of truth across rebuilds.
+if [[ -f /root/deploy.env ]]; then
+  cp /root/deploy.env deploy/.env
+fi
+
+ensure_env_default() {
+  local key="$1" value="$2"
+  if ! grep -qE "^${key}=" deploy/.env; then
+    printf '%s=%s\n' "$key" "$value" >> deploy/.env
+  fi
+}
+
+# Auth defaults for CRM login (admin/admin) if not set on the VDS.
+ensure_env_default AUTH_ENABLED true
+ensure_env_default AUTH_USERNAME admin
+ensure_env_default AUTH_PASSWORD admin
+ensure_env_default AUTH_SECRET_KEY iris-crm-session-secret
+
 if ! grep -qE '^POSTGRES_PASSWORD=.+' deploy/.env; then
   echo "ERROR: POSTGRES_PASSWORD missing/empty in deploy/.env" >&2
   exit 1
+fi
+
+# Persist merged env back so next deploys keep AUTH_*.
+cp deploy/.env /root/deploy.env
+
+# Host firewall: allow HTTP/HTTPS for Caddy (idempotent).
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 22/tcp >/dev/null 2>&1 || true
+  ufw allow 80/tcp >/dev/null 2>&1 || true
+  ufw allow 443/tcp >/dev/null 2>&1 || true
+  ufw --force enable >/dev/null 2>&1 || true
+  ufw status verbose || true
+elif command -v iptables >/dev/null 2>&1; then
+  iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+  iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 fi
 
 if [[ ! -f "$COMPOSE_FILE" ]]; then
@@ -150,8 +183,11 @@ docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
 
 sleep 5
 docker compose -f "$COMPOSE_FILE" ps
+ss -lntp 2>/dev/null | grep -E ':80|:443|:8000' || netstat -lntp 2>/dev/null | grep -E ':80|:443|:8000' || true
 curl -fsS -m 10 http://127.0.0.1:8000/health
 echo
 curl -fsS -m 10 http://127.0.0.1:8000/health/ready || true
+echo
+curl -fsS -m 10 -H 'Host: kinetic-ai.ru' http://127.0.0.1/health || true
 echo
 echo "DEPLOY_OK $(git rev-parse --short HEAD)"
