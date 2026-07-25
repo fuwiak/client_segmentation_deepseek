@@ -54,5 +54,9 @@ jobs:
             git reset --hard origin/main
             chmod +x deploy/remote_deploy.sh
             echo "[$(date +%H:%M:%S)] starting remote_deploy.sh (log also on VDS: /var/log/kinetic-deploy.log)"
-            APP_DIR="$APP_DIR" bash -c 'stdbuf -oL -eL bash deploy/remote_deploy.sh' 2>&1
+            if command -v stdbuf >/dev/null 2>&1; then
+              APP_DIR="$APP_DIR" stdbuf -oL -eL bash deploy/remote_deploy.sh
+            else
+              APP_DIR="$APP_DIR" bash deploy/remote_deploy.sh
+            fi
             echo "[$(date +%H:%M:%S)] remote_deploy.sh finished"
