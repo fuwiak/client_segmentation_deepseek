@@ -31,6 +31,9 @@
       </nav>
 
       <button type="button" class="nav-toggle" onclick="toggleMobileNav()" aria-label="Меню" aria-expanded="false" id="nav-toggle-btn">☰</button>
+      {% if auth_enabled and current_user %}
+      <a href="/logout" class="nav-logout" hx-boost="false">Выйти</a>
+      {% endif %}
     </div>
 
     <div class="mobile-drawer" id="mobile-drawer" hidden>

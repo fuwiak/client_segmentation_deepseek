@@ -1169,8 +1169,30 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   margin: 8px 0 0;
   font-size: 12px;
 }
-.warn-hint {
-  color: var(--error);
+.nav-logout {
+  margin-left: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.nav-logout:hover { color: var(--primary); }
+.login-card { max-width: 420px; margin: 24px auto; }
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+.login-form input {
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  font: inherit;
 }
 .campaign-recipients {
   list-style: none;

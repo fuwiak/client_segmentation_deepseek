@@ -16,6 +16,7 @@ class TelegramBotClient:
   def __init__(self, settings: Settings) -> None:
     self._token = settings.telegram_bot_token
     self._enabled = settings.telegram_enabled and bool(self._token)
+    self._channel_id = (settings.telegram_channel_id or "").strip()
     self._timeout = httpx.Timeout(
       connect=min(10.0, float(settings.telegram_api_timeout_seconds)),
       read=float(settings.telegram_api_timeout_seconds),
@@ -99,6 +100,40 @@ class TelegramBotClient:
     except httpx.HTTPError as exc:
       logger.warning("Telegram getUpdates failed: %s", exc)
       return []
+
+  async def get_chat(self, chat_id: str | int) -> dict[str, Any]:
+    if not self.enabled:
+      return {"ok": False, "enabled": False}
+    async with httpx.AsyncClient(timeout=self._timeout) as client:
+      resp = await client.get(self._url("getChat"), params={"chat_id": chat_id})
+      data = resp.json()
+      if not data.get("ok"):
+        return {"ok": False, "error": data, "enabled": True}
+      result = data.get("result") or {}
+      result["ok"] = True
+      result["enabled"] = True
+      return result
+
+  async def send_to_channel(
+    self,
+    text: str,
+    *,
+    channel_id: str | int | None = None,
+    parse_mode: str | None = None,
+  ) -> dict:
+    """Пост в Telegram-канал (бот должен быть админом канала)."""
+    target = channel_id if channel_id is not None else self.channel_id
+    if not target:
+      raise RuntimeError("Telegram-канал не настроен (TELEGRAM_CHANNEL_ID)")
+    return await self.send_message(target, text, parse_mode=parse_mode)
+
+  @property
+  def channel_id(self) -> str:
+    return (self._channel_id or "").strip()
+
+  @property
+  def channel_configured(self) -> bool:
+    return self.enabled and bool(self.channel_id)
 
   async def fetch_all_updates(
     self,

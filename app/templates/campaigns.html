@@ -10,7 +10,7 @@
   </div>
 
   {% if tg_enabled %}
-  <p class="hint">Telegram бот активен{% if telegram_bot_username %} · <a href="https://t.me/{{ telegram_bot_username }}" target="_blank" rel="noopener">@{{ telegram_bot_username }}</a>{% endif %}. Получателей по фильтрам: <strong>{{ audience_count }}</strong>. Клиент должен хотя бы раз написать боту (или иметь @ник).</p>
+  <p class="hint">Telegram бот активен{% if telegram_bot_username %} · <a href="https://t.me/{{ telegram_bot_username }}" target="_blank" rel="noopener">@{{ telegram_bot_username }}</a>{% endif %}{% if telegram_channel_configured %} · канал <code>{{ telegram_channel_id }}</code>{% endif %}. Получателей по фильтрам: <strong>{{ audience_count }}</strong>.</p>
   {% else %}
   <p class="hint warn-hint">Telegram не настроен (<code>TELEGRAM_ENABLED</code> + <code>TELEGRAM_BOT_TOKEN</code>). Черновики создаются, отправка будет в demo-режиме. Получателей: <strong>{{ audience_count }}</strong>.</p>
   {% endif %}
@@ -31,7 +31,8 @@
       <label>Название <input type="text" name="title" required placeholder="Рассылка по фильтрам"></label>
       <label>Канал
         <select name="channel">
-          <option value="telegram" selected>Telegram</option>
+          <option value="telegram" selected>Telegram (личные)</option>
+          <option value="telegram_channel">Telegram-канал (пост)</option>
           <option value="whatsapp">WhatsApp (demo)</option>
         </select>
       </label>
@@ -58,7 +59,8 @@
       <label>Название <input type="text" name="title" value="Авто по рекомендациям AI" required></label>
       <label>Канал
         <select name="channel">
-          <option value="telegram" selected>Telegram</option>
+          <option value="telegram" selected>Telegram (личные)</option>
+          <option value="telegram_channel">Telegram-канал (пост)</option>
           <option value="whatsapp">WhatsApp (demo)</option>
         </select>
       </label>

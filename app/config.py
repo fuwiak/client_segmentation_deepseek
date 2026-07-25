@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     telegram_bot_username: str = "my_veresk_bot"
     telegram_api_timeout_seconds: int = 10
     telegram_sync_on_attach: bool = False
+    # Публичный/приватный канал для постов (@channel или -100…)
+    telegram_channel_id: str = ""
+
+    # --- Логин в CRM ---
+    auth_enabled: bool = False
+    auth_username: str = "admin"
+    auth_password: str = ""
+    auth_secret_key: str = "change-me-iris-crm-session"
 
     # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
     repository_backend: str = "memory"

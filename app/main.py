@@ -19,7 +19,16 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
+from app.auth import (
+  AuthMiddleware,
+  auth_required,
+  current_user,
+  login_user,
+  logout_user,
+  verify_credentials,
+)
 from app.config import get_settings
 from app.connectors.messenger import MessengerConnector
 from app.crm.campaigns import CampaignService
@@ -159,6 +168,15 @@ async def _app_lifespan(_app: FastAPI):
 
 
 app = FastAPI(title=settings.app_title, lifespan=_app_lifespan)
+# Session снаружи Auth: middleware в Starlette применяется в обратном порядке добавления.
+app.add_middleware(AuthMiddleware)
+app.add_middleware(
+  SessionMiddleware,
+  secret_key=settings.auth_secret_key or "iris-crm-dev-secret",
+  session_cookie="iris_crm_session",
+  same_site="lax",
+  https_only=False,
+)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 perf_logger = logging.getLogger("performance")
 templates = Jinja2Templates(directory="app/templates")
@@ -689,6 +707,74 @@ async def _warm_clients_cache() -> None:
 
 
 @app.get("/health")
+async def health() -> dict[str, str]:
+  return {"status": "ok"}
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(
+  request: Request,
+  next: str = Query("/clients"),
+  error: str = Query(""),
+) -> HTMLResponse:
+  if auth_required(settings) and current_user(request):
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url=next or "/clients", status_code=303)
+  return templates.TemplateResponse(
+    "login.html",
+    _ctx(
+      request,
+      active_page="login",
+      page_title="Вход",
+      next_url=next or "/clients",
+      error=error,
+      layout_template="base.html",
+    ),
+  )
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(
+  request: Request,
+  username: str = Form(...),
+  password: str = Form(...),
+  next: str = Form("/clients"),
+) -> HTMLResponse:
+  from fastapi.responses import RedirectResponse
+
+  if not auth_required(settings):
+    return RedirectResponse(url=next or "/clients", status_code=303)
+  if verify_credentials(settings, username, password):
+    login_user(request, username)
+    target = next if next.startswith("/") else "/clients"
+    return RedirectResponse(url=target, status_code=303)
+  logging.getLogger(__name__).warning("AUTH login failed user=%s", username.strip())
+  return templates.TemplateResponse(
+    "login.html",
+    _ctx(
+      request,
+      active_page="login",
+      page_title="Вход",
+      next_url=next or "/clients",
+      username=username,
+      error="Неверный логин или пароль",
+      layout_template="base.html",
+    ),
+    status_code=401,
+  )
+
+
+@app.get("/logout")
+@app.post("/logout")
+async def logout(request: Request):
+  from fastapi.responses import RedirectResponse
+
+  logout_user(request)
+  return RedirectResponse(url="/login", status_code=303)
+
+
+@app.get("/health/ready")
 async def healthcheck() -> JSONResponse:
   """Liveness для Railway — без медленных проверок БД."""
   return JSONResponse(
@@ -701,7 +787,7 @@ async def healthcheck() -> JSONResponse:
   )
 
 
-@app.get("/health/ready")
+@app.get("/health/detail")
 async def health_ready() -> JSONResponse:
   postgres_ok = await db_persist.ping() if db_persist.enabled else False
   cache_ok = await cache.ping()
@@ -841,6 +927,10 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     "wa_enabled": get_green_api_client(settings).enabled,
     "tg_enabled": get_telegram_client(settings).enabled,
     "telegram_bot_username": settings.telegram_bot_username,
+    "telegram_channel_id": settings.telegram_channel_id,
+    "telegram_channel_configured": get_telegram_client(settings).channel_configured,
+    "auth_enabled": auth_required(settings),
+    "current_user": current_user(request) if auth_required(settings) else None,
     "messenger_enabled": settings.messenger_enabled,
     "cache_backend": cache.backend_kind,
     "postgres_enabled": db_persist.enabled,
@@ -1623,7 +1713,7 @@ async def campaign_send(
   campaign = await campaign_svc.get(campaign_id)
   channel = str((campaign or {}).get("channel") or "").lower()
   tg = get_telegram_client(settings)
-  if channel == "telegram":
+  if channel in {"telegram", "telegram_channel"}:
     messenger_index = await cache.get_messenger_index() or {}
     await campaign_svc.send_telegram(
       campaign_id,
@@ -1749,6 +1839,26 @@ async def _fetch_messenger_status_payload() -> dict[str, Any]:
       tg_me = {"enabled": True, "username": settings.telegram_bot_username}
       health["telegram"] = True
 
+  tg_channel: dict[str, Any] = {
+    "configured": tg.channel_configured,
+    "id": tg.channel_id,
+    "ok": False,
+    "title": "",
+  }
+  if tg.channel_configured:
+    try:
+      chat = await tg.get_chat(tg.channel_id)
+      tg_channel["ok"] = bool(chat.get("ok"))
+      tg_channel["title"] = str(chat.get("title") or chat.get("username") or tg.channel_id)
+      if chat.get("username"):
+        tg_channel["username"] = chat["username"]
+      health["telegram_channel"] = tg_channel["ok"]
+    except Exception as exc:  # noqa: BLE001
+      tg_channel["error"] = str(exc)[:200]
+      health["telegram_channel"] = False
+  else:
+    health["telegram_channel"] = False
+
   enrichment = MessengerEnrichmentService(settings, cache)
   tg_stats = enrichment.stats if tg.enabled else {}
   return {
@@ -1756,6 +1866,7 @@ async def _fetch_messenger_status_payload() -> dict[str, Any]:
     "wa_state": wa_state,
     "tg_me": tg_me,
     "tg_stats": tg_stats,
+    "tg_channel": tg_channel,
   }
 
 
@@ -1774,6 +1885,7 @@ async def messenger_status(request: Request) -> HTMLResponse:
       wa_state=payload["wa_state"],
       tg_me=payload["tg_me"],
       tg_stats=payload["tg_stats"],
+      tg_channel=payload.get("tg_channel") or {},
     ),
   )
 

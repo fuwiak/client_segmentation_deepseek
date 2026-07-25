@@ -1,0 +1,28 @@
+{% extends layout_template|default("base.html") %}
+
+{% block page_header %}
+<header class="page-header">
+  <div>
+    <h1>Вход</h1>
+    <p class="subtitle">Iris CRM</p>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<section class="card login-card">
+  <form class="login-form" method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next_url|default('/clients') }}">
+    {% if error %}
+    <p class="hint warn-hint">{{ error }}</p>
+    {% endif %}
+    <label>Логин
+      <input type="text" name="username" value="{{ username|default('') }}" autocomplete="username" required autofocus>
+    </label>
+    <label>Пароль
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn">Войти</button>
+  </form>
+</section>
+{% endblock %}

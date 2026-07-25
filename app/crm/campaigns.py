@@ -110,6 +110,18 @@ class CampaignService:
                 rec["tg_chat_id"] = chat_id
             recipients.append(rec)
 
+        # Пост в канал можно создать и без персональной аудитории.
+        if channel == "telegram_channel" and not recipients:
+            recipients = [{
+                "id": "channel",
+                "name": "Telegram-канал",
+                "phone": "",
+                "tg": "",
+                "recommendation": "",
+                "send_status": "pending",
+                "send_error": "",
+            }]
+
         item = {
             "id": str(uuid.uuid4()),
             "title": title,
@@ -176,8 +188,16 @@ class CampaignService:
         item = await self.get(campaign_id)
         if not item:
             return None
-        if str(item.get("channel") or "").lower() != "telegram":
+        if str(item.get("channel") or "").lower() not in {"telegram", "telegram_channel"}:
             raise ValueError("Кампания не для канала Telegram")
+
+        channel = str(item.get("channel") or "").lower()
+        if channel == "telegram_channel":
+            return await self._send_telegram_channel(
+                item,
+                telegram_client=telegram_client,
+                dry_run=dry_run,
+            )
 
         recipients = item.get("recipients") or []
         if recipient_ids:
@@ -248,6 +268,62 @@ class CampaignService:
         item["status"] = (
             CampaignStatus.DONE.value if pending == 0 else CampaignStatus.ACTIVE.value
         )
+        return item
+
+    async def _send_telegram_channel(
+        self,
+        item: dict[str, Any],
+        *,
+        telegram_client: Any,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Один пост в Telegram-канал (маркетинговый канал)."""
+        text = str(item.get("message") or "").strip() or "Новость от Iris CRM"
+        enabled = bool(getattr(telegram_client, "enabled", False))
+        channel_ok = bool(getattr(telegram_client, "channel_configured", False))
+        recipients = item.get("recipients") or []
+
+        if dry_run or not enabled or not channel_ok:
+            item["sent_count"] = 1
+            item["failed_count"] = 0
+            item["status"] = CampaignStatus.DONE.value
+            item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
+            item["channel_post_status"] = "demo"
+            if not channel_ok and enabled:
+                item["last_error"] = "TELEGRAM_CHANNEL_ID не задан"
+                item["channel_post_status"] = "failed"
+                item["failed_count"] = 1
+                item["sent_count"] = 0
+            for rec in recipients:
+                rec["send_status"] = item["channel_post_status"]
+            logger.info(
+                "TG channel post demo campaign=%s status=%s",
+                item.get("id"),
+                item["channel_post_status"],
+            )
+            return item
+
+        try:
+            await telegram_client.send_to_channel(text, parse_mode=None)
+            item["sent_count"] = 1
+            item["failed_count"] = 0
+            item["channel_post_status"] = "sent"
+            item["last_error"] = ""
+            item["status"] = CampaignStatus.DONE.value
+            for rec in recipients:
+                rec["send_status"] = "sent"
+            logger.info("TG channel post ok campaign=%s", item.get("id"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TG channel post failed: %s", exc)
+            item["sent_count"] = 0
+            item["failed_count"] = 1
+            item["channel_post_status"] = "failed"
+            item["last_error"] = str(exc)[:240]
+            item["status"] = CampaignStatus.ACTIVE.value
+            for rec in recipients:
+                rec["send_status"] = "failed"
+                rec["send_error"] = item["last_error"]
+        item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
         return item
 
     @staticmethod

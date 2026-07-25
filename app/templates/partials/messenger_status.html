@@ -10,8 +10,22 @@
       <span class="warn">не подключён</span>
     {% endif %}
   </p>
+  <p class="hint">Telegram-канал:
+    {% if tg_channel and tg_channel.configured %}
+      {% if tg_channel.ok %}
+        <span class="ok">{{ tg_channel.title or tg_channel.id }}</span>
+      {% else %}
+        <span class="warn">{{ tg_channel.id }} — недоступен{% if tg_channel.error %}: {{ tg_channel.error }}{% endif %}</span>
+      {% endif %}
+    {% else %}
+      <span class="warn">не задан (TELEGRAM_CHANNEL_ID)</span>
+    {% endif %}
+  </p>
   {% if health.telegram %}
   <p class="hint">Бот для переписки: <a href="https://t.me/{{ tg_me.username or telegram_bot_username }}" target="_blank" rel="noopener">@{{ tg_me.username or telegram_bot_username }}</a></p>
+  {% endif %}
+  {% if tg_channel and tg_channel.username %}
+  <p class="hint">Канал: <a href="https://t.me/{{ tg_channel.username }}" target="_blank" rel="noopener">@{{ tg_channel.username }}</a></p>
   {% endif %}
   {% if wa_state.stateInstance %}
   <p class="hint">WA статус: {{ wa_state.stateInstance }}</p>
