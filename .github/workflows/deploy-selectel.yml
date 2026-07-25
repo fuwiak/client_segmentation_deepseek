@@ -7,56 +7,117 @@ on:
 
 concurrency:
   group: deploy-selectel
-  # New push cancels a stuck/old deploy so progress logs stay current.
   cancel-in-progress: true
+
+env:
+  APP_DIR: /opt/app
 
 jobs:
   deploy:
-    name: SSH deploy to VDS
+    name: Selectel VDS
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
-      - name: Deploy link
+      - name: "0 · Link"
         run: |
-          echo "### Selectel deploy" >> "$GITHUB_STEP_SUMMARY"
-          echo "Live logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Watch this job for STEP 1/9 … DEPLOY_OK." >> "$GITHUB_STEP_SUMMARY"
-          echo "URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          {
+            echo "### Selectel deploy — live steps below"
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "On VDS: \`tail -f /var/log/kinetic-deploy.log\` · status: \`cat /var/run/kinetic-deploy.status\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Watch steps 1→6 turn green. Build is usually the longest."
 
-      - name: Deploy over SSH (live progress)
+      - name: "1 · Sync git"
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SELECTEL_HOST }}
           username: ${{ secrets.SELECTEL_USER }}
           key: ${{ secrets.SELECTEL_SSH_KEY }}
           port: 22
-          command_timeout: 25m
-          # PTY + unbuffered remote script → step logs appear in Actions in real time.
+          command_timeout: 5m
           request_pty: true
           script: |
             set -euo pipefail
-            export PYTHONUNBUFFERED=1
-            export BUILDKIT_PROGRESS=plain
-            export COMPOSE_PROGRESS=plain
             APP_DIR=/opt/app
             REPO_URL=https://github.com/fuwiak/client_segmentation_deepseek.git
-
-            echo "[$(date +%H:%M:%S)] SSH session open → sync + remote_deploy.sh"
             if [ ! -d "$APP_DIR/.git" ]; then
-              mkdir -p /opt
-              rm -rf "$APP_DIR"
-              git clone "$REPO_URL" "$APP_DIR"
+              mkdir -p /opt && rm -rf "$APP_DIR" && git clone "$REPO_URL" "$APP_DIR"
             fi
-
             cd "$APP_DIR"
             git fetch origin --progress
             git checkout main
             git reset --hard origin/main
             chmod +x deploy/remote_deploy.sh
-            echo "[$(date +%H:%M:%S)] starting remote_deploy.sh (log also on VDS: /var/log/kinetic-deploy.log)"
-            if command -v stdbuf >/dev/null 2>&1; then
-              APP_DIR="$APP_DIR" stdbuf -oL -eL bash deploy/remote_deploy.sh
-            else
-              APP_DIR="$APP_DIR" bash deploy/remote_deploy.sh
-            fi
-            echo "[$(date +%H:%M:%S)] remote_deploy.sh finished"
+            APP_DIR="$APP_DIR" DEPLOY_PHASE=sync bash deploy/remote_deploy.sh
+
+      - name: "2 · Env + firewall"
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          port: 22
+          command_timeout: 3m
+          request_pty: true
+          script: |
+            set -euo pipefail
+            cd /opt/app
+            APP_DIR=/opt/app DEPLOY_PHASE=env bash deploy/remote_deploy.sh
+            APP_DIR=/opt/app DEPLOY_PHASE=firewall bash deploy/remote_deploy.sh
+
+      - name: "3 · Postgres + Redis"
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          port: 22
+          command_timeout: 10m
+          request_pty: true
+          script: |
+            set -euo pipefail
+            cd /opt/app
+            APP_DIR=/opt/app DEPLOY_PHASE=pgcheck bash deploy/remote_deploy.sh
+            APP_DIR=/opt/app DEPLOY_PHASE=infra bash deploy/remote_deploy.sh
+            APP_DIR=/opt/app DEPLOY_PHASE=waitpg bash deploy/remote_deploy.sh
+            APP_DIR=/opt/app DEPLOY_PHASE=restore bash deploy/remote_deploy.sh
+
+      - name: "4 · Docker build web (long)"
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          port: 22
+          command_timeout: 20m
+          request_pty: true
+          script: |
+            set -euo pipefail
+            cd /opt/app
+            echo "Building… status file: /var/run/kinetic-deploy.status"
+            APP_DIR=/opt/app DEPLOY_PHASE=build bash deploy/remote_deploy.sh
+
+      - name: "5 · Health checks"
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          port: 22
+          command_timeout: 3m
+          request_pty: true
+          script: |
+            set -euo pipefail
+            cd /opt/app
+            APP_DIR=/opt/app DEPLOY_PHASE=health bash deploy/remote_deploy.sh
+            echo "--- last status ---"
+            cat /var/run/kinetic-deploy.status || true
+            echo "--- log tail ---"
+            tail -n 40 /var/log/kinetic-deploy.log || true
+
+      - name: "6 · Summary"
+        if: always()
+        run: |
+          echo "### Result: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://kinetic-ai.ru/health" >> "$GITHUB_STEP_SUMMARY"
