@@ -11,6 +11,7 @@
       Получателей: {{ (c.recipients or [])|length }}
       · отправлено: {{ c.sent_count|default(0) }}
       {% if c.failed_count %} · ошибки: {{ c.failed_count }}{% endif %}
+      {% if c.skipped_no_tg %} · без TG пропущено: {{ c.skipped_no_tg }}{% endif %}
     </p>
     {% if c.last_error %}<p class="hint warn-hint">{{ c.last_error }}</p>{% endif %}
     <p>{{ c.message or c.offer or '—' }}</p>

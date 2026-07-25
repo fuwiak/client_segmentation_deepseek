@@ -31,7 +31,7 @@ from app.auth import (
 )
 from app.config import get_settings
 from app.connectors.messenger import MessengerConnector
-from app.crm.campaigns import CampaignService
+from app.crm.campaigns import CampaignService, resolve_telegram_chat_id
 from app.crm.communications import get_comm_settings
 from app.crm.dashboard import DashboardService, PERIOD_LABELS
 from app.crm.leads import LeadService
@@ -99,7 +99,7 @@ repo = get_repository()
 dashboard_svc = DashboardService()
 _dashboard_compute_lock = threading.Lock()
 _clients_compute_lock = threading.Lock()
-campaign_svc = CampaignService(repo)
+campaign_svc = CampaignService(repo, cache=cache)
 lead_svc = LeadService(repo)
 
 _warmup_state: dict[str, Any] = {"ready": False, "hub": False}
@@ -1632,6 +1632,19 @@ async def campaigns_page(
     phone=phone,
   )
   preview = []
+  tg_reachable = 0
+  messenger_index = await cache.get_messenger_index() or {}
+  for row in rows:
+    if resolve_telegram_chat_id(
+      {
+        "tg": row.get("ТГ ник"),
+        "phone": row.get("Телефон"),
+        "ТГ ник": row.get("ТГ ник"),
+        "Телефон": row.get("Телефон"),
+      },
+      messenger_index=messenger_index if isinstance(messenger_index, dict) else {},
+    ) or str(row.get("ТГ ник") or "").strip():
+      tg_reachable += 1
   for row in rows[:30]:
     item = dict(row)
     item["_demo_message"] = CampaignService.demo_ai_message(row)
@@ -1646,6 +1659,7 @@ async def campaigns_page(
       subtitle="Telegram-рассылки по фильтрам CRM и рекомендациям AI",
       campaigns=campaigns,
       audience_count=len(rows),
+      audience_tg_count=tg_reachable,
       preview_clients=preview,
       mode=mode,
       sales_filter=filter,
@@ -1657,6 +1671,8 @@ async def campaigns_page(
       phone_filter=phone,
       tg_enabled=tg.enabled,
       telegram_bot_username=settings.telegram_bot_username,
+      telegram_channel_id=settings.telegram_channel_id,
+      telegram_channel_configured=tg.channel_configured,
     ),
   )
 
@@ -1720,6 +1736,7 @@ async def campaign_create(
       campaigns=campaigns,
       tg_enabled=tg.enabled,
       telegram_bot_username=settings.telegram_bot_username,
+      telegram_channel_configured=tg.channel_configured,
     ),
   )
 
@@ -1753,6 +1770,7 @@ async def campaign_send(
       campaigns=campaigns,
       tg_enabled=tg.enabled,
       telegram_bot_username=settings.telegram_bot_username,
+      telegram_channel_configured=tg.channel_configured,
     ),
   )
 

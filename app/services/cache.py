@@ -276,6 +276,32 @@ class CacheService:
         except Exception:  # noqa: BLE001
             return None
 
+    async def save_campaigns(self, payload: list[dict[str, Any]]) -> None:
+        """Черновики/история Telegram-рассылок (Redis + optional DB)."""
+        try:
+            await self._backend.set("campaigns:v1", payload, self._ttl)
+            if self._db:
+                _schedule(self._db.persist_auxiliary("campaigns:v1", payload))
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def get_campaigns(self) -> list[dict[str, Any]] | None:
+        try:
+            hit = await self._backend.get("campaigns:v1")
+            if isinstance(hit, list):
+                return hit
+        except Exception:  # noqa: BLE001
+            pass
+        if self._db:
+            try:
+                loaded = await self._db.load_auxiliary("campaigns:v1")
+                if isinstance(loaded, list):
+                    await self._backend.set("campaigns:v1", loaded, self._ttl)
+                    return loaded
+            except Exception:  # noqa: BLE001
+                return None
+        return None
+
     async def ping(self) -> bool:
         ping = getattr(self._backend, "ping", None)
         if callable(ping):

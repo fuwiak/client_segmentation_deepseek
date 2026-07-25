@@ -1,7 +1,11 @@
 {% extends layout_template|default("base.html") %}
 
 {% block content %}
-<section class="card toolbar-card">
+<section class="card toolbar-card campaign-hero">
+  <div class="campaign-hero-copy">
+    <h2 class="campaign-hero-title">Telegram-рассылки</h2>
+    <p class="hint">Маркетинговые кампании по текущим фильтрам CRM: ручной текст или авто по точкам касания AI.</p>
+  </div>
   <div class="filter-tabs" role="tablist">
     <button type="button" class="filter-tab {% if mode|default('manual') == 'manual' %}active{% endif %}"
             onclick="document.getElementById('mode-manual').hidden=false;document.getElementById('mode-auto').hidden=true;this.classList.add('active');this.nextElementSibling.classList.remove('active')">Ручная</button>
@@ -10,10 +14,11 @@
   </div>
 
   {% if tg_enabled %}
-  <p class="hint">Telegram бот активен{% if telegram_bot_username %} · <a href="https://t.me/{{ telegram_bot_username }}" target="_blank" rel="noopener">@{{ telegram_bot_username }}</a>{% endif %}{% if telegram_channel_configured %} · канал <code>{{ telegram_channel_id }}</code>{% endif %}. Получателей по фильтрам: <strong>{{ audience_count }}</strong>.</p>
+  <p class="hint">Telegram бот активен{% if telegram_bot_username %} · <a href="https://t.me/{{ telegram_bot_username }}" target="_blank" rel="noopener">@{{ telegram_bot_username }}</a>{% endif %}{% if telegram_channel_configured %} · канал <code>{{ telegram_channel_id }}</code>{% endif %}.</p>
   {% else %}
-  <p class="hint warn-hint">Telegram не настроен (<code>TELEGRAM_ENABLED</code> + <code>TELEGRAM_BOT_TOKEN</code>). Черновики создаются, отправка будет в demo-режиме. Получателей: <strong>{{ audience_count }}</strong>.</p>
+  <p class="hint warn-hint">Telegram не настроен (<code>TELEGRAM_ENABLED</code> + <code>TELEGRAM_BOT_TOKEN</code>). Черновики создаются, отправка будет в demo-режиме.</p>
   {% endif %}
+  <p class="hint">Аудитория по фильтрам: <strong>{{ audience_count }}</strong>{% if audience_tg_count is defined %} · с Telegram: <strong>{{ audience_tg_count }}</strong>{% endif %}.</p>
 
   <div id="mode-manual" {% if mode|default('manual') != 'manual' %}hidden{% endif %}>
     <form class="campaign-form" method="post" action="/campaigns/create"

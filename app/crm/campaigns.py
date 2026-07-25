@@ -69,12 +69,41 @@ def resolve_telegram_chat_id(
 
 
 class CampaignService:
-    def __init__(self, repository: CustomerRepository) -> None:
+    def __init__(
+        self,
+        repository: CustomerRepository,
+        *,
+        cache: Any | None = None,
+    ) -> None:
         self._repo = repository
+        self._cache = cache
         self._campaigns: list[dict[str, Any]] = []
+        self._loaded = False
+
+    async def _ensure_loaded(self) -> None:
+        if self._loaded or self._cache is None:
+            self._loaded = True
+            return
+        try:
+            stored = await self._cache.get_campaigns()
+            if isinstance(stored, list):
+                self._campaigns = stored
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to load campaigns from cache", exc_info=True)
+        self._loaded = True
+
+    async def _persist(self) -> None:
+        if self._cache is None:
+            return
+        try:
+            await self._cache.save_campaigns(list(self._campaigns))
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to persist campaigns", exc_info=True)
 
     async def create(self, campaign: Campaign) -> Campaign:
+        await self._ensure_loaded()
         self._campaigns.append(self._to_dict(campaign))
+        await self._persist()
         return campaign
 
     async def create_draft(
@@ -88,7 +117,10 @@ class CampaignService:
         filters: dict[str, str] | None = None,
         messenger_index: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        await self._ensure_loaded()
         recipients: list[dict[str, Any]] = []
+        skipped_no_tg = 0
+        channel_l = str(channel or "").lower()
         for r in clients:
             if not has_crm_contact(r):
                 continue
@@ -108,10 +140,14 @@ class CampaignService:
             chat_id = resolve_telegram_chat_id(rec, messenger_index=messenger_index)
             if chat_id is not None:
                 rec["tg_chat_id"] = chat_id
+            # Личные TG-рассылки — только те, у кого есть @ник или chat_id.
+            if channel_l == "telegram" and chat_id is None and not tg:
+                skipped_no_tg += 1
+                continue
             recipients.append(rec)
 
         # Пост в канал можно создать и без персональной аудитории.
-        if channel == "telegram_channel" and not recipients:
+        if channel_l == "telegram_channel" and not recipients:
             recipients = [{
                 "id": "channel",
                 "name": "Telegram-канал",
@@ -134,15 +170,19 @@ class CampaignService:
             "recipients": recipients,
             "sent_count": 0,
             "failed_count": 0,
+            "skipped_no_tg": skipped_no_tg,
             "last_error": "",
         }
         self._campaigns.insert(0, item)
+        await self._persist()
         return item
 
     async def list_campaigns(self) -> list[dict[str, Any]]:
+        await self._ensure_loaded()
         return list(self._campaigns)
 
     async def get(self, campaign_id: str) -> dict[str, Any] | None:
+        await self._ensure_loaded()
         for item in self._campaigns:
             if item.get("id") == campaign_id:
                 return item
@@ -173,6 +213,7 @@ class CampaignService:
             else CampaignStatus.DONE.value
         )
         item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
+        await self._persist()
         return item
 
     async def send_telegram(
@@ -268,6 +309,7 @@ class CampaignService:
         item["status"] = (
             CampaignStatus.DONE.value if pending == 0 else CampaignStatus.ACTIVE.value
         )
+        await self._persist()
         return item
 
     async def _send_telegram_channel(
@@ -301,6 +343,7 @@ class CampaignService:
                 item.get("id"),
                 item["channel_post_status"],
             )
+            await self._persist()
             return item
 
         try:
@@ -324,6 +367,7 @@ class CampaignService:
                 rec["send_status"] = "failed"
                 rec["send_error"] = item["last_error"]
         item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
+        await self._persist()
         return item
 
     @staticmethod
