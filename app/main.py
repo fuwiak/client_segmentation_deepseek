@@ -994,8 +994,29 @@ async def _run_enrichment(rows: list[dict[str, Any]]) -> None:
     pipeline_log("AI", "enrichment failed error=%s", exc, level=logging.ERROR)
 
 
-def _export_rows() -> list[dict[str, Any]]:
-  rows = hub.active_rows()
+def _export_rows(
+  *,
+  sales_filter: str = "all",
+  tag: str = "",
+  group: str = "",
+  channel: str = "",
+  status: str = "",
+  q: str = "",
+  phone: str = "",
+  sort: str = "",
+  order: str = "asc",
+) -> list[dict[str, Any]]:
+  rows = hub.filter_rows(
+    sales_filter=sales_filter,
+    tag=tag,
+    group=group,
+    channel=channel,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+  )
   columns = export_columns(hub.parsed)
   return [row_for_export(row, columns) for row in rows]
 
@@ -2119,10 +2140,30 @@ async def download_xlsx() -> StreamingResponse:
 
 
 @app.get("/download/clients/xlsx")
-async def download_clients_xlsx() -> StreamingResponse:
-  pipeline_log("PIPE", "download clients xlsx")
+async def download_clients_xlsx(
+  filter: str = Query("all"),
+  tag: str = Query(""),
+  group: str = Query(""),
+  channel: str = Query(""),
+  status: str = Query(""),
+  q: str = Query(""),
+  phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
+) -> StreamingResponse:
+  pipeline_log("PIPE", "download clients xlsx filter=%s", filter)
   await _hydrate_hub_from_cache()
-  rows = _export_rows()
+  rows = _export_rows(
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    channel=channel,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+  )
   df = pd.DataFrame(rows) if rows else pd.DataFrame()
   buffer = io.BytesIO()
   df.to_excel(buffer, index=False, engine="openpyxl")

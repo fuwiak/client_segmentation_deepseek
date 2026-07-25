@@ -237,3 +237,85 @@ async def test_clients_export_endpoint() -> None:
     response = client.get("/download/clients/xlsx")
     assert response.status_code == 200
     assert "spreadsheetml" in response.headers.get("content-type", "")
+
+
+def test_clients_export_xlsx_applies_ui_filters() -> None:
+    """Excel-экспорт должен учитывать те же фильтры, что и /clients."""
+    import io
+
+    import pandas as pd
+    from fastapi.testclient import TestClient
+
+    import app.main as m
+
+    rows = [
+        {
+            "UUID": "d1",
+            "Телефон": "+79000000003",
+            "Наименование": "Прямой",
+            "Группы": "VIP",
+            "Теги": "лояльный",
+            "_orders_context": [{"Канал продаж": "Витрина"}],
+            "_order_channels_all": ["Витрина"],
+        },
+        {
+            "UUID": "m1",
+            "Телефон": "+79000000004",
+            "Наименование": "MP Flow",
+            "Группы": "новый",
+            "Теги": "маркет",
+            "_orders_context": [{"Канал продаж": "Flowwow Floday"}],
+            "_order_channels_all": ["Flowwow Floday"],
+        },
+        {
+            "UUID": "m2",
+            "Телефон": "+79001112233",
+            "Наименование": "MP Ozon",
+            "Группы": "VIP",
+            "Теги": "маркет",
+            "_orders_context": [{"Канал продаж": "Ozon"}],
+            "_order_channels_all": ["Ozon"],
+        },
+    ]
+    hub = m.hub
+    hub.set_workbook(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=rows,
+            context_columns=["UUID", "Наименование", "Телефон", "Группы", "Теги"],
+            segment_columns=[],
+            total_rows=len(rows),
+            meta={"source": "moysklad", "from_cache": True},
+        ),
+        None,
+    )
+
+    client = TestClient(m.app)
+
+    all_resp = client.get("/download/clients/xlsx")
+    assert all_resp.status_code == 200
+    all_df = pd.read_excel(io.BytesIO(all_resp.content))
+    assert set(all_df["UUID"].astype(str)) == {"d1", "m1", "m2"}
+
+    market_resp = client.get("/download/clients/xlsx?filter=marketplace")
+    market_df = pd.read_excel(io.BytesIO(market_resp.content))
+    assert set(market_df["UUID"].astype(str)) == {"m1"}
+
+    vip_resp = client.get("/download/clients/xlsx?filter=all&group=VIP")
+    vip_df = pd.read_excel(io.BytesIO(vip_resp.content))
+    assert set(vip_df["UUID"].astype(str)) == {"d1", "m2"}
+
+    q_resp = client.get("/download/clients/xlsx?q=Flow")
+    q_df = pd.read_excel(io.BytesIO(q_resp.content))
+    assert set(q_df["UUID"].astype(str)) == {"m1"}
+
+    phone_resp = client.get("/download/clients/xlsx?phone=79001112233")
+    phone_df = pd.read_excel(io.BytesIO(phone_resp.content))
+    assert set(phone_df["UUID"].astype(str)) == {"m2"}
+
+    channel_resp = client.get(
+        "/download/clients/xlsx",
+        params={"filter": "all", "channel": "Flowwow Floday"},
+    )
+    channel_df = pd.read_excel(io.BytesIO(channel_resp.content))
+    assert set(channel_df["UUID"].astype(str)) == {"m1"}
