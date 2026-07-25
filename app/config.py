@@ -39,11 +39,11 @@ class Settings(BaseSettings):
     # Публичный/приватный канал для постов (@channel или -100…)
     telegram_channel_id: str = ""
 
-    # --- Логин в CRM ---
-    auth_enabled: bool = False
+    # --- Логин в CRM (по умолчанию admin / admin) ---
+    auth_enabled: bool = True
     auth_username: str = "admin"
-    auth_password: str = ""
-    auth_secret_key: str = "change-me-iris-crm-session"
+    auth_password: str = "admin"
+    auth_secret_key: str = "iris-crm-session-secret"
 
     # --- Хранилище: "memory" сейчас, "postgres" на этапе прода ---
     repository_backend: str = "memory"
