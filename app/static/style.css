@@ -1899,12 +1899,7 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   color: var(--muted);
 }
 
-.clients-table-wide { font-size: 13px; }
-.clients-table-wide th,
-.clients-table-wide td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
-.clients-table-wide .tags-cell { max-width: 220px; white-space: normal; }
-.clients-table-wide .tg-conv-cell { max-width: 220px; white-space: normal; }
-.clients-table-wide .name-cell { max-width: 260px; overflow: visible; }
+/* Не дублировать overflow/max-width на th — иначе снова пропадают названия колонок. */
 .clients-table-wide th.col-hidden,
 .clients-table-wide td.col-hidden { display: none; }
 .name-with-orders {
@@ -1952,34 +1947,25 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 }
 
 .sortable-th { padding: 0; }
-.col-drag-handle {
-  display: inline-flex;
-  align-items: center;
-  margin-right: 2px;
-  padding: 10px 2px 10px 6px;
-  color: var(--muted-soft);
-  font-size: 11px;
-  line-height: 1;
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  vertical-align: middle;
-}
-.col-drag-handle:hover { color: var(--muted); }
-.col-drag-handle:active { cursor: grabbing; }
-th.col-dragging { opacity: 0.55; }
-th.col-drag-over { box-shadow: inset 3px 0 0 var(--primary); }
 .sortable-th-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
   padding: 10px 12px;
-  color: inherit;
+  color: var(--ink, #1d1c1d);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
+}
+.sortable-th-link .th-label {
+  display: inline;
+  overflow: visible;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.25;
 }
 .sortable-th-link:hover { color: var(--primary); }
-.sortable-th-link.is-active { color: var(--ink); }
+.sortable-th-link.is-active { color: var(--ink, #1d1c1d); }
 .sort-indicator {
   font-size: 10px;
   color: var(--primary);
