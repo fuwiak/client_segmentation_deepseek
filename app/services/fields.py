@@ -85,17 +85,22 @@ DIRECT_SALES_CHANNEL_SUBSTRINGS = (
   "телеграм",
 )
 
-# Вкладка «Прямые»: клиент попадает, если совпал канал ИЛИ статус МС ИЛИ группа МС.
+# --- Аудитория вкладки «Прямые» (ТЗ Саша 23.07.2026) ---
+# Клиент попадает при совпадении канала ИЛИ статуса ИЛИ группы (п.1–3).
+# Канал — главный критерий; tags МС с именем канала (в т.ч. «watsapp») тоже считаются.
 DIRECT_AUDIENCE_CHANNELS = (
   "прямые продажи",
-  "whatsapp/max",
-  "whatsapp",
-  "watsapp",  # опечатка tags МС — иначе WhatsApp-клиенты не в «Прямые»
-  "max",
+  "вотсап/макс",
   "вотсап",
   "ватсап",
-  "telegram",
+  "whatsapp/max",
+  "whatsapp",
+  "watsapp",  # опечатка tags МС
+  "max",
+  "макс",
+  "телеграмм",
   "телеграм",
+  "telegram",
   "сайт",
   "витрина",
   "vereskflowers",
@@ -108,19 +113,11 @@ DIRECT_AUDIENCE_STATUSES = (
 DIRECT_AUDIENCE_GROUPS = (
   "8 марта",
   "день мам",
-  "день матери",
+  "день матери",  # синоним «день мам»
   "лофт гарден",
   "новый год",
   "цветы для интерьера",
-  "корпоративный клиент",
-  # Каналы, записанные в tags МС (не в salesChannel)
-  "whatsapp",
-  "watsapp",
-  "вотсап",
-  "ватсап",
-  "telegram",
-  "телеграм",
-  "витрина",
+  "корпоративный клиент",  # в МС бывает и как группа
 )
 # «события по всем месяцам» → любое «событие …»
 DIRECT_AUDIENCE_GROUP_PATTERNS = (
@@ -308,7 +305,12 @@ def _row_matches_audience(
     if _status_matches_allowlist(status, statuses):
       return True
   for group in moysklad_group_tokens(row):
-    if _token_matches_any(group, groups) or _token_matches_patterns(group, group_patterns):
+    # п.3 группы + п.1 канал, если канал записан в tags МС (watsapp, витрина…)
+    if (
+      _token_matches_any(group, groups)
+      or _token_matches_patterns(group, group_patterns)
+      or _token_matches_any(group, channels)
+    ):
       return True
   return False
 
