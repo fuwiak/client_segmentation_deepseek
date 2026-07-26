@@ -112,6 +112,7 @@ def test_direct_audience_matches_sasha_tz_allowlists() -> None:
 
 
 def test_sales_channel_type_hybrid_when_direct_and_marketplace() -> None:
+    """Есть маркетплейс-канал → тип маркетплейс (не «прямые/маркетплейс»)."""
     row = {
         "UUID": "1",
         "_orders_context": [
@@ -120,7 +121,7 @@ def test_sales_channel_type_hybrid_when_direct_and_marketplace() -> None:
         ],
         "_order_channels_all": ["Ozon", "Витрина"],
     }
-    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_MARKETPLACE
 
 
 def test_sales_channel_lists_all_unique_channels() -> None:
@@ -138,7 +139,7 @@ def test_sales_channel_lists_all_unique_channels() -> None:
     assert sales_channel_for_row(row) == "Витрина, Ozon"
     enriched = enrich_row_computed(row)
     assert enriched["Канал продаж"] == "Витрина, Ozon"
-    assert enriched["Тип канала продаж"] == SALES_CHANNEL_TYPE_HYBRID
+    assert enriched["Тип канала продаж"] == SALES_CHANNEL_TYPE_MARKETPLACE
 
 
 def test_last_order_date_without_time() -> None:
@@ -206,8 +207,28 @@ def test_row_matches_sales_filter_by_channel_rules() -> None:
     assert row_matches_sales_filter(market, "direct") is False
     # Ozon больше не попадает в вкладку маркетплейсов без FlowWow/нужного статуса/группы
     assert row_matches_sales_filter(ozon_only, "marketplace") is False
-    assert row_matches_sales_filter(hybrid, "direct") is True
+    # Гибрид Витрина+Ozon / FlowWow+Витрина — НЕ «Прямые»
+    assert row_matches_sales_filter(hybrid, "direct") is False
     assert row_matches_sales_filter(hybrid, "marketplace") is False
+    flowwow_hybrid = {
+        "_order_channels_all": [
+            "Flow Wow Сокольники",
+            "Витрина",
+            "Telegram",
+            "WhatsApp/MAX",
+            "Сайт vereskflowers.ru",
+        ],
+        "_orders_context": [
+            {"Канал продаж": "Flow Wow Сокольники"},
+            {"Канал продаж": "Витрина"},
+            {"Канал продаж": "Telegram"},
+            {"Канал продаж": "WhatsApp/MAX"},
+            {"Канал продаж": "Сайт vereskflowers.ru"},
+        ],
+        "Группы": "цветы для интерьера",
+    }
+    assert row_matches_sales_filter(flowwow_hybrid, "direct") is False
+    assert row_matches_sales_filter(flowwow_hybrid, "marketplace") is True
 
 
 def test_row_matches_audience_by_moysklad_status_and_group() -> None:
@@ -288,6 +309,26 @@ def test_direct_filter_excludes_flowwow_even_with_watsapp_tag() -> None:
         "_orders_context": [{"Канал продаж": "Flow Wow Сокольники"}],
         "Группы": "событие январь, букет от 10 000, флаувау, watsapp, #vip",
     }
+    assert row_matches_sales_filter(row, "direct") is False
+    assert row_matches_sales_filter(row, "marketplace") is True
+
+
+def test_direct_filter_excludes_hybrid_with_vitrina() -> None:
+    """Витрина+WhatsApp не спасают: есть Flow Wow → не «Прямые»."""
+    from app.services.fields import row_matches_direct_audience, row_matches_sales_filter
+
+    row = {
+        "_order_channels_all": [
+            "Flow Wow Сокольники",
+            "Витрина",
+            "ФЛАВЕРИ Скл",
+            "Flowwow FloDay",
+            "Яндекс Маркет Скл",
+        ],
+        "Группы": "флаувау, событие марта",
+        "Телефон": "+79153588839",
+    }
+    assert row_matches_direct_audience(row) is False
     assert row_matches_sales_filter(row, "direct") is False
     assert row_matches_sales_filter(row, "marketplace") is True
 
