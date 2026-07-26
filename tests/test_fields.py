@@ -718,7 +718,7 @@ def test_infer_gender_from_message_text() -> None:
     assert infer_gender_heuristic(row) == "Мужской"
 
 
-def test_is_crm_eligible_excludes_archive_bez_statusa_no_contact() -> None:
+def test_is_crm_eligible_excludes_archive_and_no_contact() -> None:
     from app.services.fields import is_crm_eligible
 
     ok = {
@@ -728,13 +728,14 @@ def test_is_crm_eligible_excludes_archive_bez_statusa_no_contact() -> None:
     }
     assert is_crm_eligible(ok) is True
 
+    # Пустой state МС → «без статуса», но с контактом — в CRM (иначе 0 клиентов).
     bez = {
         "_source": "moysklad",
         "Статус контрагента": "",
         "_moysklad_state": "",
         "Телефон": "+79001112233",
     }
-    assert is_crm_eligible(bez) is False
+    assert is_crm_eligible(bez) is True
 
     archived = {
         "_source": "moysklad",

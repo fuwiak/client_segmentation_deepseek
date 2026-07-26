@@ -182,16 +182,13 @@ class DataHub:
     if _rows_need_gender_enrich(rows):
       rows = enrich_gender_by_unique_naimenovanie(rows)
     rows = enrich_tg_nick_by_phone(rows, self._phone_username_map)
-    # CRM-выборка: без архива, без «без статуса», только с контактами.
+    # CRM-выборка: без архива, только с контактами.
+    # «Без статуса» считаем для хинта, но не режем — пустой state МС массовый.
     excluded = {
       "archived": sum(1 for r in rows if is_archived_row(r)),
       "bez_statusa": sum(1 for r in rows if is_bez_statusa(r) and not is_archived_row(r)),
       "no_contact": sum(
-        1
-        for r in rows
-        if not has_crm_contact(r)
-        and not is_archived_row(r)
-        and not is_bez_statusa(r)
+        1 for r in rows if not has_crm_contact(r) and not is_archived_row(r)
       ),
     }
     eligible = [r for r in rows if is_crm_eligible(r)]

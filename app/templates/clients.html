@@ -83,10 +83,10 @@
   {% if crm_excluded %}
   <p class="hint crm-exclusion-hint">
     Из CRM исключено:
-    {% if crm_excluded.archived %}архив {{ crm_excluded.archived }}{% endif %}{% if crm_excluded.archived and (crm_excluded.bez_statusa or crm_excluded.no_contact) %}, {% endif %}
-    {% if crm_excluded.bez_statusa %}без статуса {{ crm_excluded.bez_statusa }}{% endif %}{% if crm_excluded.bez_statusa and crm_excluded.no_contact %}, {% endif %}
+    {% if crm_excluded.archived %}архив {{ crm_excluded.archived }}{% endif %}{% if crm_excluded.archived and crm_excluded.no_contact %}, {% endif %}
     {% if crm_excluded.no_contact %}без контактов {{ crm_excluded.no_contact }}{% endif %}
-    {% if not crm_excluded.archived and not crm_excluded.bez_statusa and not crm_excluded.no_contact %}нет{% endif %}.
+    {% if not crm_excluded.archived and not crm_excluded.no_contact %}нет{% endif %}.
+    {% if crm_excluded.bez_statusa %}В МойСклад без статуса (пустой state): {{ crm_excluded.bez_statusa }} — в CRM показаны при наличии контакта (иначе список пустеет).{% endif %}
     Вкладка «Прямые» — только чистые прямые каналы (Витрина / WhatsApp/MAX / Telegram / сайт); маркетплейс-каналы не входят.
   </p>
   {% endif %}

@@ -663,13 +663,13 @@ def has_crm_contact(row: dict[str, Any]) -> bool:
 
 
 def is_crm_eligible(row: dict[str, Any]) -> bool:
-  """CRM-выборка: не архив, не «без статуса», есть контакт.
+  """CRM-выборка: не архив, есть контакт (телефон / email / ТГ).
 
-  «Без статуса» = поставщики/сотрудники и т.п. — в CRM/рассылки не берём (ТЗ).
+  «Без статуса» НЕ режем: в МойСклад пустой state у большинства клиентов
+  мапится в «без статуса» (не только поставщики/сотрудники) — иначе CRM = 0.
+  Счётчик bez_statusa остаётся в хинте для контроля.
   """
   if is_archived_row(row):
-    return False
-  if is_bez_statusa(row):
     return False
   if not has_crm_contact(row):
     return False
