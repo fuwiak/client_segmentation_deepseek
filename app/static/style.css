@@ -1118,24 +1118,20 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   border: 1px solid var(--border, var(--hairline));
   background: var(--surface-soft);
 }
-/* AI-теги: явно отличимы от групп МойСклад (зелёная рамка + «AI»). */
+/* AI-теги: зелёная рамка — всегда видна, не теряется при running/unknown. */
 .ai-tag-chip.ai-tag-ai {
-  border: 2px solid #007a5a;
-  background: #e6f6f0;
-  color: #065f46;
+  border: 2px solid #007a5a !important;
+  background: #e6f6f0 !important;
+  color: #065f46 !important;
   font-weight: 700;
   box-shadow: inset 0 0 0 1px rgba(0, 122, 90, 0.25);
 }
-.ai-tag-chip.ai-tag-ai::before {
-  content: "AI ";
-  font-size: 0.72em;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
-}
-.groups-tags-merged .group-chip-ms + .ai-tag-chip,
-.groups-tags-merged .ai-tag-chip + .group-chip-ms {
-  margin-left: 0;
+.ai-tag-chip.ai-tag-pending {
+  border: 2px dashed #007a5a;
+  background: #f0faf6;
+  color: #065f46;
+  font-weight: 600;
+  font-size: 0.78em;
 }
 .campaign-hero-title {
   margin: 0 0 0.25rem;

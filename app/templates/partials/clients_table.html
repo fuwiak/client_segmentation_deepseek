@@ -78,11 +78,7 @@
           {% elif col == 'Средний чек' %}
             {{ format_money_rub(value) }}
           {% elif col == 'Группы' %}
-            {% if client_cell_state(row, 'Теги') in ('running', 'unknown') %}
-            {{ ai_cell(row, 'Теги', row.get('Теги')) }}
-            {% else %}
             {{ ai_tags(row) }}
-            {% endif %}
           {% elif col in ai_fillable_columns %}
             {{ ai_cell(row, col, value) }}
           {% else %}

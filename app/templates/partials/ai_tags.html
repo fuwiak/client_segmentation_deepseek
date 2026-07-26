@@ -1,25 +1,33 @@
 {% macro render(row) %}
-{# Группы МойСклад + AI-теги в одной ячейке; AI визуально выделено. #}
+{# Группы МойСклад + AI-теги в одной ячейке. Зелёная рамка у AI-тегов всегда сохраняется. #}
 {% set groups_raw = row.get('Группы') or row.get('_moysklad_tags_display') or '' %}
-{% set tags_raw = row.get('Теги') or '' %}
+{% set tags_raw = (row.get('Теги') or '')|string|trim %}
+{% set tag_state = client_cell_state(row, 'Теги') %}
 {% set reasons = tag_reasons(row) %}
-{% if groups_raw or tags_raw %}
+{% set tags_lower = tags_raw|lower %}
+{% set skip_tags = tags_lower in ('', '—', '-', 'не найдено', 'no data', 'not found', 'running') %}
 <span class="ai-tags-list groups-tags-merged">
-  {% for part in groups_raw.replace('/', ',').split(',') %}
+  {% set group_parts = groups_raw.replace('/', ',').split(',') if groups_raw else [] %}
+  {% for part in group_parts %}
   {% set g = part.strip() %}
   {% if g %}
   <span class="group-chip-ms" title="Группа МойСклад">{{ g }}</span>
   {% endif %}
   {% endfor %}
-  {% for tag in tags_raw.replace(',', ' ').split() %}
-  {% if tag.strip() %}
-  <span class="ai-tag-chip ai-tag-ai"
-        title="{{ reasons.get(tag, 'Тег AI') }}"
-        aria-label="{{ tag }}: {{ reasons.get(tag, 'Тег AI') }}">{{ tag }}</span>
+  {% if tag_state == 'value' and not skip_tags %}
+    {% for tag in tags_raw.replace(',', ' ').split() %}
+    {% set t = tag.strip() %}
+    {% if t %}
+    <span class="ai-tag-chip ai-tag-ai"
+          title="{{ reasons.get(t, 'Тег AI') }}"
+          aria-label="{{ t }}: {{ reasons.get(t, 'Тег AI') }}">{{ t }}</span>
+    {% endif %}
+    {% endfor %}
+  {% elif tag_state == 'running' %}
+  <span class="ai-tag-chip ai-tag-pending" title="AI ещё считает теги">AI…</span>
   {% endif %}
-  {% endfor %}
+  {% if not groups_raw and (skip_tags or tag_state in ('unknown', 'empty')) and tag_state != 'running' %}
+  —
+  {% endif %}
 </span>
-{% else %}
-—
-{% endif %}
 {% endmacro %}
