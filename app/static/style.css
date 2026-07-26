@@ -1242,7 +1242,11 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   min-width: 140px;
 }
 
-.clients-table-wide { font-size: 13px; }
+.clients-table-wide {
+  font-size: 13px;
+  width: max-content;
+  min-width: 100%;
+}
 .clients-table-wide th,
 .clients-table-wide td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .clients-table-wide td.tags-cell {
@@ -1254,13 +1258,14 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 .clients-table-wide th {
   max-width: none;
   overflow: visible;
-  white-space: normal;
-  vertical-align: bottom;
+  white-space: nowrap;
+  vertical-align: middle;
+  padding: 0;
 }
 .clients-table-wide th .th-label {
   display: inline;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  word-break: normal;
   font-weight: 600;
 }
 .clients-table-wide .tags-cell { max-width: 220px; white-space: normal; }
@@ -1947,22 +1952,40 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 }
 
 .sortable-th { padding: 0; }
+.col-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2px;
+  padding: 6px 2px 6px 6px;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  vertical-align: middle;
+}
+.col-drag-handle:hover { color: var(--muted); }
+.col-drag-handle:active { cursor: grabbing; }
+th.col-dragging { opacity: 0.55; }
+th.col-drag-over { box-shadow: inset 3px 0 0 var(--primary); }
 .sortable-th-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  max-width: 100%;
-  padding: 10px 12px;
+  max-width: none;
+  padding: 6px 10px;
   color: var(--ink, #1d1c1d);
   text-decoration: none;
   font-weight: 600;
+  white-space: nowrap;
 }
 .sortable-th-link .th-label {
   display: inline;
   overflow: visible;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.25;
+  white-space: nowrap;
+  word-break: normal;
+  line-height: 1.2;
 }
 .sortable-th-link:hover { color: var(--primary); }
 .sortable-th-link.is-active { color: var(--ink, #1d1c1d); }
