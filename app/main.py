@@ -1308,6 +1308,7 @@ async def dashboard_page(
 ) -> HTMLResponse:
   pipeline_log("PIPE", "page dashboard period=%s date_from=%s date_to=%s", period, date_from, date_to)
   await _hydrate_hub_from_cache()
+  await _hydrate_moysklad_from_cache()
   parsed_from = _optional_query_date(date_from)
   parsed_to = _optional_query_date(date_to)
   started = time.perf_counter()

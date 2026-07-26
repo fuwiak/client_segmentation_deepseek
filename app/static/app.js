@@ -323,6 +323,41 @@
     );
   }
 
+  // Счётчик in-flight HTMX: иначе abort (hx-sync:replace) / preload
+  // может оставить html.is-navigating и бесконечный верхний progress.
+  var navInFlight = 0;
+  var navSafetyTimer = null;
+
+  function setNavigating(on) {
+    if (on) {
+      navInFlight += 1;
+      document.documentElement.classList.add("is-navigating");
+      if (navSafetyTimer) clearTimeout(navSafetyTimer);
+      navSafetyTimer = setTimeout(function () {
+        navInFlight = 0;
+        document.documentElement.classList.remove("is-navigating");
+      }, 20000);
+      return;
+    }
+    navInFlight = Math.max(0, navInFlight - 1);
+    if (navInFlight === 0) {
+      document.documentElement.classList.remove("is-navigating");
+      if (navSafetyTimer) {
+        clearTimeout(navSafetyTimer);
+        navSafetyTimer = null;
+      }
+    }
+  }
+
+  function clearNavigating() {
+    navInFlight = 0;
+    document.documentElement.classList.remove("is-navigating");
+    if (navSafetyTimer) {
+      clearTimeout(navSafetyTimer);
+      navSafetyTimer = null;
+    }
+  }
+
   function fallbackNavigateFromHtmxEvent(e) {
     var elt = e.detail && e.detail.elt;
     if (!elt || !elt.closest) return;
@@ -365,11 +400,11 @@
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     var target = e.detail.target;
     var elt = e.detail.elt;
-    if (isLiveSwapTarget(target)) {
-      document.documentElement.classList.add("is-navigating");
-      if (target.id === "clients-page-frame") {
-        target.setAttribute("aria-busy", "true");
-      }
+    // Частичный refresh таблицы клиентов — без полноэкранного nav-progress.
+    if (isLiveSwapTarget(target) && target.id !== "clients-page-frame") {
+      setNavigating(true);
+    } else if (target && target.id === "clients-page-frame") {
+      target.setAttribute("aria-busy", "true");
     }
     if (isClientDrawerRequest(elt)) {
       showClientDrawerLoading();
@@ -390,7 +425,13 @@
   });
 
   document.body.addEventListener("htmx:afterRequest", function (e) {
-    document.documentElement.classList.remove("is-navigating");
+    var target = e.detail && e.detail.target;
+    if (isLiveSwapTarget(target) && target.id !== "clients-page-frame") {
+      setNavigating(false);
+    }
+    if (target && target.id === "clients-page-frame") {
+      target.setAttribute("aria-busy", "false");
+    }
     if (e.detail.successful) {
       finishClientDrawerRequest(e.detail.elt, e.detail.xhr);
       finishOrdersModalRequest(e.detail.elt, e.detail.xhr);
@@ -402,7 +443,7 @@
   });
 
   document.body.addEventListener("htmx:responseError", function (e) {
-    document.documentElement.classList.remove("is-navigating");
+    clearNavigating();
     var elt = e.detail && e.detail.elt;
     if (isClientDrawerRequest(elt)) {
       hideClientDrawerLoading();
@@ -427,13 +468,17 @@
   });
 
   document.body.addEventListener("htmx:sendError", function (e) {
-    document.documentElement.classList.remove("is-navigating");
+    clearNavigating();
     fallbackNavigateFromHtmxEvent(e);
   });
 
   document.body.addEventListener("htmx:timeout", function (e) {
-    document.documentElement.classList.remove("is-navigating");
+    clearNavigating();
     fallbackNavigateFromHtmxEvent(e);
+  });
+
+  document.body.addEventListener("htmx:abort", function () {
+    clearNavigating();
   });
 
   document.body.addEventListener("htmx:responseError", fallbackNavigateFromHtmxEvent);
