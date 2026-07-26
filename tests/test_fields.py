@@ -73,7 +73,7 @@ def test_direct_sales_channels() -> None:
 
 
 def test_direct_audience_matches_sasha_tz_allowlists() -> None:
-    """ТЗ Саша: канал ∪ статус ∪ группа; tags «watsapp» = канал."""
+    """Прямые: только канал; tags «watsapp» = канал; статус/группа — нет."""
     from app.services.fields import row_matches_direct_audience
 
     by_channel = {
@@ -94,9 +94,9 @@ def test_direct_audience_matches_sasha_tz_allowlists() -> None:
     }
 
     assert row_matches_direct_audience(by_channel) is True
-    assert row_matches_direct_audience(by_status) is True
-    assert row_matches_direct_audience(by_group) is True
-    assert row_matches_direct_audience(by_event) is True
+    assert row_matches_direct_audience(by_status) is False
+    assert row_matches_direct_audience(by_group) is False
+    assert row_matches_direct_audience(by_event) is False
     assert row_matches_direct_audience(by_watsapp_tag) is True
     assert row_matches_direct_audience(ozon_only) is False
 
@@ -216,8 +216,9 @@ def test_row_matches_audience_by_moysklad_status_and_group() -> None:
         "Статус контрагента": "постоянный маркетплейсы",
         "_moysklad_state": "постоянный маркетплейсы",
     }
-    assert row_matches_sales_filter(by_status, "direct") is True
-    assert row_matches_sales_filter(by_group, "direct") is True
+    # Вкладка «Прямые» — только канал, не статус/группа
+    assert row_matches_sales_filter(by_status, "direct") is False
+    assert row_matches_sales_filter(by_group, "direct") is False
     assert row_matches_sales_filter(mp_status, "marketplace") is True
     assert row_matches_sales_filter(by_group, "marketplace") is True  # группа 8 марта
     # «новый» ≠ «новый год»

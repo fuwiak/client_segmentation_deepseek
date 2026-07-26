@@ -85,9 +85,9 @@ DIRECT_SALES_CHANNEL_SUBSTRINGS = (
   "телеграм",
 )
 
-# --- Аудитория вкладки «Прямые» (ТЗ Саша 23.07.2026) ---
-# Клиент попадает при совпадении канала ИЛИ статуса ИЛИ группы (п.1–3).
-# Канал — главный критерий; tags МС с именем канала (в т.ч. «watsapp») тоже считаются.
+# --- Аудитория вкладки «Прямые» — только канал (главный критерий ТЗ) ---
+# Allowlist: прямые продажи, вотсап/МАКС, телеграмм, сайт, витрина.
+# Tags МС с именем канала (в т.ч. «watsapp») тоже считаются каналом.
 DIRECT_AUDIENCE_CHANNELS = (
   "прямые продажи",
   "вотсап/макс",
@@ -105,6 +105,7 @@ DIRECT_AUDIENCE_CHANNELS = (
   "витрина",
   "vereskflowers",
 )
+# Статусы/группы — только для облака чипов на /clients, не для фильтра вкладки.
 DIRECT_AUDIENCE_STATUSES = (
   "постоянный прямые продажи",
   "постоянный прямые",
@@ -119,7 +120,6 @@ DIRECT_AUDIENCE_GROUPS = (
   "цветы для интерьера",
   "корпоративный клиент",  # в МС бывает и как группа
 )
-# «события по всем месяцам» → любое «событие …»
 DIRECT_AUDIENCE_GROUP_PATTERNS = (
   r"событи",
 )
@@ -335,13 +335,13 @@ def _row_matches_audience(
 
 
 def row_matches_direct_audience(row: dict[str, Any]) -> bool:
-  """Аудитория «Прямые»: канал ∪ статус ∪ группа из ТЗ."""
+  """Аудитория «Прямые»: только канал (прямые, вотсап/МАКС, TG, сайт, витрина)."""
   return _row_matches_audience(
     row,
     channels=DIRECT_AUDIENCE_CHANNELS,
-    statuses=DIRECT_AUDIENCE_STATUSES,
-    groups=DIRECT_AUDIENCE_GROUPS,
-    group_patterns=DIRECT_AUDIENCE_GROUP_PATTERNS,
+    statuses=(),
+    groups=(),
+    group_patterns=(),
   )
 
 
@@ -789,7 +789,7 @@ def row_sales_type_filter_value(row: dict[str, Any]) -> str:
 
 
 def row_matches_sales_filter(row: dict[str, Any], sales_filter: str) -> bool:
-  """Вкладки аудитории CRM: direct/marketplace по allowlist канала∪статуса∪группы."""
+  """Вкладки CRM: direct = только канал; marketplace = канал∪статус∪группа."""
   if sales_filter in ("", "all"):
     return True
   if sales_filter == "marketplace":
