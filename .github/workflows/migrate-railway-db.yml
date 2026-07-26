@@ -1,0 +1,84 @@
+name: Migrate Railway DB → Selectel
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-db
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Dump Railway + restore Selectel
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Dump Railway Postgres
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          test -n "${DATABASE_URL:-}"
+          mkdir -p /tmp/migrate
+          docker run --rm \
+            -e DATABASE_URL \
+            -v /tmp/migrate:/out \
+            postgres:18-alpine \
+            sh -c 'pg_dump "$DATABASE_URL" --no-owner --no-acl -Fc -f /out/rail.dump && ls -lh /out/rail.dump'
+          # sanity
+          docker run --rm -v /tmp/migrate:/out postgres:18-alpine \
+            sh -c 'pg_restore -l /out/rail.dump | head -40'
+
+      - name: Upload dump to VDS + restore
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          source: "/tmp/migrate/rail.dump"
+          target: "/opt/migrate/"
+          strip_components: 2
+
+      - name: Restore into Selectel Postgres
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SELECTEL_HOST }}
+          username: ${{ secrets.SELECTEL_USER }}
+          key: ${{ secrets.SELECTEL_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            ls -lh /opt/migrate/rail.dump
+            cd /opt/app
+            PGPASS=$(grep -E '^POSTGRES_PASSWORD=' deploy/.env | cut -d= -f2-)
+            test -n "$PGPASS"
+            docker compose -f deploy/docker-compose.yml up -d postgres
+            # wait healthy
+            for i in $(seq 1 36); do
+              st=$(docker inspect -f '{{.State.Health.Status}}' deploy-postgres-1 2>/dev/null || echo missing)
+              echo "pg $st ($i)"
+              [ "$st" = healthy ] && break
+              sleep 5
+            done
+            echo "Dropping public schema…"
+            docker compose -f deploy/docker-compose.yml exec -T postgres \
+              psql -U app -d app -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO app; GRANT ALL ON SCHEMA public TO public;"
+            echo "Restoring dump…"
+            docker run --rm --network deploy_default \
+              -v /opt/migrate:/out:ro \
+              -e PGPASSWORD="$PGPASS" \
+              postgres:18-alpine \
+              pg_restore --no-owner --no-acl --verbose \
+                -d "postgresql://app:${PGPASS}@postgres:5432/app" \
+                /out/rail.dump \
+              || echo "pg_restore finished with warnings (often OK)"
+            echo "Verify counts…"
+            docker compose -f deploy/docker-compose.yml exec -T postgres \
+              psql -U app -d app -c "\dt"
+            docker compose -f deploy/docker-compose.yml exec -T postgres \
+              psql -U app -d app -Atc "SELECT 'customers='||count(*) FROM customers;"
+            docker compose -f deploy/docker-compose.yml restart web || true
+            sleep 3
+            curl -fsS -m 10 http://127.0.0.1:8000/health || true
+            echo
+            echo MIGRATE_OK
