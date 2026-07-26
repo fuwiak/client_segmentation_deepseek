@@ -263,9 +263,9 @@ docker compose -f "$COMPOSE_FILE" ps
 log "--- listening ports ---"
 ss -lntp 2>/dev/null | grep -E ':80|:443|:8000' || netstat -lntp 2>/dev/null | grep -E ':80|:443|:8000' || true
 log "--- curl web ---"
-curl -fsS -m 10 http://127.0.0.1:8000/health
-echo
-curl -fsS -m 10 http://127.0.0.1:8000/health/ready || true
+# web is not published on host:8000 — check via compose network / caddy.
+docker compose -f "$COMPOSE_FILE" exec -T web curl -fsS -m 10 http://127.0.0.1:8000/health || \
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps web curl -fsS -m 10 http://127.0.0.1:8000/health || true
 echo
 log "--- curl caddy ---"
 curl -fsS -m 10 -H 'Host: kinetic-ai.ru' http://127.0.0.1/health || true

@@ -2,13 +2,15 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    mem_limit: 256m
     volumes:
       - redis_data:/data
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru"]
 
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
+    mem_limit: 768m
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -16,6 +18,14 @@ services:
     volumes:
       # Postgres 18+ images require mount at /var/lib/postgresql (not .../data).
       - pg_data:/var/lib/postgresql
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - max_connections=50
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 5s
@@ -28,6 +38,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     restart: unless-stopped
+    mem_limit: 1536m
     env_file:
       - .env
     environment:
@@ -35,17 +46,24 @@ services:
       DATABASE_URL: postgresql://app:${POSTGRES_PASSWORD}@postgres:5432/app
       REDIS_URL: redis://redis:6379/0
       DB_PERSIST_ENABLED: "true"
+      # Keep AI lighter so the 4GB VDS does not OOM.
+      AI_CONCURRENCY: "1"
+      AI_BATCH_SIZE: "4"
+      AI_LAZY_BATCH_SIZE: "3"
+      ENRICHMENT_CONCURRENCY: "1"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
-    ports:
-      - "8000:8000"
+    # Do not publish 8000 publicly — only Caddy.
+    expose:
+      - "8000"
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    mem_limit: 128m
     ports:
       - "80:80"
       - "443:443"
