@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime
 from typing import Any
 
@@ -1810,7 +1811,11 @@ def ensure_ai_client_summary(row: dict[str, Any]) -> dict[str, Any]:
   return updated
 
 
-AI_NO_DATA_LABEL = "no data"
+AI_NO_DATA_LABEL = "не найдено"
+# Legacy EN + RU markers so old hub/cache rows stay empty.
+AI_NO_DATA_ALIASES = frozenset({"no data", "не найдено", "not found"})
+AI_PENDING_SINCE_KEY = "_ai_pending_since"
+AI_PENDING_TIMEOUT_SEC = 10.0
 
 
 def _normalized_cell(value: Any) -> str:
@@ -1821,7 +1826,7 @@ def _normalized_cell(value: Any) -> str:
 
 def is_empty_cell(value: Any) -> bool:
   text = _normalized_cell(value)
-  if not text or text.lower() in {"—", "-", "нет", "none", "n/a", AI_NO_DATA_LABEL}:
+  if not text or text.lower() in {"—", "-", "нет", "none", "n/a", *AI_NO_DATA_ALIASES}:
     return True
   return False
 
@@ -1830,11 +1835,72 @@ def empty_fillable_columns(row: dict[str, Any]) -> list[str]:
   return [col for col in AI_FILLABLE_COLUMNS if is_empty_cell(row.get(col))]
 
 
+def stamp_ai_pending(row: dict[str, Any], *, now: float | None = None) -> bool:
+  """Старт ожидания AI-полей (ТГ ник и др.): тик для 10с → «не найдено»."""
+  if row.get("_ai_processed"):
+    return False
+  if not empty_fillable_columns(row):
+    return False
+  if row.get(AI_PENDING_SINCE_KEY) is not None:
+    return False
+  row[AI_PENDING_SINCE_KEY] = float(now if now is not None else time.time())
+  return True
+
+
+def ai_pending_timed_out(row: dict[str, Any], *, now: float | None = None) -> bool:
+  started = row.get(AI_PENDING_SINCE_KEY)
+  if started is None or row.get("_ai_processed"):
+    return False
+  ts = float(now if now is not None else time.time())
+  return ts - float(started) >= AI_PENDING_TIMEOUT_SEC
+
+
+def expire_stale_ai_unknown(
+  row: dict[str, Any],
+  *,
+  now: float | None = None,
+  timeout_sec: float = AI_PENDING_TIMEOUT_SEC,
+) -> bool:
+  """В фоне: пустые AI-поля без ответа за timeout → «не найдено»."""
+  if row.get("_ai_processed"):
+    row.pop(AI_PENDING_SINCE_KEY, None)
+    return False
+  started = row.get(AI_PENDING_SINCE_KEY)
+  if started is None:
+    return False
+  ts = float(now if now is not None else time.time())
+  if ts - float(started) < timeout_sec:
+    return False
+  unknown = list(row.get("_ai_unknown_fields") or [])
+  changed = False
+  for col in empty_fillable_columns(row):
+    if col not in unknown:
+      unknown.append(col)
+      changed = True
+  if changed:
+    row["_ai_unknown_fields"] = unknown
+  return changed
+
+
+def expire_stale_ai_unknown_rows(
+  rows: list[dict[str, Any]],
+  *,
+  now: float | None = None,
+) -> list[dict[str, Any]]:
+  updated: list[dict[str, Any]] = []
+  for row in rows:
+    stamp_ai_pending(row, now=now)
+    if expire_stale_ai_unknown(row, now=now):
+      updated.append(row)
+  return updated
+
+
 def finalize_ai_coverage_row(row: dict[str, Any]) -> dict[str, Any]:
-  """После AI/обогащения пометить незаполненные AI-поля как no data."""
+  """После AI/обогащения пометить незаполненные AI-поля как «не найдено»."""
   merged = refresh_row_for_display(row)
   if not merged.get("_ai_processed"):
     return merged
+  merged.pop(AI_PENDING_SINCE_KEY, None)
   unknown = [col for col in AI_FILLABLE_COLUMNS if is_empty_cell(merged.get(col))]
   merged["_ai_unknown_fields"] = unknown
   return merged

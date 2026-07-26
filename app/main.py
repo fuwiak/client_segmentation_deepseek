@@ -62,7 +62,13 @@ from app.services.export_format import (
   merge_enriched_rows,
   row_for_export,
 )
-from app.services.fields import enrich_row_computed, finalize_ai_coverage_row, order_count_for_row, ensure_ai_recommendation
+from app.services.fields import (
+  AI_NO_DATA_LABEL,
+  enrich_row_computed,
+  finalize_ai_coverage_row,
+  order_count_for_row,
+  ensure_ai_recommendation,
+)
 from app.services.green_api import get_green_api_client
 from app.services.messenger_enrichment import MessengerEnrichmentService
 from app.services.moysklad import (
@@ -190,6 +196,7 @@ templates.env.globals["format_money_rub"] = format_money_rub
 templates.env.globals["build_clients_query"] = build_clients_query
 templates.env.globals["client_url_id"] = client_url_id
 templates.env.globals["ai_running_label"] = AI_RUNNING_LABEL
+templates.env.globals["ai_no_data_label"] = AI_NO_DATA_LABEL
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 _static_asset_versions: dict[str, str] = {}
 

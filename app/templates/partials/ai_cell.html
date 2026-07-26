@@ -5,7 +5,7 @@
 {% if state == 'running' %}
 <span class="ai-cell-running" title="DeepSeek ещё не обработал это поле">running</span>
 {% elif state == 'unknown' %}
-<span class="ai-cell-unknown" title="AI не смог определить значение">no data</span>
+<span class="ai-cell-unknown" title="Не удалось определить значение">{{ ai_no_data_label|default('не найдено') }}</span>
 {% elif is_ai %}
 <span class="ai-cell-stack">
   <span class="ai-cell-new" title="Добавлено AI">{{ display_cell_value(value) }}</span>

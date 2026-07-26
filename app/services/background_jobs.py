@@ -125,6 +125,9 @@ class BackgroundJobService:
         self._active_keys: set[str] = set()
         self._run_generation = 0
         self._hub_load_refresh_seq = 0
+        self._ai_expire_task: asyncio.Task[None] | None = None
+        self._ai_expire_hub: DataHub | None = None
+        self._ai_expire_cache: Any = None
 
     def ai_snapshot(self) -> dict[str, Any]:
         snap = self.ai_progress.to_dict()
@@ -440,6 +443,7 @@ class BackgroundJobService:
             await self._save_results(hub, cache)
             await self.broadcast_rows(updated)
             pipeline_log("AI", "gender fill applied rows=%s names=%s", len(updated), len(names))
+        await self.stamp_ai_pending_and_watch(hub, cache)
         return updated
 
     async def fill_missing_tg_nick(
@@ -455,7 +459,104 @@ class BackgroundJobService:
             await self._save_results(hub, cache)
             await self.broadcast_rows(updated)
             pipeline_log("TG", "tg nick fill applied rows=%s", len(updated))
+        await self.stamp_ai_pending_and_watch(hub, cache)
         return updated
+
+    def _hub_live_rows(self, hub: DataHub) -> list[dict[str, Any]]:
+        """Живые объекты parsed/results (не копии) — для stamp/expire AI-таймера."""
+        results_by_key = {_row_key(r): r for r in hub.results}
+        if hub.parsed and hub.parsed.rows:
+            out: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for row in hub.parsed.rows:
+                key = _row_key(row)
+                seen.add(key)
+                live = results_by_key.get(key)
+                out.append(live if live is not None else row)
+            for key, row in results_by_key.items():
+                if key not in seen:
+                    out.append(row)
+            return out
+        return list(hub.results or [])
+
+    async def stamp_ai_pending_and_watch(self, hub: DataHub, cache: Any) -> int:
+        """Пометить пустые AI-поля таймером 10с → фон поставит «не найдено»."""
+        from app.services.fields import stamp_ai_pending
+
+        stamped = 0
+        for row in self._hub_live_rows(hub):
+            if stamp_ai_pending(row):
+                stamped += 1
+        if stamped:
+            self.ensure_ai_pending_timeout_watcher(hub, cache)
+            pipeline_log("AI", "pending stamp rows=%s timeout=10s", stamped)
+        elif any(
+            (not r.get("_ai_processed") and r.get("_ai_pending_since") is not None)
+            for r in self._hub_live_rows(hub)
+        ):
+            self.ensure_ai_pending_timeout_watcher(hub, cache)
+        return stamped
+
+    def ensure_ai_pending_timeout_watcher(self, hub: DataHub, cache: Any) -> None:
+        """Фон: через 10с пустые AI-поля (ТГ ник…) → «не найдено»."""
+        self._ai_expire_hub = hub
+        self._ai_expire_cache = cache
+        task = self._ai_expire_task
+        if task is not None and not task.done():
+            return
+        self._ai_expire_task = asyncio.create_task(
+            self._run_ai_pending_timeout_watcher(),
+            name="ai-pending-timeout",
+        )
+
+    async def _run_ai_pending_timeout_watcher(self) -> None:
+        from app.services.fields import (
+            ai_pending_timed_out,
+            empty_fillable_columns,
+            expire_stale_ai_unknown_rows,
+            stamp_ai_pending,
+        )
+
+        try:
+            idle_rounds = 0
+            while idle_rounds < 3:
+                await asyncio.sleep(2.0)
+                hub = self._ai_expire_hub
+                cache = self._ai_expire_cache
+                if hub is None:
+                    return
+                live = self._hub_live_rows(hub)
+                for row in live:
+                    stamp_ai_pending(row)
+                updated = expire_stale_ai_unknown_rows(live)
+                if updated:
+                    hub.upsert_results(updated)
+                    if cache is not None:
+                        await self._save_results(hub, cache)
+                    await self.broadcast_rows(updated)
+                    pipeline_log(
+                        "AI",
+                        "pending timeout → не найдено rows=%s",
+                        len(updated),
+                    )
+                    idle_rounds = 0
+                waiting = any(
+                    (not r.get("_ai_processed"))
+                    and r.get("_ai_pending_since") is not None
+                    and bool(empty_fillable_columns(r))
+                    and not ai_pending_timed_out(r)
+                    for r in live
+                )
+                if waiting:
+                    idle_rounds = 0
+                else:
+                    idle_rounds += 1
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("AI pending timeout watcher failed")
+        finally:
+            self._ai_expire_task = None
 
     async def schedule_lazy_ai(
         self,
@@ -475,6 +576,14 @@ class BackgroundJobService:
             return False
         force_keys = set(force_keys or ())
         pending = self.pending_ai_rows(hub, rows=rows, force_keys=force_keys or None)
+        if pending:
+            from app.services.fields import stamp_ai_pending
+
+            pending_keys = {_row_key(r) for r in pending}
+            for row in self._hub_live_rows(hub):
+                if _row_key(row) in pending_keys:
+                    stamp_ai_pending(row)
+            self.ensure_ai_pending_timeout_watcher(hub, cache)
         if not pending:
             if self.ai_progress.status == "running" and rows is None and not priority:
                 self.ai_progress.status = "done"

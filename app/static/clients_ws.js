@@ -16,7 +16,7 @@
       return '<span class="ai-cell-running" title="DeepSeek ещё не обработал это поле">running</span>';
     }
     if (state === "unknown") {
-      return '<span class="ai-cell-unknown" title="AI не смог определить значение">no data</span>';
+      return '<span class="ai-cell-unknown" title="Не удалось определить значение">не найдено</span>';
     }
     return esc(text);
   }

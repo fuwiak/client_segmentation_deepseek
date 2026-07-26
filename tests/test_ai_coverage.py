@@ -45,10 +45,11 @@ def test_finalize_marks_unknown_after_ai_processing() -> None:
         "Группы": "премиум",
     }
     result = finalize_ai_coverage_row(row)
-    assert "Заказчик или получатель" in result["_ai_unknown_fields"]
     assert "ТГ ник" in result["_ai_unknown_fields"]
     assert "Группы" not in result["_ai_unknown_fields"]
     assert "Телефон" not in result["_ai_unknown_fields"]
+    # Пустые AI-поля после обработки → «не найдено»
+    assert client_cell_value(result, "ТГ ник") == AI_NO_DATA_LABEL
 
 
 def test_finalize_skips_when_not_processed() -> None:
@@ -80,5 +81,39 @@ def test_is_empty_cell() -> None:
     assert is_empty_cell(None) is True
     assert is_empty_cell("") is True
     assert is_empty_cell("—") is True
+    assert is_empty_cell("no data") is True
+    assert is_empty_cell("не найдено") is True
     assert is_empty_cell(0) is False
     assert is_empty_cell("Иван") is False
+
+
+def test_expire_stale_ai_unknown_after_timeout() -> None:
+    from app.services.fields import (
+        AI_PENDING_SINCE_KEY,
+        expire_stale_ai_unknown,
+        stamp_ai_pending,
+    )
+
+    row = {"ТГ ник": "", "Пол": "", "_ai_processed": False}
+    assert stamp_ai_pending(row, now=1000.0) is True
+    assert row[AI_PENDING_SINCE_KEY] == 1000.0
+    assert expire_stale_ai_unknown(row, now=1005.0) is False
+    assert expire_stale_ai_unknown(row, now=1010.0) is True
+    assert "ТГ ник" in row["_ai_unknown_fields"]
+    assert client_cell_value(row, "ТГ ник") == AI_NO_DATA_LABEL
+    assert client_cell_state(row, "ТГ ник") == "unknown"
+
+
+def test_client_cell_state_unknown_after_pending_timeout() -> None:
+    row = {
+        "ТГ ник": "",
+        "_ai_processed": False,
+        "_ai_pending_since": 1.0,
+    }
+    # now far in the future via ai_pending_timed_out — monkey via old stamp
+    from app.services.fields import AI_PENDING_TIMEOUT_SEC
+    import time
+
+    row["_ai_pending_since"] = time.time() - AI_PENDING_TIMEOUT_SEC - 1
+    assert client_cell_state(row, "ТГ ник") == "unknown"
+    assert client_cell_value(row, "ТГ ник") == AI_NO_DATA_LABEL

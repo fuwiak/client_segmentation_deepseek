@@ -173,6 +173,11 @@ def client_cell_state(row: dict[str, Any], col: str) -> str:
     if not is_empty_cell(value):
         return "value"
     if col in AI_FILLABLE_COLUMNS and not row.get("_ai_processed"):
+        from app.services.fields import ai_pending_timed_out
+
+        # 10с без ответа → сразу «не найдено» (фон ещё догонит persist).
+        if ai_pending_timed_out(row):
+            return "unknown"
         return "running"
     return "empty"
 
