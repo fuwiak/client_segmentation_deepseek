@@ -615,10 +615,12 @@ def has_crm_contact(row: dict[str, Any]) -> bool:
 
 
 def is_crm_eligible(row: dict[str, Any]) -> bool:
-  """CRM-выборка: не архив, не «без статуса», есть контакт."""
+  """CRM-выборка: не архив, есть контакт (телефон / email / ТГ).
+
+  «Без статуса» в МойСклад не исключаем: у многих контрагентов state пустой,
+  иначе CRM пустеет при живых телефонах.
+  """
   if is_archived_row(row):
-    return False
-  if is_bez_statusa(row):
     return False
   if not has_crm_contact(row):
     return False
