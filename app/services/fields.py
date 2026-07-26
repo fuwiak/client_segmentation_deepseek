@@ -67,6 +67,7 @@ DIRECT_SALES_CHANNEL_EXACT = frozenset({
   "telegram",
   "whatsapp/max",
   "whatsapp",
+  "watsapp",  # опечатка в tags МойСклад
   "max",
   "витрина",
   "прямые продажи",
@@ -78,7 +79,9 @@ DIRECT_SALES_CHANNEL_SUBSTRINGS = (
   "vereskflowers.ru",
   "telegram",
   "whatsapp",
+  "watsapp",
   "вотсап",
+  "ватсап",
   "телеграм",
 )
 
@@ -87,8 +90,10 @@ DIRECT_AUDIENCE_CHANNELS = (
   "прямые продажи",
   "whatsapp/max",
   "whatsapp",
+  "watsapp",  # опечатка tags МС — иначе WhatsApp-клиенты не в «Прямые»
   "max",
   "вотсап",
+  "ватсап",
   "telegram",
   "телеграм",
   "сайт",
@@ -108,6 +113,14 @@ DIRECT_AUDIENCE_GROUPS = (
   "новый год",
   "цветы для интерьера",
   "корпоративный клиент",
+  # Каналы, записанные в tags МС (не в salesChannel)
+  "whatsapp",
+  "watsapp",
+  "вотсап",
+  "ватсап",
+  "telegram",
+  "телеграм",
+  "витрина",
 )
 # «события по всем месяцам» → любое «событие …»
 DIRECT_AUDIENCE_GROUP_PATTERNS = (

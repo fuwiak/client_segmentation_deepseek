@@ -61,6 +61,7 @@ def test_direct_sales_channels() -> None:
         "Telegram",
         "WhatsApp",
         "WhatsApp/MAX",
+        "watsapp",  # опечатка tags МойСклад
         "Прямые продажи",
         "Сайт vereskflowers.ru",
         "https://vereskflowers.ru/",
@@ -69,6 +70,21 @@ def test_direct_sales_channels() -> None:
         assert is_marketplace_channel(channel) is False
         assert channel_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
         assert sales_type_from_channel(channel) == SALES_CHANNEL_TYPE_DIRECT
+
+
+def test_direct_audience_matches_moysklad_watsapp_group_typo() -> None:
+    """Tags МС часто пишут «watsapp» — иначе вкладка «Прямые» пустеет."""
+    from app.services.fields import row_matches_direct_audience, row_matches_marketplace_audience
+
+    row = {
+        "Группы": "букет от 10 000, watsapp",
+        "Телефон": "+79001112233",
+        "_source": "moysklad",
+        "_moysklad_state": "без статуса",
+    }
+    assert row_matches_direct_audience(row) is True
+    # букет остаётся и в маркетплейс-аудитории по ТЗ
+    assert row_matches_marketplace_audience(row) is True
 
 
 def test_sales_channel_type_hybrid_when_direct_and_marketplace() -> None:
