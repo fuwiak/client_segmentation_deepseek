@@ -212,7 +212,7 @@ def is_direct_sales_channel(channel: str | None) -> bool:
 
 
 def is_marketplace_channel(channel: str | None) -> bool:
-  """Маркетплейс: канал не из списка прямых продаж (для типа канала/классификации)."""
+  """Маркетплейс: канал не из списка прямых (Ozon, FlowWow, WB…)."""
   if not channel or not str(channel).strip():
     return False
   return not is_direct_sales_channel(channel)
@@ -336,7 +336,13 @@ def _row_matches_audience(
 
 
 def row_matches_direct_audience(row: dict[str, Any]) -> bool:
-  """Аудитория «Прямые»: только канал (прямые, вотсап/МАКС, TG, сайт, витрина)."""
+  """Аудитория «Прямые»: канал из allowlist; чистый маркетплейс — никогда.
+
+  Прямые = всё кроме маркетплейса. Tag «watsapp» не тянет FlowWow/Ozon во вкладку.
+  """
+  order_channels = unique_sales_channels(row)
+  if order_channels and all(is_marketplace_channel(c) for c in order_channels):
+    return False
   return _row_matches_audience(
     row,
     channels=DIRECT_AUDIENCE_CHANNELS,
@@ -402,16 +408,23 @@ def _order_channels_for_type(row: dict[str, Any]) -> list[str]:
 
 
 def sales_channel_type_from_channels(channels: list[str]) -> str:
-  """Тип по набору каналов: прямые / маркетплейс / смесь обоих."""
+  """Тип по набору каналов: прямые / маркетплейс / смесь обоих.
+
+  Пустой канал не считается маркетплейсом — прямые = всё кроме маркетплейса.
+  """
   if not channels:
     return SALES_CHANNEL_TYPE_DIRECT
   has_direct = False
   has_marketplace = False
   for channel in channels:
-    if not channel or not is_direct_sales_channel(channel):
-      has_marketplace = True
-    else:
+    if not channel or not str(channel).strip():
+      continue
+    if is_direct_sales_channel(channel):
       has_direct = True
+    else:
+      has_marketplace = True
+  if not has_direct and not has_marketplace:
+    return SALES_CHANNEL_TYPE_DIRECT
   if has_direct and has_marketplace:
     return SALES_CHANNEL_TYPE_HYBRID
   if has_marketplace:

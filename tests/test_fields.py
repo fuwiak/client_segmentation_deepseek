@@ -73,7 +73,10 @@ def test_direct_sales_channels() -> None:
 
 
 def test_direct_audience_matches_sasha_tz_allowlists() -> None:
-    """Прямые: только канал; tags «watsapp» = канал; статус/группа — нет."""
+    """Прямые: только канал; tags «watsapp» = канал; статус/группа — нет.
+
+    Чистый маркетплейс (Flow Wow) + tag watsapp — НЕ прямые.
+    """
     from app.services.fields import row_matches_direct_audience
 
     by_channel = {
@@ -92,6 +95,12 @@ def test_direct_audience_matches_sasha_tz_allowlists() -> None:
         "Группы": "букет от 10 000",
         "Телефон": "+79001112233",
     }
+    flowwow_with_watsapp_tag = {
+        "_orders_context": [{"Канал продаж": "Flow Wow Сокольники"}],
+        "_order_channels_all": ["Flow Wow Сокольники"],
+        "Группы": "букет от 10 000, флаувау, watsapp, #vip",
+        "Телефон": "+79299645229",
+    }
 
     assert row_matches_direct_audience(by_channel) is True
     assert row_matches_direct_audience(by_status) is False
@@ -99,6 +108,7 @@ def test_direct_audience_matches_sasha_tz_allowlists() -> None:
     assert row_matches_direct_audience(by_event) is False
     assert row_matches_direct_audience(by_watsapp_tag) is True
     assert row_matches_direct_audience(ozon_only) is False
+    assert row_matches_direct_audience(flowwow_with_watsapp_tag) is False
 
 
 def test_sales_channel_type_hybrid_when_direct_and_marketplace() -> None:
@@ -157,11 +167,12 @@ def test_sales_channel_type_direct_only_for_whitelist_channels() -> None:
 
 
 def test_sales_channel_type_hybrid_for_missing_channel_with_direct() -> None:
+    """Пустой канал игнорируется — не делает гибрид/маркетплейс."""
     row = {
         "UUID": "3",
         "_order_channels_all": ["Витрина", ""],
     }
-    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_HYBRID
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_DIRECT
 
 
 def test_row_matches_sales_filter_by_channel_rules() -> None:
@@ -262,11 +273,23 @@ def test_sync_groups_from_moysklad_overwrites_stale_ai_groups() -> None:
 
 
 def test_sales_channel_type_marketplace_for_only_missing_channel() -> None:
+    """Пустые каналы ≠ маркетплейс — прямые = всё кроме маркетплейса."""
     row = {
         "UUID": "3b",
         "_order_channels_all": ["", ""],
     }
-    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_MARKETPLACE
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_DIRECT
+
+def test_direct_filter_excludes_flowwow_even_with_watsapp_tag() -> None:
+    from app.services.fields import row_matches_sales_filter
+
+    row = {
+        "_order_channels_all": ["Flow Wow Сокольники"],
+        "_orders_context": [{"Канал продаж": "Flow Wow Сокольники"}],
+        "Группы": "событие январь, букет от 10 000, флаувау, watsapp, #vip",
+    }
+    assert row_matches_sales_filter(row, "direct") is False
+    assert row_matches_sales_filter(row, "marketplace") is True
 
 
 @pytest.mark.parametrize(
