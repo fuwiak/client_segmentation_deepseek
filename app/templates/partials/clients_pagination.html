@@ -1,5 +1,5 @@
 {% macro page_link(target_page, css_class, label, title='') -%}
-  {% set query = build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=target_page) %}
+  {% set query = build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), page=target_page) %}
   <a href="/clients?{{ query }}"
      hx-boost="false"
      hx-get="/clients/page?{{ query }}"

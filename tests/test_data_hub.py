@@ -154,7 +154,8 @@ def test_filter_rows_marketplace_direct_from_order_channels() -> None:
     )
     direct = hub.filter_rows(sales_filter="direct")
     market = hub.filter_rows(sales_filter="marketplace")
-    assert {r["UUID"] for r in direct} == {"d1", "h1"}  # h1 имеет Витрину
+    # Гибрид Витрина+Яндекс.Маркет — не «Прямые» (есть маркетплейс-канал)
+    assert {r["UUID"] for r in direct} == {"d1"}
     assert {r["UUID"] for r in market} == {"m1"}  # только Flowwow
     assert len(hub.filter_rows(sales_filter="all")) == 3
 

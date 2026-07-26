@@ -1362,6 +1362,7 @@ async def clients_page(
   filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
+  channel: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -1371,10 +1372,11 @@ async def clients_page(
 ) -> HTMLResponse:
   pipeline_log(
     "PIPE",
-    "page clients filter=%s tag=%s group=%s status=%s q=%s phone=%s sort=%s order=%s page=%s",
+    "page clients filter=%s tag=%s group=%s channel=%s status=%s q=%s phone=%s sort=%s order=%s page=%s",
     filter,
     tag or "-",
     group or "-",
+    channel or "-",
     status or "-",
     q or "-",
     phone or "-",
@@ -1389,6 +1391,7 @@ async def clients_page(
     sales_filter=filter,
     tag=tag,
     group=group,
+    channel=channel,
     status=status,
     q=q,
     phone=phone,
@@ -1414,6 +1417,7 @@ async def clients_table_partial(
   filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
+  channel: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -1421,7 +1425,7 @@ async def clients_table_partial(
   order: str = Query("asc"),
   page: int = Query(1, ge=1),
 ) -> HTMLResponse:
-  pipeline_log("PIPE", "partial clients_table filter=%s page=%s sort=%s order=%s", filter, page, sort or "-", order)
+  pipeline_log("PIPE", "partial clients_table filter=%s channel=%s page=%s sort=%s order=%s", filter, channel or "-", page, sort or "-", order)
   await _hydrate_hub_from_cache()
   await _hydrate_moysklad_from_cache()
   ctx = await _clients_ctx_with_tg(
@@ -1429,6 +1433,7 @@ async def clients_table_partial(
     sales_filter=filter,
     tag=tag,
     group=group,
+    channel=channel,
     status=status,
     q=q,
     phone=phone,
@@ -1449,6 +1454,7 @@ async def clients_page_partial(
   filter: str = Query("all"),
   tag: str = Query(""),
   group: str = Query(""),
+  channel: str = Query(""),
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
@@ -1458,8 +1464,9 @@ async def clients_page_partial(
 ) -> HTMLResponse:
   pipeline_log(
     "PIPE",
-    "partial clients_page filter=%s page=%s sort=%s order=%s preloaded=%s",
+    "partial clients_page filter=%s channel=%s page=%s sort=%s order=%s preloaded=%s",
     filter,
+    channel or "-",
     page,
     sort or "-",
     order,
@@ -1472,6 +1479,7 @@ async def clients_page_partial(
     sales_filter=filter,
     tag=tag,
     group=group,
+    channel=channel,
     status=status,
     q=q,
     phone=phone,

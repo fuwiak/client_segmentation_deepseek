@@ -716,3 +716,70 @@ def test_infer_gender_from_message_text() -> None:
         ],
     }
     assert infer_gender_heuristic(row) == "Мужской"
+
+
+def test_is_crm_eligible_excludes_archive_bez_statusa_no_contact() -> None:
+    from app.services.fields import is_crm_eligible
+
+    ok = {
+        "_source": "moysklad",
+        "Статус контрагента": "новый",
+        "Телефон": "+79001112233",
+    }
+    assert is_crm_eligible(ok) is True
+
+    bez = {
+        "_source": "moysklad",
+        "Статус контрагента": "",
+        "_moysklad_state": "",
+        "Телефон": "+79001112233",
+    }
+    assert is_crm_eligible(bez) is False
+
+    archived = {
+        "_source": "moysklad",
+        "Статус контрагента": "новый",
+        "Телефон": "+79001112233",
+        "_moysklad_archived": True,
+    }
+    assert is_crm_eligible(archived) is False
+
+    no_contact = {
+        "_source": "moysklad",
+        "Статус контрагента": "новый",
+        "Телефон": "",
+        "E-mail": "",
+        "ТГ ник": "",
+    }
+    assert is_crm_eligible(no_contact) is False
+
+
+def test_customer_or_recipient_role_by_order_comment_phone() -> None:
+    from app.services.fields import customer_or_recipient_role
+
+    recipient_only = {
+        "Телефон": "+79001112233",
+        "_orders_context": [
+            {"Комментарий": "доставка к 12:00"},
+            {"Комментарий": "оставить у двери"},
+        ],
+    }
+    assert customer_or_recipient_role(recipient_only) == "получатель"
+
+    customer_only = {
+        "Телефон": "+79001112233",
+        "_orders_context": [
+            {"Комментарий": "заказчик +79161234567"},
+            {"Комментарий": "позвонить +7 916 123-45-67"},
+        ],
+    }
+    assert customer_or_recipient_role(customer_only) == "заказчик"
+
+    both = {
+        "Телефон": "+79001112233",
+        "_orders_context": [
+            {"Комментарий": "доставка"},
+            {"Комментарий": "др номер +79161234567"},
+        ],
+    }
+    assert customer_or_recipient_role(both) == "заказчик, получатель"
