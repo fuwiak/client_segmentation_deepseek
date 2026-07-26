@@ -238,7 +238,7 @@ class DbPersistService:
             return json.loads(value)
         return value
 
-    async def load_moysklad_sync(self) -> dict[str, Any] | None:
+    async def load_sync_metadata(self) -> dict[str, Any] | None:
         if not await self.init_schema():
             return None
         pool = await self._ensure_pool()
@@ -249,35 +249,121 @@ class DbPersistService:
                 meta = await conn.fetchrow(
                     "SELECT * FROM sync_metadata WHERE id = 'current'"
                 )
-                if not meta:
-                    return None
-                customer_rows = await conn.fetch(
-                    "SELECT row_data FROM customers ORDER BY name NULLS LAST"
-                )
-                order_rows = await conn.fetch(
-                    "SELECT row_data FROM orders ORDER BY order_date DESC NULLS LAST"
-                )
-            if not customer_rows:
+            if not meta:
                 return None
-            return {
-                "schema_version": meta["schema_version"],
-                "counterparty_rows": [
-                    self._coerce_json_object(r["row_data"]) for r in customer_rows
-                ],
-                "order_rows": [
-                    self._coerce_json_object(r["row_data"]) for r in order_rows
-                ],
-                "api_cp_total": meta["api_cp_total"],
-                "api_orders_total": meta["api_orders_total"],
-                "max_counterparties": meta["max_counterparties"] or 0,
-                "max_orders": meta["max_orders"] or 0,
-                "positions_loaded": bool(meta["positions_loaded"]),
-                "source": meta["source"] or "moysklad",
-                "from_postgres": True,
-            }
+            return dict(meta)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Postgres moysklad load failed: %s", exc)
+            logger.warning("Postgres sync_metadata load failed: %s", exc)
             return None
+
+    async def count_customers(self) -> int:
+        if not await self.init_schema():
+            return 0
+        pool = await self._ensure_pool()
+        if not pool:
+            return 0
+        try:
+            async with pool.acquire() as conn:
+                return int(await conn.fetchval("SELECT count(*) FROM customers") or 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres customers count failed: %s", exc)
+            return 0
+
+    async def count_orders(self) -> int:
+        if not await self.init_schema():
+            return 0
+        pool = await self._ensure_pool()
+        if not pool:
+            return 0
+        try:
+            async with pool.acquire() as conn:
+                return int(await conn.fetchval("SELECT count(*) FROM orders") or 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres orders count failed: %s", exc)
+            return 0
+
+    async def fetch_customer_rows(self, *, offset: int, limit: int) -> list[dict[str, Any]]:
+        if limit <= 0:
+            return []
+        if not await self.init_schema():
+            return []
+        pool = await self._ensure_pool()
+        if not pool:
+            return []
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT row_data FROM customers
+                    ORDER BY name NULLS LAST, id
+                    OFFSET $1 LIMIT $2
+                    """,
+                    max(0, offset),
+                    limit,
+                )
+            return [self._coerce_json_object(r["row_data"]) for r in rows]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres customers chunk failed: %s", exc)
+            return []
+
+    async def fetch_order_rows(self, *, offset: int, limit: int) -> list[dict[str, Any]]:
+        if limit <= 0:
+            return []
+        if not await self.init_schema():
+            return []
+        pool = await self._ensure_pool()
+        if not pool:
+            return []
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT row_data FROM orders
+                    ORDER BY order_date DESC NULLS LAST, id
+                    OFFSET $1 LIMIT $2
+                    """,
+                    max(0, offset),
+                    limit,
+                )
+            return [self._coerce_json_object(r["row_data"]) for r in rows]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres orders chunk failed: %s", exc)
+            return []
+
+    async def load_moysklad_sync(self) -> dict[str, Any] | None:
+        """Полная выгрузка (для backfill/миграций). Для UI — chunked load в jobs."""
+        meta = await self.load_sync_metadata()
+        if not meta:
+            return None
+        total_cp = await self.count_customers()
+        if total_cp <= 0:
+            return None
+        chunk = 1000
+        counterparty_rows: list[dict[str, Any]] = []
+        for offset in range(0, total_cp, chunk):
+            batch = await self.fetch_customer_rows(offset=offset, limit=chunk)
+            if not batch:
+                break
+            counterparty_rows.extend(batch)
+        total_ord = await self.count_orders()
+        order_rows: list[dict[str, Any]] = []
+        for offset in range(0, total_ord, chunk):
+            batch = await self.fetch_order_rows(offset=offset, limit=chunk)
+            if not batch:
+                break
+            order_rows.extend(batch)
+        return {
+            "schema_version": meta.get("schema_version"),
+            "counterparty_rows": counterparty_rows,
+            "order_rows": order_rows,
+            "api_cp_total": meta.get("api_cp_total"),
+            "api_orders_total": meta.get("api_orders_total"),
+            "max_counterparties": meta.get("max_counterparties") or 0,
+            "max_orders": meta.get("max_orders") or 0,
+            "positions_loaded": bool(meta.get("positions_loaded")),
+            "source": meta.get("source") or "moysklad",
+            "from_postgres": True,
+        }
 
     async def persist_segmentation_results(self, payload: dict[str, Any]) -> None:
         if not await self.init_schema():

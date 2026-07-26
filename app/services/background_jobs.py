@@ -109,8 +109,11 @@ class BackgroundJobService:
     def __init__(self) -> None:
         self.ws = ConnectionManager()
         self.ai_progress = JobProgress(job="lazy_ai")
+        self.hub_load = JobProgress(job="hub_db_load")
         self._ai_task: asyncio.Task[None] | None = None
+        self._hub_load_task: asyncio.Task[None] | None = None
         self._ai_lock = asyncio.Lock()
+        self._hub_load_lock = asyncio.Lock()
         self._poll_seq = 0
         self._poll_rows: list[dict[str, Any]] = []
         self._ai_provider_circuit_open = False
@@ -121,11 +124,17 @@ class BackgroundJobService:
         self._force_keys: set[str] = set()
         self._active_keys: set[str] = set()
         self._run_generation = 0
+        self._hub_load_refresh_seq = 0
 
     def ai_snapshot(self) -> dict[str, Any]:
         snap = self.ai_progress.to_dict()
         snap["priority_pending"] = len(self._priority_rows)
         snap["deferred_pending"] = len(self._deferred_rows)
+        return snap
+
+    def hub_load_snapshot(self) -> dict[str, Any]:
+        snap = self.hub_load.to_dict()
+        snap["refresh_seq"] = self._hub_load_refresh_seq
         return snap
 
     def poll_snapshot(self, since: int = 0) -> dict[str, Any]:
@@ -134,6 +143,7 @@ class BackgroundJobService:
             **self.ai_snapshot(),
             "seq": self._poll_seq,
             "rows": rows,
+            "hub_load": self.hub_load_snapshot(),
         }
 
     def _queue_row_patches(self, rows: list[dict[str, Any]]) -> None:
@@ -146,6 +156,9 @@ class BackgroundJobService:
     async def broadcast_progress(self) -> None:
         await self.ws.broadcast({"type": "ai_progress", **self.ai_snapshot()})
 
+    async def broadcast_hub_load(self) -> None:
+        await self.ws.broadcast({"type": "hub_load", **self.hub_load_snapshot()})
+
     async def broadcast_rows(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
@@ -156,6 +169,182 @@ class BackgroundJobService:
                 "rows": [row_ws_patch(r) for r in rows],
             }
         )
+
+    async def load_hub_from_db_chunked(
+        self,
+        hub: DataHub,
+        cache: Any,
+        db: Any,
+        *,
+        chunk_size: int = 500,
+        first_chunk_wait_ms: int = 2500,
+        max_counterparties: int = 0,
+        max_orders: int = 0,
+    ) -> bool:
+        """Подтянуть Postgres → hub кусками; первый чанк — быстро для UI."""
+        if hub.parsed and hub.parsed.meta.get("source") == "moysklad" and hub.parsed.rows:
+            if self.hub_load.status in {"idle", "done"}:
+                return True
+
+        async with self._hub_load_lock:
+            if self._hub_load_task is None or self._hub_load_task.done():
+                if self.hub_load.status == "done" and hub.parsed and hub.parsed.rows:
+                    return True
+                self._hub_load_task = asyncio.create_task(
+                    self._run_hub_db_load(
+                        hub,
+                        cache,
+                        db,
+                        chunk_size=max(50, chunk_size),
+                        max_counterparties=max_counterparties,
+                        max_orders=max_orders,
+                    ),
+                    name="hub-db-load",
+                )
+
+        wait_deadline = asyncio.get_running_loop().time() + max(0, first_chunk_wait_ms) / 1000.0
+        while asyncio.get_running_loop().time() < wait_deadline:
+            if hub.parsed and hub.parsed.rows:
+                return True
+            if self.hub_load.status == "error":
+                return False
+            task = self._hub_load_task
+            if task and task.done() and not (hub.parsed and hub.parsed.rows):
+                return False
+            await asyncio.sleep(0.05)
+        return bool(hub.parsed and hub.parsed.rows)
+
+    async def _run_hub_db_load(
+        self,
+        hub: DataHub,
+        cache: Any,
+        db: Any,
+        *,
+        chunk_size: int,
+        max_counterparties: int,
+        max_orders: int,
+    ) -> None:
+        from app.services.moysklad.sync import (
+            MOYSKLAD_SYNC_SCHEMA_VERSION,
+            _apply_rows_to_hub,
+            _cache_matches_limits,
+        )
+
+        self.hub_load = JobProgress(job="hub_db_load", status="running")
+        await self.broadcast_hub_load()
+        try:
+            meta = await db.load_sync_metadata()
+            if not meta:
+                self.hub_load.status = "error"
+                self.hub_load.error = "нет sync_metadata"
+                await self.broadcast_hub_load()
+                return
+
+            payload_limits = {
+                "schema_version": meta.get("schema_version"),
+                "max_counterparties": meta.get("max_counterparties") or 0,
+                "max_orders": meta.get("max_orders") or 0,
+            }
+            if not _cache_matches_limits(payload_limits, max_counterparties, max_orders):
+                # Лимиты env не совпали с сохранённым снимком — всё равно грузим БД.
+                pipeline_log(
+                    "DB",
+                    "hub chunked load limit mismatch meta_max_cp=%s env=%s — loading anyway",
+                    payload_limits.get("max_counterparties"),
+                    max_counterparties,
+                )
+
+            total_cp = await db.count_customers()
+            total_ord = await db.count_orders()
+            if total_cp <= 0:
+                self.hub_load.status = "error"
+                self.hub_load.error = "customers пусто"
+                await self.broadcast_hub_load()
+                return
+
+            self.hub_load.total = total_cp
+            self.hub_load.done = 0
+            await self.broadcast_hub_load()
+
+            counterparty_rows: list[dict[str, Any]] = []
+            order_rows: list[dict[str, Any]] = []
+
+            # Первый чанк клиентов сразу — UI не ждёт все заказы.
+            first = await db.fetch_customer_rows(offset=0, limit=chunk_size)
+            if first:
+                counterparty_rows.extend(first)
+                _apply_rows_to_hub(hub, counterparty_rows, order_rows, from_cache=True)
+                self.hub_load.done = len(counterparty_rows)
+                self._hub_load_refresh_seq += 1
+                await self.broadcast_hub_load()
+
+            for offset in range(0, total_ord, chunk_size):
+                batch = await db.fetch_order_rows(offset=offset, limit=chunk_size)
+                if not batch:
+                    break
+                order_rows.extend(batch)
+                await asyncio.sleep(0)
+
+            if counterparty_rows and order_rows:
+                _apply_rows_to_hub(hub, counterparty_rows, order_rows, from_cache=True)
+                self._hub_load_refresh_seq += 1
+                await self.broadcast_hub_load()
+
+            for offset in range(len(counterparty_rows), total_cp, chunk_size):
+                batch = await db.fetch_customer_rows(offset=offset, limit=chunk_size)
+                if not batch:
+                    break
+                counterparty_rows.extend(batch)
+                _apply_rows_to_hub(
+                    hub,
+                    counterparty_rows,
+                    order_rows,
+                    from_cache=True,
+                )
+                self.hub_load.done = len(counterparty_rows)
+                self._hub_load_refresh_seq += 1
+                await self.broadcast_hub_load()
+                pipeline_log(
+                    "DB",
+                    "hub chunked load progress customers=%s/%s orders=%s",
+                    len(counterparty_rows),
+                    total_cp,
+                    len(order_rows),
+                )
+                await asyncio.sleep(0)
+
+            await cache.save_moysklad_sync(
+                {
+                    "schema_version": meta.get("schema_version")
+                    or MOYSKLAD_SYNC_SCHEMA_VERSION,
+                    "counterparty_rows": counterparty_rows,
+                    "order_rows": order_rows,
+                    "api_cp_total": meta.get("api_cp_total"),
+                    "api_orders_total": meta.get("api_orders_total"),
+                    "max_counterparties": meta.get("max_counterparties") or 0,
+                    "max_orders": meta.get("max_orders") or 0,
+                    "positions_loaded": bool(meta.get("positions_loaded")),
+                    "source": meta.get("source") or "moysklad",
+                    "from_postgres": True,
+                },
+                persist_to_db=False,
+            )
+            self.hub_load.status = "done"
+            self.hub_load.done = len(counterparty_rows)
+            self.hub_load.total = len(counterparty_rows)
+            self._hub_load_refresh_seq += 1
+            await self.broadcast_hub_load()
+            pipeline_log(
+                "DB",
+                "hub chunked load done customers=%s orders=%s",
+                len(counterparty_rows),
+                len(order_rows),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("hub chunked DB load failed")
+            self.hub_load.status = "error"
+            self.hub_load.error = str(exc)
+            await self.broadcast_hub_load()
 
     @staticmethod
     def _merge_unique_rows(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -463,6 +463,11 @@
       if (typeof window.initClientsPage === "function") {
         window.initClientsPage();
       }
+    } else if (target && target.id === "clients-page-frame") {
+      processHtmxRegion(target);
+      if (typeof window.initClientsPage === "function") {
+        window.initClientsPage();
+      }
     }
     if (isLiveSwapTarget(target)) {
       updateActiveNav();

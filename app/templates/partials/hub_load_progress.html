@@ -1,0 +1,16 @@
+<div id="hub-load-progress-block" class="hub-load-progress-block">
+  {% set hl = hub_load if hub_load is defined else {} %}
+  {% set hl_status = hl.status|default('idle') %}
+  {% set hl_done = hl.done|default(0) %}
+  {% set hl_total = hl.total|default(0) %}
+  {% set hl_percent = hl.percent|default(0) %}
+  {% set hl_error = hl.error|default('') %}
+  {% if hl_status == 'running' %}
+    <p class="hint">Загрузка клиентов из БД… {{ hl_done }}/{{ hl_total }} ({{ hl_percent }}%)</p>
+    <div class="progress-bar"><div class="progress-fill" style="width: {{ hl_percent }}%"></div></div>
+  {% elif hl_status == 'error' %}
+    <p class="hint warn">БД: {{ hl_error or 'ошибка загрузки' }}</p>
+  {% elif hl_status == 'done' and hl_total > 0 %}
+    <p class="hint ok muted">База в памяти: {{ hl_total }} контрагентов.</p>
+  {% endif %}
+</div>

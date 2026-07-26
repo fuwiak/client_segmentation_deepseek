@@ -450,12 +450,22 @@ async def _backfill_postgres_from_redis() -> None:
 
 
 async def _hydrate_moysklad_from_cache() -> bool:
-  """Быстрая подгрузка МойСклад только из Redis/Postgres — без API."""
+  """Быстрая подгрузка МойСклад: Redis, иначе Postgres кусками (live UI)."""
   client = get_moysklad_client(settings)
   if not client.enabled:
     pipeline_log("MS", "hydrate cache skipped enabled=false")
     return False
   if hub.parsed and hub.parsed.meta.get("source") == "moysklad" and hub.parsed.rows:
+    # Пока идёт chunked load — не блокируем повторные запросы.
+    if jobs.hub_load.status == "running":
+      pipeline_log(
+        "MS",
+        "hydrate cache partial rows=%s hub_load=%s/%s",
+        len(hub.parsed.rows),
+        jobs.hub_load.done,
+        jobs.hub_load.total,
+      )
+      return True
     pipeline_log("MS", "hydrate cache skipped already_loaded rows=%s", len(hub.parsed.rows))
     return True
   from app.services.moysklad.sync import _load_from_cache
@@ -466,8 +476,31 @@ async def _hydrate_moysklad_from_cache() -> bool:
     max_counterparties=settings.moysklad_sync_limit,
     max_orders=settings.moysklad_sync_orders_limit,
   )
-  pipeline_log("MS", "hydrate cache done success=%s rows=%s", result is not None and result.success, len(hub.active_rows()))
-  return result is not None and result.success
+  if result is not None and result.success:
+    pipeline_log("MS", "hydrate cache done redis rows=%s", len(hub.active_rows()))
+    return True
+
+  if db_persist.enabled:
+    ok = await jobs.load_hub_from_db_chunked(
+      hub,
+      cache,
+      db_persist,
+      chunk_size=settings.db_load_chunk_size,
+      first_chunk_wait_ms=settings.db_load_first_chunk_wait_ms,
+      max_counterparties=settings.moysklad_sync_limit,
+      max_orders=settings.moysklad_sync_orders_limit,
+    )
+    pipeline_log(
+      "MS",
+      "hydrate cache done postgres_chunked ok=%s rows=%s hub_load=%s",
+      ok,
+      len(hub.active_rows()) if hub.has_data() else 0,
+      jobs.hub_load.status,
+    )
+    return ok
+
+  pipeline_log("MS", "hydrate cache miss")
+  return False
 
 
 async def _ensure_moysklad_data(*, fetch_positions: bool = False) -> None:
@@ -813,10 +846,12 @@ async def clients_websocket(websocket: WebSocket) -> None:
   await jobs.ws.connect(websocket)
   try:
     await websocket.send_json({"type": "ai_progress", **jobs.ai_snapshot()})
+    await websocket.send_json({"type": "hub_load", **jobs.hub_load_snapshot()})
     while True:
       msg = await websocket.receive_text()
       if msg.strip().lower() in {"ping", "refresh"}:
         await websocket.send_json({"type": "ai_progress", **jobs.ai_snapshot()})
+        await websocket.send_json({"type": "hub_load", **jobs.hub_load_snapshot()})
   except WebSocketDisconnect:
     pass
   finally:
@@ -825,7 +860,7 @@ async def clients_websocket(websocket: WebSocket) -> None:
 
 @app.get("/clients/ai/status")
 async def clients_ai_status() -> JSONResponse:
-  return JSONResponse({**jobs.ai_snapshot(), "pending": jobs.pending_ai_count()})
+  return JSONResponse({**jobs.ai_snapshot(), "pending": jobs.pending_ai_count(), "hub_load": jobs.hub_load_snapshot()})
 
 
 @app.get("/clients/ai/poll")
@@ -1139,6 +1174,7 @@ def _clients_ctx(
     tg_export_ready=tg_export_ready,
     tg_export_progress=_tg_export_progress,
     ai_progress=jobs.ai_snapshot(),
+    hub_load=jobs.hub_load_snapshot(),
   )
   pipeline_log(
     "PIPE",

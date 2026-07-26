@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     keep_alive_enabled: bool = True
     keep_alive_interval_seconds: int = 300
 
+    # Подгрузка Postgres → hub кусками (live-обновление /clients).
+    db_load_chunk_size: int = 500
+    db_load_first_chunk_wait_ms: int = 2500
+
 
 @lru_cache
 def get_settings() -> Settings:

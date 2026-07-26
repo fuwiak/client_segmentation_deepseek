@@ -61,6 +61,74 @@
     }
   }
 
+  function updateHubLoad(data) {
+    var block = document.getElementById("hub-load-progress-block");
+    if (!block || !data) return;
+    var status = data.status || "idle";
+    var done = data.done || 0;
+    var total = data.total || 0;
+    var percent = data.percent || (total ? Math.floor((done / total) * 100) : 0);
+    var error = data.error || "";
+    if (status === "running") {
+      block.innerHTML =
+        '<p class="hint">Загрузка клиентов из БД… ' +
+        done +
+        "/" +
+        total +
+        " (" +
+        percent +
+        "%)</p>" +
+        '<div class="progress-bar"><div class="progress-fill" style="width: ' +
+        percent +
+        '%"></div></div>';
+    } else if (status === "error") {
+      block.innerHTML = '<p class="hint warn">БД: ' + esc(error || "ошибка загрузки") + "</p>";
+    } else if (status === "done" && total > 0) {
+      block.innerHTML =
+        '<p class="hint ok muted">База в памяти: ' + total + " контрагентов.</p>";
+    } else {
+      block.innerHTML = "";
+    }
+  }
+
+  var lastHubRefreshSeq = -1;
+  var hubRefreshTimer = null;
+  var hubRefreshInFlight = false;
+
+  function refreshClientsFrame() {
+    if (hubRefreshInFlight) return;
+    if (typeof htmx === "undefined") return;
+    if (!document.getElementById("clients-page-frame")) return;
+    hubRefreshInFlight = true;
+    var url = "/clients/page" + (window.location.search || "");
+    try {
+      htmx.ajax("GET", url, {
+        target: "#clients-page-frame",
+        swap: "outerHTML",
+      });
+    } catch (_err) {
+      hubRefreshInFlight = false;
+      return;
+    }
+    setTimeout(function () {
+      hubRefreshInFlight = false;
+      if (typeof window.initClientsPage === "function") {
+        window.initClientsPage();
+      }
+    }, 1200);
+  }
+
+  function maybeRefreshFromHubLoad(hub) {
+    if (!hub) return;
+    var seq = typeof hub.refresh_seq === "number" ? hub.refresh_seq : -1;
+    if (seq <= lastHubRefreshSeq) return;
+    lastHubRefreshSeq = seq;
+    if (hubRefreshTimer) clearTimeout(hubRefreshTimer);
+    // Троттлим: не дёргать HTMX на каждый чанк.
+    var delay = hub.status === "done" ? 50 : 900;
+    hubRefreshTimer = setTimeout(refreshClientsFrame, delay);
+  }
+
   function scheduleNextPoll(delayMs) {
     if (pollTimer) {
       clearTimeout(pollTimer);
@@ -76,7 +144,7 @@
   }
 
   function pollOnce() {
-    if (!document.getElementById("clients-table-block")) {
+    if (!document.getElementById("clients-table-block") && !document.getElementById("hub-load-progress-block")) {
       stopPolling();
       return;
     }
@@ -93,10 +161,15 @@
           sinceSeq = data.seq;
         }
         updateProgress(data);
+        if (data.hub_load) {
+          updateHubLoad(data.hub_load);
+          maybeRefreshFromHubLoad(data.hub_load);
+        }
         if (Array.isArray(data.rows)) {
           data.rows.forEach(updateRow);
         }
-        var delay = data.status === "running" ? 1500 : 4000;
+        var hubRunning = data.hub_load && data.hub_load.status === "running";
+        var delay = data.status === "running" || hubRunning ? 1200 : 4000;
         scheduleNextPoll(delay);
       })
       .catch(function () {
@@ -299,7 +372,7 @@
   }
 
   window.initClientsPage = function () {
-    if (document.getElementById("clients-table-block")) {
+    if (document.getElementById("clients-table-block") || document.getElementById("hub-load-progress-block")) {
       initClientsTable();
       if (!pollTimer) {
         pollOnce();
