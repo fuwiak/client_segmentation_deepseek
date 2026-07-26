@@ -503,7 +503,8 @@ def test_filter_rows_with_groups_includes_sales_channels() -> None:
     )
     rows, group_options, groups_total = hub.filter_rows_with_groups(sales_filter="all")
     names = {item["name"] for item in group_options}
-    assert "VIP" in names
+    # Облако — только группы из ТЗ; VIP не в allowlist → не в чипах
+    assert "VIP" not in names
     assert "Flowwow Floday" not in names  # каналы — отдельный фильтр
     from app.services.export_format import collect_channel_options
     channels = {item["name"] for item in collect_channel_options(rows)}

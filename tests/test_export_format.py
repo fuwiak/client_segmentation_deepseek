@@ -80,6 +80,27 @@ def test_collect_group_counts() -> None:
     assert names == {"VIP", "постоянный", "новый"}
 
 
+def test_collect_featured_group_counts_limits_to_tz_allowlist() -> None:
+    from app.services.export_format import collect_featured_group_counts
+
+    rows = [
+        {"Группы": "8 марта, случайный-тег-мс"},
+        {"Группы": "день мам"},
+        {"Группы": "мусорный тег"},
+        {"Группы": "лофт гарден"},
+    ]
+    direct = collect_featured_group_counts(rows, sales_filter="direct")
+    names = [item["name"] for item in direct]
+    assert names == ["8 марта", "день мам", "лофт гарден"]
+    assert all(item["count"] == 1 for item in direct)
+    assert len(direct) <= 7
+
+    with_selected = collect_featured_group_counts(
+        rows, sales_filter="direct", selected="мусорный тег"
+    )
+    assert any(item["name"] == "мусорный тег" for item in with_selected)
+
+
 def test_collect_group_counts_only_moysklad_groups() -> None:
     """Облако групп — только группы МойСклад; каналы — отдельный фильтр."""
     from app.services.export_format import collect_channel_options

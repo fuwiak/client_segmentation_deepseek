@@ -11,6 +11,8 @@ from urllib.parse import quote, urlencode
 from app.services.telegram_export import tg_conversation_label
 from app.services.fields import (
     AI_NO_DATA_LABEL,
+    _token_matches_any,
+    crm_featured_groups,
     is_empty_cell,
     refresh_row_for_display,
     unique_sales_channel_types,
@@ -351,6 +353,54 @@ def collect_group_counts(
         for key in counter
     ]
     items.sort(key=lambda item: (-int(item["count"]), str(item["name"]).lower()))
+    return items
+
+
+def collect_featured_group_counts(
+    rows: list[dict[str, Any]],
+    *,
+    sales_filter: str = "all",
+    selected: str = "",
+) -> list[dict[str, Any]]:
+    """Облако групп: только сегменты из ТЗ (≈7–12), плюс текущий выбранный group."""
+    featured = crm_featured_groups(sales_filter)
+    counter: Counter[str] = Counter()
+    display: dict[str, str] = {label.lower(): label for label in featured}
+    selected_name = str(selected or "").strip()
+    selected_key = selected_name.lower()
+    if selected_key and selected_key not in display:
+        display[selected_key] = selected_name
+
+    for row in rows:
+        groups = row_groups(row)
+        if not groups:
+            continue
+        hit_keys: set[str] = set()
+        for label in featured:
+            if any(_token_matches_any(group, (label,)) for group in groups):
+                hit_keys.add(label.lower())
+        if selected_key and any(g.lower() == selected_key for g in groups):
+            hit_keys.add(selected_key)
+        for key in hit_keys:
+            counter[key] += 1
+
+    items: list[dict[str, Any]] = []
+    for label in featured:
+        key = label.lower()
+        count = int(counter.get(key, 0))
+        if count <= 0 and key != selected_key:
+            continue
+        items.append({
+            "name": display[key],
+            "count": count,
+            "hue": group_chip_hue(display[key]),
+        })
+    if selected_key and selected_key not in {label.lower() for label in featured}:
+        items.append({
+            "name": display[selected_key],
+            "count": int(counter.get(selected_key, 0)),
+            "hue": group_chip_hue(display[selected_key]),
+        })
     return items
 
 

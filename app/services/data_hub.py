@@ -7,7 +7,7 @@ from typing import Any
 from app.domain import normalize_phone
 from app.services.excel_parser import ParsedWorkbook, enrich_with_orders, orders_for_client_row
 from app.services.export_format import (
-  collect_group_counts,
+  collect_featured_group_counts,
   merge_enriched_rows,
   row_has_group,
   row_keyword_text,
@@ -537,10 +537,15 @@ class DataHub:
       status,
       q,
       phone,
+      (group or "").strip().lower(),
     )
     group_options = self._group_options_cache.get(group_cache_key)
     if group_options is None:
-      group_options = collect_group_counts(base_rows)
+      group_options = collect_featured_group_counts(
+        base_rows,
+        sales_filter=sales_filter,
+        selected=group or "",
+      )
       self._group_options_cache[group_cache_key] = group_options
     if group:
       rows = [r for r in base_rows if row_has_group(r, group)]

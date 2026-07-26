@@ -162,6 +162,25 @@ MARKETPLACE_AUDIENCE_GROUP_PATTERNS = (
   r"флау",
 )
 
+
+def crm_featured_groups(sales_filter: str = "all") -> tuple[str, ...]:
+  """Группы для облака/селекта на /clients — allowlist из ТЗ, не все 200+ tags МС."""
+  key = (sales_filter or "all").strip().lower()
+  if key == "direct":
+    source = DIRECT_AUDIENCE_GROUPS
+  elif key == "marketplace":
+    source = MARKETPLACE_AUDIENCE_GROUPS
+  else:
+    source = DIRECT_AUDIENCE_GROUPS + MARKETPLACE_AUDIENCE_GROUPS
+  seen: set[str] = set()
+  out: list[str] = []
+  for name in source:
+    token = _norm_token(name)
+    if token and token not in seen:
+      seen.add(token)
+      out.append(name)
+  return tuple(out)
+
 SALES_CHANNEL_TYPE_MARKETPLACE = "маркетплейс"
 SALES_CHANNEL_TYPE_DIRECT = "прямые продажи"
 SALES_CHANNEL_TYPE_HYBRID = "прямые продажи/маркетплейс"
