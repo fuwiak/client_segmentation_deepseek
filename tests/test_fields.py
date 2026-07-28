@@ -364,6 +364,116 @@ def test_order_count_trusts_linked_orders_over_stale_vsego() -> None:
     assert client_status_from_orders(row) == "новый"
 
 
+def test_orders_for_client_row_ignores_other_agent_via_shared_phone_in_name() -> None:
+    """Чужой контрагент с телефоном клиента в Наименовании не раздувает счётчик."""
+    from app.services.excel_parser import ParsedWorkbook, enrich_with_orders, orders_for_client_row
+
+    client = {
+        "UUID": "cp-real",
+        "Наименование": "Клиент А",
+        "Телефон": "+79169499692",
+    }
+    other = {
+        "UUID": "cp-other",
+        "Наименование": "+79169499692",
+        "Телефон": "+79990001122",
+    }
+    order_rows = [
+        {"№": "1", "Контрагент": "Клиент А", "_moysklad_agent_id": "cp-real", "Сумма": 1000},
+        {"№": "2", "Контрагент": "Клиент А", "_moysklad_agent_id": "cp-real", "Сумма": 2000},
+        {"№": "3", "Контрагент": "Клиент А", "_moysklad_agent_id": "cp-real", "Сумма": 3000},
+    ]
+    # 116 «чужих» заказов другого agent_id, имя = телефон клиента
+    for i in range(4, 120):
+        order_rows.append({
+            "№": str(i),
+            "Контрагент": "+79169499692",
+            "_moysklad_agent_id": "cp-other",
+            "Сумма": 500,
+        })
+
+    found = orders_for_client_row(
+        client,
+        order_rows,
+        contragent_rows=[client, other],
+    )
+    assert len(found) == 3
+    assert {o["№"] for o in found} == {"1", "2", "3"}
+
+    enriched = enrich_with_orders(
+        ParsedWorkbook(
+            source_type="contragents",
+            rows=[dict(client), dict(other)],
+            context_columns=["UUID", "Наименование", "Телефон"],
+            segment_columns=[],
+            total_rows=2,
+            meta={},
+        ),
+        ParsedWorkbook(
+            source_type="orders",
+            rows=order_rows,
+            context_columns=["№", "Контрагент"],
+            segment_columns=[],
+            total_rows=len(order_rows),
+            meta={},
+        ),
+    )
+    real = next(r for r in enriched.rows if r["UUID"] == "cp-real")
+    assert real["_orders_count"] == 3
+    assert real["Всего заказов"] == 3
+    assert order_count_for_row(real) == 3
+
+
+def test_whatsapp_permanent_not_marketplace_audience() -> None:
+    """Саша +79688887463: постоянный, только WhatsApp/прямые — не маркетплейсы."""
+    from app.services.fields import (
+        row_matches_direct_audience,
+        row_matches_marketplace_audience,
+        row_matches_sales_filter,
+        sales_channel_type_for_row,
+    )
+
+    row = {
+        "Телефон": "+79688887463",
+        "Статус контрагента": "постоянный",
+        "_moysklad_state": "постоянный",
+        "Группы": "постоянный",
+        "_moysklad_tags": ["постоянный"],
+        "_moysklad_tags_display": "постоянный",
+        "_order_channels_all": ["WhatsApp", "Прямые продажи"],
+        "_orders_context": [
+            {"Канал продаж": "WhatsApp", "№": "1"},
+            {"Канал продаж": "WhatsApp", "№": "2"},
+            {"Канал продаж": "Прямые продажи", "№": "3"},
+        ],
+        "_orders_count": 3,
+        "Всего заказов": 3,
+    }
+    assert sales_channel_type_for_row(row) == SALES_CHANNEL_TYPE_DIRECT
+    assert client_status_from_orders(row) == "постоянный"
+    assert row_matches_direct_audience(row) is True
+    assert row_matches_marketplace_audience(row) is False
+    assert row_matches_sales_filter(row, "direct") is True
+    assert row_matches_sales_filter(row, "marketplace") is False
+
+
+def test_status_permanent_does_not_match_marketplace_status_allowlist() -> None:
+    """«постоянный» ≠ «постоянный маркетплейсы»."""
+    from app.services.fields import row_matches_sales_filter
+
+    plain = {
+        "Статус контрагента": "постоянный",
+        "_moysklad_state": "постоянный",
+        "_orders_context": [{"Канал продаж": "WhatsApp"}],
+    }
+    mp = {
+        "Статус контрагента": "постоянный маркетплейсы",
+        "_moysklad_state": "постоянный маркетплейсы",
+    }
+    assert row_matches_sales_filter(plain, "marketplace") is False
+    assert row_matches_sales_filter(mp, "marketplace") is True
+
+
 def test_enrich_with_orders_syncs_vsego_with_linked_count() -> None:
     from app.services.excel_parser import ParsedWorkbook, enrich_with_orders
 

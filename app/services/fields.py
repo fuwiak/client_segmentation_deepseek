@@ -172,7 +172,7 @@ MARKETPLACE_AUDIENCE_GROUPS = (
   "букет от 10 000",
   "новый год",
   "цветы для интерьера",
-  "постоянный",
+  # «постоянный» ≠ маркетплейс: лояльность по заказам, не вкладка МП
   "флау вау",
   "флау вай скайлофт",
   "флаувай скайлофт",
@@ -310,7 +310,11 @@ def moysklad_status_tokens(row: dict[str, Any]) -> list[str]:
 
 
 def _status_matches_allowlist(value: str, needles: tuple[str, ...] | list[str]) -> bool:
-  """Точное/префиксное совпадение статуса, без ложных «новый» ⊂ «новый год»."""
+  """Точное/префиксное совпадение статуса, без ложных «новый» ⊂ «новый год».
+
+  «постоянный» не матчит «постоянный маркетплейсы» — только точное/расширение
+  allowlist-needle (status.startswith(needle)), не наоборот.
+  """
   text = re.sub(r"\s+", " ", _norm_token(value))
   if not text or text in {"без статуса", "безстатуса"}:
     return False
@@ -323,7 +327,8 @@ def _status_matches_allowlist(value: str, needles: tuple[str, ...] | list[str]) 
     # Короткие статусы («новый») — только exact, иначе «новый год» ложно матчится.
     if len(n) < 6:
       continue
-    if text.startswith(n + " ") or n.startswith(text + " "):
+    # status длиннее needle: «постоянный маркетплейсы vip» ⊃ allowlist
+    if text.startswith(n + " "):
       return True
   return False
 

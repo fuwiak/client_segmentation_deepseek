@@ -312,10 +312,10 @@ def _index_orders_for_clients(
 
         if agent_id and agent_id in cp_by_id:
             cp = cp_by_id[agent_id]
-            for raw in (cp.get("Телефон"), cp.get("Наименование"), cp.get("Код")):
-                phone = normalize_phone(str(raw) if raw else None)
-                if phone:
-                    _register_order(by_phone, phone, order)
+            # Только поле Телефон — Наименование/Код часто содержат чужой номер.
+            phone = normalize_phone(str(cp.get("Телефон") or "") or None)
+            if phone:
+                _register_order(by_phone, phone, order)
 
     return by_agent_id, by_name, by_phone
 
@@ -325,15 +325,24 @@ def orders_for_client_row(
     order_rows: list[dict[str, Any]],
     *,
     contragent_rows: list[dict[str, Any]] | None = None,
+    index: tuple[
+        dict[str, list[dict[str, Any]]],
+        dict[str, list[dict[str, Any]]],
+        dict[str, list[dict[str, Any]]],
+    ]
+    | None = None,
 ) -> list[dict[str, Any]]:
     """Найти все заказы контрагента в кэше (по id, имени, телефону)."""
-    if not order_rows:
+    if not order_rows and index is None:
         return []
 
-    by_agent_id, by_name, by_phone = _index_orders_for_clients(
-        order_rows,
-        contragent_rows or [row],
-    )
+    if index is None:
+        by_agent_id, by_name, by_phone = _index_orders_for_clients(
+            order_rows,
+            contragent_rows or [row],
+        )
+    else:
+        by_agent_id, by_name, by_phone = index
     cp_id, match_keys = _client_lookup_keys(row)
     related: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -350,6 +359,15 @@ def orders_for_client_row(
     for key in match_keys:
         _add(by_name.get(key, []))
         _add(by_phone.get(key, []))
+    # Телефон/имя другого контрагента (часто в «Наименование»/«Код») не должны
+    # притягивать чужие заказы: если у заказа другой agent_id — отбрасываем.
+    if cp_id:
+        related = [
+            item
+            for item in related
+            if not str(item.get("_moysklad_agent_id") or "").strip()
+            or str(item.get("_moysklad_agent_id") or "").strip() == cp_id
+        ]
     return related
 
 
@@ -361,27 +379,16 @@ def enrich_with_orders(
     if not orders.rows:
         return contragents
 
-    by_agent_id, by_name, by_phone = _index_orders_for_clients(orders.rows, contragents.rows)
-
+    index = _index_orders_for_clients(orders.rows, contragents.rows)
     enriched_rows: list[dict[str, Any]] = []
     for row in contragents.rows:
         copy = dict(row)
-        cp_id, match_keys = _client_lookup_keys(row)
-        related: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
-
-        def _add(items: list[dict[str, Any]]) -> None:
-            for item in items:
-                oid = str(item.get("№") or item.get("_moysklad_id") or id(item))
-                if oid not in seen_ids:
-                    seen_ids.add(oid)
-                    related.append(item)
-
-        if cp_id:
-            _add(by_agent_id.get(cp_id, []))
-        for key in match_keys:
-            _add(by_name.get(key, []))
-            _add(by_phone.get(key, []))
+        related = orders_for_client_row(
+            row,
+            orders.rows,
+            contragent_rows=contragents.rows,
+            index=index,
+        )
 
         if related:
             copy["_orders_context"] = related[:20]
