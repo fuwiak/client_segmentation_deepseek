@@ -1,4 +1,5 @@
 {% if group_options %}
+{% set cloud_base = filter_base_path|default('/clients') %}
 <section class="group-filter-cloud" aria-label="Фильтр по группам">
   <div class="group-cloud-head">
     <span class="group-cloud-title">Группы (МойСклад)</span>
@@ -8,18 +9,18 @@
     </span>
     <span class="group-cloud-hint">ТЗ + события по месяцам · {{ group_options|length }}</span>
     {% if group_filter %}
-    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+    <a href="{{ cloud_base }}?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode=mode|default('')) }}"
        class="group-cloud-clear">Сбросить</a>
     {% endif %}
   </div>
   <div class="group-cloud-chips">
-    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+    <a href="{{ cloud_base }}?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode=mode|default('')) }}"
        class="group-chip group-chip-all{% if not group_filter %} is-active{% endif %}">
       Все
       <span class="group-chip-count">{{ groups_total|default(total) }}</span>
     </a>
     {% for item in group_options %}
-    <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=item.name, channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
+    <a href="{{ cloud_base }}?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group=item.name, channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode=mode|default('')) }}"
        class="group-chip{% if group_filter|lower == item.name|lower %} is-active{% endif %}"
        style="--chip-hue: {{ item.hue }}"
        title="{{ item.count }} клиентов">

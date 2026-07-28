@@ -1671,12 +1671,14 @@ async def campaigns_page(
   status: str = Query(""),
   q: str = Query(""),
   phone: str = Query(""),
+  sort: str = Query(""),
+  order: str = Query("asc"),
   mode: str = Query("manual"),
 ) -> HTMLResponse:
   pipeline_log("PIPE", "page campaigns")
   await _hydrate_hub_from_cache()
   campaigns = await campaign_svc.list_campaigns()
-  rows = hub.filter_rows(
+  rows, group_options, groups_total = hub.filter_rows_with_groups(
     sales_filter=filter,
     tag=tag,
     group=group,
@@ -1684,11 +1686,31 @@ async def campaigns_page(
     status=status,
     q=q,
     phone=phone,
+    sort=sort,
+    order=order,
   )
+  from app.services.export_format import collect_channel_options, collect_status_options
+
+  base_for_options = hub.filter_rows(
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    channel="",
+    status="",
+    q=q,
+    phone=phone,
+  )
+  channel_options = collect_channel_options(base_for_options)
+  status_options = collect_status_options(base_for_options)
+
   preview = []
   tg_reachable = 0
+  wa_reachable = 0
   messenger_index = await cache.get_messenger_index() or {}
   for row in rows:
+    phone_raw = str(row.get("Телефон") or "").strip()
+    if phone_raw:
+      wa_reachable += 1
     if resolve_telegram_chat_id(
       {
         "tg": row.get("ТГ ник"),
@@ -1704,30 +1726,87 @@ async def campaigns_page(
     item["_demo_message"] = CampaignService.demo_ai_message(row)
     preview.append(item)
   tg = get_telegram_client(settings)
+  wa = get_green_api_client(settings)
   return templates.TemplateResponse(
     "campaigns.html",
     _ctx(
       request,
       active_page="campaigns",
       page_title="Рассылки",
-      subtitle="Telegram-рассылки по фильтрам CRM и рекомендациям AI",
+      subtitle="Telegram и WhatsApp по фильтрам CRM и рекомендациям AI",
       campaigns=campaigns,
       audience_count=len(rows),
       audience_tg_count=tg_reachable,
+      audience_wa_count=wa_reachable,
       preview_clients=preview,
       mode=mode,
       sales_filter=filter,
       tag_filter=tag,
       group_filter=group,
+      group_options=group_options,
+      groups_total=groups_total,
       channel_filter=channel,
+      channel_options=channel_options,
       status_filter=status,
+      status_options=status_options,
       q_filter=q,
       phone_filter=phone,
+      sort_col=sort,
+      sort_order=order if sort else "",
+      campaign_sort_columns=[
+        "Наименование",
+        "Всего заказов",
+        "Средний чек",
+        "Дата последнего заказа",
+        "Статус контрагента",
+      ],
+      filter_base_path="/campaigns",
       tg_enabled=tg.enabled,
+      wa_enabled=wa.enabled,
       telegram_bot_username=settings.telegram_bot_username,
       telegram_channel_id=settings.telegram_channel_id,
       telegram_channel_configured=tg.channel_configured,
     ),
+  )
+
+
+@app.post("/campaigns/ai-draft", response_class=HTMLResponse)
+async def campaign_ai_draft(
+  request: Request,
+  filter: str = Form("all"),
+  tag: str = Form(""),
+  group: str = Form(""),
+  channel_filter: str = Form(""),
+  status: str = Form(""),
+  q: str = Form(""),
+  phone: str = Form(""),
+  sort: str = Form(""),
+  order: str = Form("asc"),
+) -> HTMLResponse:
+  """Demo-текст от ИИ для ручной рассылки (по первой строке аудитории)."""
+  await _hydrate_hub_from_cache()
+  rows = hub.filter_rows(
+    sales_filter=filter,
+    tag=tag,
+    group=group,
+    channel=channel_filter,
+    status=status,
+    q=q,
+    phone=phone,
+    sort=sort,
+    order=order,
+  )
+  if not rows:
+    text = "Здравствуйте! Подготовили для вас персональное предложение."
+  else:
+    row = dict(rows[0])
+    ensure_ai_recommendation(row)
+    text = CampaignService.demo_ai_message(row)
+  from html import escape
+
+  return HTMLResponse(
+    f'<textarea id="manual-offer" name="offer" rows="4" '
+    f'placeholder="Текст рассылки…">{escape(text)}</textarea>'
   )
 
 
@@ -1745,6 +1824,8 @@ async def campaign_create(
   status: str = Form(""),
   q: str = Form(""),
   phone: str = Form(""),
+  sort: str = Form(""),
+  order: str = Form("asc"),
 ) -> HTMLResponse:
   await _hydrate_hub_from_cache()
   rows = hub.filter_rows(
@@ -1755,6 +1836,8 @@ async def campaign_create(
     status=status,
     q=q,
     phone=phone,
+    sort=sort,
+    order=order,
   )
   message = offer
   if mode == "auto":
@@ -1778,17 +1861,21 @@ async def campaign_create(
       "status": status,
       "q": q,
       "phone": phone,
+      "sort": sort,
+      "order": order,
     },
     messenger_index=messenger_index if isinstance(messenger_index, dict) else {},
   )
   campaigns = await campaign_svc.list_campaigns()
   tg = get_telegram_client(settings)
+  wa = get_green_api_client(settings)
   return templates.TemplateResponse(
     "partials/campaign_list.html",
     _ctx(
       request,
       campaigns=campaigns,
       tg_enabled=tg.enabled,
+      wa_enabled=wa.enabled,
       telegram_bot_username=settings.telegram_bot_username,
       telegram_channel_configured=tg.channel_configured,
     ),
@@ -1805,6 +1892,7 @@ async def campaign_send(
   campaign = await campaign_svc.get(campaign_id)
   channel = str((campaign or {}).get("channel") or "").lower()
   tg = get_telegram_client(settings)
+  wa = get_green_api_client(settings)
   if channel in {"telegram", "telegram_channel"}:
     messenger_index = await cache.get_messenger_index() or {}
     await campaign_svc.send_telegram(
@@ -1813,8 +1901,13 @@ async def campaign_send(
       messenger_index=messenger_index if isinstance(messenger_index, dict) else {},
       recipient_ids=ids,
     )
+  elif channel == "whatsapp":
+    await campaign_svc.send_whatsapp(
+      campaign_id,
+      whatsapp_client=wa,
+      recipient_ids=ids,
+    )
   else:
-    # WhatsApp и прочие каналы — пока demo-пометка (Green API отдельно).
     await campaign_svc.mark_sent(campaign_id, ids)
   campaigns = await campaign_svc.list_campaigns()
   return templates.TemplateResponse(
@@ -1823,6 +1916,7 @@ async def campaign_send(
       request,
       campaigns=campaigns,
       tg_enabled=tg.enabled,
+      wa_enabled=wa.enabled,
       telegram_bot_username=settings.telegram_bot_username,
       telegram_channel_configured=tg.channel_configured,
     ),

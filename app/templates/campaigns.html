@@ -1,24 +1,110 @@
 {% extends layout_template|default("base.html") %}
 
 {% block content %}
-<section class="card toolbar-card campaign-hero">
+<div id="campaigns-live-region">
+<section class="card toolbar-card">
   <div class="campaign-hero-copy">
-    <h2 class="campaign-hero-title">Telegram-рассылки</h2>
-    <p class="hint">Маркетинговые кампании по текущим фильтрам CRM: ручной текст или авто по точкам касания AI.</p>
-  </div>
-  <div class="filter-tabs" role="tablist">
-    <button type="button" class="filter-tab {% if mode|default('manual') == 'manual' %}active{% endif %}"
-            onclick="document.getElementById('mode-manual').hidden=false;document.getElementById('mode-auto').hidden=true;this.classList.add('active');this.nextElementSibling.classList.remove('active')">Ручная</button>
-    <button type="button" class="filter-tab {% if mode|default('manual') == 'auto' %}active{% endif %}"
-            onclick="document.getElementById('mode-auto').hidden=false;document.getElementById('mode-manual').hidden=true;this.classList.add('active');this.previousElementSibling.classList.remove('active')">Авто (AI)</button>
+    <h2 class="campaign-hero-title">Рассылки</h2>
+    <p class="hint">Telegram и WhatsApp: ручной текст или авто по точкам касания AI. Фильтры и сортировка — как на /clients.</p>
   </div>
 
+  <div class="filter-tabs" role="tablist" aria-label="Тип канала продаж">
+    <a href="/campaigns?{{ build_clients_query(sales_filter='all', tag=tag_filter|default(''), group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter|default(''), q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode=mode|default('manual')) }}"
+       class="filter-tab {% if sales_filter|default('all') == 'all' %}active{% endif %}">Все</a>
+    <a href="/campaigns?{{ build_clients_query(sales_filter='marketplace', tag=tag_filter|default(''), group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter|default(''), q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode=mode|default('manual')) }}"
+       class="filter-tab {% if sales_filter|default('all') == 'marketplace' %}active{% endif %}">Маркетплейс</a>
+    <a href="/campaigns?{{ build_clients_query(sales_filter='direct', tag=tag_filter|default(''), group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter|default(''), q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode=mode|default('manual')) }}"
+       class="filter-tab {% if sales_filter|default('all') == 'direct' %}active{% endif %}">Прямые</a>
+  </div>
+
+  <form class="filter-form filter-form-base" method="get" action="/campaigns">
+    <input type="hidden" name="mode" value="{{ mode|default('manual') }}">
+    <label class="filter-field">
+      <span class="filter-label">Канал продаж</span>
+      <select name="channel">
+        <option value="">Все каналы</option>
+        {% for item in channel_options|default([]) %}
+        <option value="{{ item.name }}" {% if channel_filter|default('')|lower == item.name|lower %}selected{% endif %}>{{ item.name }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Статус МС</span>
+      <select name="status">
+        <option value="">Все статусы</option>
+        {% for item in status_options|default([]) %}
+        <option value="{{ item.name }}" {% if status_filter|default('')|lower == item.name|lower %}selected{% endif %}>{{ item.name }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Группа</span>
+      <select name="group">
+        <option value="">Все группы</option>
+        {% for item in group_options|default([]) %}
+        <option value="{{ item.name }}" {% if group_filter|default('')|lower == item.name|lower %}selected{% endif %}>{{ item.name }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Ключевые слова</span>
+      <input type="search" name="q" placeholder="Имя, адрес…" value="{{ q_filter|default('') }}">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Телефон</span>
+      <input type="search" name="phone" placeholder="+7…" value="{{ phone_filter|default('') }}">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Тег AI</span>
+      <input type="search" name="tag" placeholder="#vip…" value="{{ tag_filter|default('') }}">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Сортировка</span>
+      <select name="sort">
+        <option value="">Без сортировки</option>
+        {% for col in campaign_sort_columns|default([]) %}
+        <option value="{{ col }}" {% if sort_col|default('') == col %}selected{% endif %}>{{ col }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Порядок</span>
+      <select name="order">
+        <option value="asc" {% if sort_order|default('asc') == 'asc' %}selected{% endif %}>по возрастанию</option>
+        <option value="desc" {% if sort_order|default('') == 'desc' %}selected{% endif %}>по убыванию</option>
+      </select>
+    </label>
+    <input type="hidden" name="filter" value="{{ sales_filter|default('all') }}">
+    <button type="submit" class="btn secondary small">Применить</button>
+  </form>
+
+  {% set filter_base_path = '/campaigns' %}
+  {% include 'partials/group_filter_cloud.html' %}
+
+  <p class="hint">
+    Аудитория: <strong>{{ audience_count }}</strong>
+    {% if audience_tg_count is defined %} · Telegram: <strong>{{ audience_tg_count }}</strong>{% endif %}
+    {% if audience_wa_count is defined %} · WhatsApp (телефон): <strong>{{ audience_wa_count }}</strong>{% endif %}.
+  </p>
   {% if tg_enabled %}
   <p class="hint">Telegram бот активен{% if telegram_bot_username %} · <a href="https://t.me/{{ telegram_bot_username }}" target="_blank" rel="noopener">@{{ telegram_bot_username }}</a>{% endif %}{% if telegram_channel_configured %} · канал <code>{{ telegram_channel_id }}</code>{% endif %}.</p>
   {% else %}
-  <p class="hint warn-hint">Telegram не настроен (<code>TELEGRAM_ENABLED</code> + <code>TELEGRAM_BOT_TOKEN</code>). Черновики создаются, отправка будет в demo-режиме.</p>
+  <p class="hint warn-hint">Telegram не настроен — TG-отправка будет demo.</p>
   {% endif %}
-  <p class="hint">Аудитория по фильтрам: <strong>{{ audience_count }}</strong>{% if audience_tg_count is defined %} · с Telegram: <strong>{{ audience_tg_count }}</strong>{% endif %}.</p>
+  {% if wa_enabled %}
+  <p class="hint">WhatsApp (Green API) активен.</p>
+  {% else %}
+  <p class="hint warn-hint">WhatsApp / Green API не настроен — WA-отправка будет demo.</p>
+  {% endif %}
+</section>
+
+<section class="card toolbar-card campaign-hero">
+  <div class="filter-tabs" role="tablist">
+    <a href="/campaigns?{{ build_clients_query(sales_filter=sales_filter|default('all'), tag=tag_filter|default(''), group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter|default(''), q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode='manual') }}"
+       class="filter-tab {% if mode|default('manual') == 'manual' %}active{% endif %}">Ручная</a>
+    <a href="/campaigns?{{ build_clients_query(sales_filter=sales_filter|default('all'), tag=tag_filter|default(''), group=group_filter|default(''), channel=channel_filter|default(''), status=status_filter|default(''), q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc'), mode='auto') }}"
+       class="filter-tab {% if mode|default('manual') == 'auto' %}active{% endif %}">Авто (AI)</a>
+  </div>
 
   <div id="mode-manual" {% if mode|default('manual') != 'manual' %}hidden{% endif %}>
     <form class="campaign-form" method="post" action="/campaigns/create"
@@ -33,18 +119,27 @@
       <input type="hidden" name="status" value="{{ status_filter|default('') }}">
       <input type="hidden" name="q" value="{{ q_filter|default('') }}">
       <input type="hidden" name="phone" value="{{ phone_filter|default('') }}">
+      <input type="hidden" name="sort" value="{{ sort_col|default('') }}">
+      <input type="hidden" name="order" value="{{ sort_order|default('asc') }}">
       <label>Название <input type="text" name="title" required placeholder="Рассылка по фильтрам"></label>
       <label>Канал
         <select name="channel">
           <option value="telegram" selected>Telegram (личные)</option>
           <option value="telegram_channel">Telegram-канал (пост)</option>
-          <option value="whatsapp">WhatsApp (demo)</option>
+          <option value="whatsapp">WhatsApp</option>
         </select>
       </label>
       <label>Текст сообщения
-        <textarea name="offer" rows="4" placeholder="Текст рассылки…"></textarea>
+        <textarea id="manual-offer" name="offer" rows="4" placeholder="Текст рассылки…">{{ ai_draft_seed|default('') }}</textarea>
       </label>
-      <button type="submit" class="btn">Создать черновик</button>
+      <div class="toolbar-actions">
+        <button type="button" class="btn secondary small"
+                hx-post="/campaigns/ai-draft"
+                hx-include="closest form"
+                hx-target="#manual-offer"
+                hx-swap="outerHTML">Текст от ИИ (Demo)</button>
+        <button type="submit" class="btn">Создать черновик</button>
+      </div>
     </form>
   </div>
 
@@ -61,12 +156,14 @@
       <input type="hidden" name="status" value="{{ status_filter|default('') }}">
       <input type="hidden" name="q" value="{{ q_filter|default('') }}">
       <input type="hidden" name="phone" value="{{ phone_filter|default('') }}">
+      <input type="hidden" name="sort" value="{{ sort_col|default('') }}">
+      <input type="hidden" name="order" value="{{ sort_order|default('asc') }}">
       <label>Название <input type="text" name="title" value="Авто по рекомендациям AI" required></label>
       <label>Канал
         <select name="channel">
           <option value="telegram" selected>Telegram (личные)</option>
           <option value="telegram_channel">Telegram-канал (пост)</option>
-          <option value="whatsapp">WhatsApp (demo)</option>
+          <option value="whatsapp">WhatsApp</option>
         </select>
       </label>
       <p class="hint">Текст для каждого клиента — из рекомендации AI (точки касания).</p>
@@ -81,7 +178,7 @@
 
 {% if preview_clients %}
 <section class="card">
-  <h3>Аудитория (превью)</h3>
+  <h3>Аудитория (превью, сорт: {{ sort_col|default('—') }} {{ sort_order|default('') }})</h3>
   <div class="table-wrap">
     <table class="clients-table">
       <thead>
@@ -104,4 +201,5 @@
   </div>
 </section>
 {% endif %}
+</div>
 {% endblock %}

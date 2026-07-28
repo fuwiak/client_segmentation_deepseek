@@ -91,6 +91,73 @@ async def test_send_telegram_real_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_whatsapp_real_when_enabled() -> None:
+    class FakeRepo:
+        pass
+
+    calls: list[tuple] = []
+
+    class EnabledWa:
+        enabled = True
+
+        async def send_message(self, phone, text):
+            calls.append((phone, text))
+            return {"idMessage": "1"}
+
+    svc = CampaignService(FakeRepo())  # type: ignore[arg-type]
+    draft = await svc.create_draft(
+        title="WA live",
+        mode="manual",
+        channel="whatsapp",
+        message="Букет к 8 марта",
+        clients=[
+            {"UUID": "2", "Наименование": "Боря", "Телефон": "+79002223344"},
+            {"UUID": "3", "Наименование": "Без телефона", "E-mail": "x@y.z", "Телефон": ""},
+        ],
+    )
+    assert len(draft["recipients"]) == 1
+    assert draft["skipped_no_phone"] == 1
+    result = await svc.send_whatsapp(
+        draft["id"],
+        whatsapp_client=EnabledWa(),
+    )
+    assert result is not None
+    assert result["recipients"][0]["send_status"] == "sent"
+    assert calls == [("+79002223344", "Букет к 8 марта")]
+
+
+@pytest.mark.asyncio
+async def test_send_whatsapp_demo_when_disabled() -> None:
+    class FakeRepo:
+        pass
+
+    class DisabledWa:
+        enabled = False
+
+        async def send_message(self, *args, **kwargs):
+            raise AssertionError("should not send when disabled")
+
+    svc = CampaignService(FakeRepo())  # type: ignore[arg-type]
+    draft = await svc.create_draft(
+        title="WA demo",
+        mode="auto",
+        channel="whatsapp",
+        message="",
+        clients=[
+            {
+                "UUID": "1",
+                "Наименование": "Аня",
+                "Телефон": "+79001112233",
+                "_ai_recommendation": "Предложить тюльпаны",
+            },
+        ],
+    )
+    result = await svc.send_whatsapp(draft["id"], whatsapp_client=DisabledWa())
+    assert result is not None
+    assert result["recipients"][0]["send_status"] == "demo"
+
+
+@pytest.mark.asyncio
 async def test_create_draft_skips_clients_without_telegram() -> None:
     class FakeRepo:
         pass

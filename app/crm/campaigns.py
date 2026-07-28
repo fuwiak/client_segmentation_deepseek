@@ -2,7 +2,7 @@
 
 Ручной режим — по текущим фильтрам клиентов.
 Авто (Demo) — по рекомендациям AI (точки касания).
-Канал Telegram — реальная отправка через Bot API (если TELEGRAM_ENABLED).
+Каналы: Telegram (Bot API) и WhatsApp (Green API).
 """
 
 from __future__ import annotations
@@ -120,6 +120,7 @@ class CampaignService:
         await self._ensure_loaded()
         recipients: list[dict[str, Any]] = []
         skipped_no_tg = 0
+        skipped_no_phone = 0
         channel_l = str(channel or "").lower()
         for r in clients:
             if not has_crm_contact(r):
@@ -143,6 +144,10 @@ class CampaignService:
             # Личные TG-рассылки — только те, у кого есть @ник или chat_id.
             if channel_l == "telegram" and chat_id is None and not tg:
                 skipped_no_tg += 1
+                continue
+            # WhatsApp — нужен телефон.
+            if channel_l == "whatsapp" and not phone:
+                skipped_no_phone += 1
                 continue
             recipients.append(rec)
 
@@ -171,6 +176,7 @@ class CampaignService:
             "sent_count": 0,
             "failed_count": 0,
             "skipped_no_tg": skipped_no_tg,
+            "skipped_no_phone": skipped_no_phone,
             "last_error": "",
         }
         self._campaigns.insert(0, item)
@@ -367,6 +373,90 @@ class CampaignService:
                 rec["send_status"] = "failed"
                 rec["send_error"] = item["last_error"]
         item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
+        await self._persist()
+        return item
+
+    async def send_whatsapp(
+        self,
+        campaign_id: str,
+        *,
+        whatsapp_client: Any,
+        recipient_ids: list[str] | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any] | None:
+        """Реальная (или dry-run) отправка кампании в WhatsApp через Green API."""
+        item = await self.get(campaign_id)
+        if not item:
+            return None
+        if str(item.get("channel") or "").lower() != "whatsapp":
+            raise ValueError("Кампания не для канала WhatsApp")
+
+        recipients = item.get("recipients") or []
+        if recipient_ids:
+            wanted = set(recipient_ids)
+            targets = [r for r in recipients if r.get("id") in wanted]
+        else:
+            targets = [r for r in recipients if r.get("send_status") != "sent"]
+
+        enabled = bool(getattr(whatsapp_client, "enabled", False))
+        if not enabled and not dry_run:
+            return await self.mark_sent(campaign_id, recipient_ids)
+
+        base_message = str(item.get("message") or "").strip()
+        mode = str(item.get("mode") or "manual")
+        sent = 0
+        failed = 0
+        last_error = ""
+
+        for rec in targets:
+            if rec.get("send_status") == "sent":
+                continue
+            text = base_message
+            if mode == "auto":
+                text = self.demo_ai_message({
+                    "Наименование": rec.get("name"),
+                    "_ai_recommendation": rec.get("recommendation"),
+                    "Рекомендация": rec.get("recommendation"),
+                })
+            if not text:
+                text = "Здравствуйте!"
+
+            phone = str(rec.get("phone") or "").strip()
+            if not phone:
+                rec["send_status"] = "failed"
+                rec["send_error"] = "Нет телефона для WhatsApp"
+                failed += 1
+                last_error = rec["send_error"]
+                continue
+
+            if dry_run or not enabled:
+                rec["send_status"] = "demo"
+                rec["sent_at"] = datetime.now(timezone.utc).isoformat()
+                sent += 1
+                continue
+
+            try:
+                await whatsapp_client.send_message(phone, text)
+                rec["send_status"] = "sent"
+                rec["send_error"] = ""
+                rec["sent_at"] = datetime.now(timezone.utc).isoformat()
+                sent += 1
+            except Exception as exc:  # noqa: BLE001 — фиксируем ошибку по получателю
+                logger.warning("WhatsApp send failed for %s: %s", rec.get("id"), exc)
+                rec["send_status"] = "failed"
+                rec["send_error"] = str(exc)[:240]
+                failed += 1
+                last_error = rec["send_error"]
+            await asyncio.sleep(0.05)
+
+        item["sent_count"] = sum(1 for r in recipients if r.get("send_status") in {"sent", "demo"})
+        item["failed_count"] = sum(1 for r in recipients if r.get("send_status") == "failed")
+        item["last_error"] = last_error
+        item["last_sent_at"] = datetime.now(timezone.utc).isoformat()
+        pending = sum(1 for r in recipients if r.get("send_status") in {"pending", "failed"})
+        item["status"] = (
+            CampaignStatus.DONE.value if pending == 0 else CampaignStatus.ACTIVE.value
+        )
         await self._persist()
         return item
 

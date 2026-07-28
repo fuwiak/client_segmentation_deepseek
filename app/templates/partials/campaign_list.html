@@ -12,6 +12,7 @@
       · отправлено: {{ c.sent_count|default(0) }}
       {% if c.failed_count %} · ошибки: {{ c.failed_count }}{% endif %}
       {% if c.skipped_no_tg %} · без TG пропущено: {{ c.skipped_no_tg }}{% endif %}
+      {% if c.skipped_no_phone %} · без телефона пропущено: {{ c.skipped_no_phone }}{% endif %}
     </p>
     {% if c.last_error %}<p class="hint warn-hint">{{ c.last_error }}</p>{% endif %}
     <p>{{ c.message or c.offer or '—' }}</p>
@@ -29,14 +30,32 @@
           {% if r.send_status not in ['sent'] %}
           <form style="display:inline" hx-post="/campaigns/{{ c.id }}/send" hx-target="#campaign-list" hx-swap="innerHTML">
             <input type="hidden" name="recipient_id" value="{{ r.id }}">
-            <button type="submit" class="btn-text">{% if tg_enabled and c.channel in ['telegram', 'telegram_channel'] %}Отправить в TG{% else %}Отправить (demo){% endif %}</button>
+            <button type="submit" class="btn-text">
+              {% if c.channel == 'whatsapp' %}
+                {% if wa_enabled %}Отправить в WA{% else %}Отправить WA (demo){% endif %}
+              {% elif tg_enabled and c.channel in ['telegram', 'telegram_channel'] %}
+                Отправить в TG
+              {% else %}
+                Отправить (demo)
+              {% endif %}
+            </button>
           </form>
           {% endif %}
         </li>
         {% endfor %}
       </ul>
       <form hx-post="/campaigns/{{ c.id }}/send" hx-target="#campaign-list" hx-swap="innerHTML">
-        <button type="submit" class="btn secondary small">{% if tg_enabled and c.channel == 'telegram_channel' %}Опубликовать в канал{% elif tg_enabled and c.channel == 'telegram' %}Отправить всем в Telegram{% else %}Отправить всем (demo){% endif %}</button>
+        <button type="submit" class="btn secondary small">
+          {% if c.channel == 'whatsapp' %}
+            {% if wa_enabled %}Отправить всем в WhatsApp{% else %}Отправить всем WA (demo){% endif %}
+          {% elif tg_enabled and c.channel == 'telegram_channel' %}
+            Опубликовать в канал
+          {% elif tg_enabled and c.channel == 'telegram' %}
+            Отправить всем в Telegram
+          {% else %}
+            Отправить всем (demo)
+          {% endif %}
+        </button>
       </form>
     </details>
     {% endif %}
@@ -44,5 +63,5 @@
   {% endfor %}
 </ul>
 {% else %}
-<p class="hint">Кампаний пока нет. Создайте ручную или авто-рассылку в Telegram.</p>
+<p class="hint">Кампаний пока нет. Создайте ручную или авто-рассылку в Telegram / WhatsApp.</p>
 {% endif %}
