@@ -125,6 +125,27 @@ DIRECT_AUDIENCE_GROUP_PATTERNS = (
   r"событи",
 )
 
+# «событие <месяц>» — и номинатив (январь), и родительный (января), как в МС/AI.
+_EVENT_MONTH_FORMS = (
+  ("января", "январь"),
+  ("февраля", "февраль"),
+  ("марта", "март"),
+  ("апреля", "апрель"),
+  ("мая", "май"),
+  ("июня", "июнь"),
+  ("июля", "июль"),
+  ("августа", "август"),
+  ("сентября", "сентябрь"),
+  ("октября", "октябрь"),
+  ("ноября", "ноябрь"),
+  ("декабря", "декабрь"),
+)
+EVENT_MONTH_GROUPS: tuple[str, ...] = tuple(
+  f"событие {form}"
+  for genitive, nominative in _EVENT_MONTH_FORMS
+  for form in (genitive, nominative)
+)
+
 # Вкладка «Маркетплейсы»: FlowWow-каналы + статусы/группы из ТЗ.
 MARKETPLACE_AUDIENCE_CHANNELS = (
   "flowwow floday",
@@ -165,14 +186,14 @@ MARKETPLACE_AUDIENCE_GROUP_PATTERNS = (
 
 
 def crm_featured_groups(sales_filter: str = "all") -> tuple[str, ...]:
-  """Группы для облака/селекта на /clients — allowlist из ТЗ, не все 200+ tags МС."""
+  """Группы для облака/селекта на /clients — allowlist из ТЗ + события по месяцам."""
   key = (sales_filter or "all").strip().lower()
   if key == "direct":
-    source = DIRECT_AUDIENCE_GROUPS
+    source = DIRECT_AUDIENCE_GROUPS + EVENT_MONTH_GROUPS
   elif key == "marketplace":
-    source = MARKETPLACE_AUDIENCE_GROUPS
+    source = MARKETPLACE_AUDIENCE_GROUPS + EVENT_MONTH_GROUPS
   else:
-    source = DIRECT_AUDIENCE_GROUPS + MARKETPLACE_AUDIENCE_GROUPS
+    source = DIRECT_AUDIENCE_GROUPS + MARKETPLACE_AUDIENCE_GROUPS + EVENT_MONTH_GROUPS
   seen: set[str] = set()
   out: list[str] = []
   for name in source:

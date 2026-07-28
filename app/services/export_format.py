@@ -367,7 +367,7 @@ def collect_featured_group_counts(
     sales_filter: str = "all",
     selected: str = "",
 ) -> list[dict[str, Any]]:
-    """Облако групп: только сегменты из ТЗ (≈7–12), плюс текущий выбранный group."""
+    """Облако групп: сегменты из ТЗ + «событие <месяц>» из данных МС."""
     featured = crm_featured_groups(sales_filter)
     counter: Counter[str] = Counter()
     display: dict[str, str] = {label.lower(): label for label in featured}
@@ -376,6 +376,7 @@ def collect_featured_group_counts(
     if selected_key and selected_key not in display:
         display[selected_key] = selected_name
 
+    event_re = re.compile(r"событи", re.IGNORECASE)
     for row in rows:
         groups = row_groups(row)
         if not groups:
@@ -384,12 +385,18 @@ def collect_featured_group_counts(
         for label in featured:
             if any(_token_matches_any(group, (label,)) for group in groups):
                 hit_keys.add(label.lower())
+        for group in groups:
+            if event_re.search(group):
+                key = group.lower()
+                display.setdefault(key, group)
+                hit_keys.add(key)
         if selected_key and any(g.lower() == selected_key for g in groups):
             hit_keys.add(selected_key)
         for key in hit_keys:
             counter[key] += 1
 
     items: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
     for label in featured:
         key = label.lower()
         count = int(counter.get(key, 0))
@@ -399,12 +406,28 @@ def collect_featured_group_counts(
             "name": display[key],
             "count": count,
             "hue": group_chip_hue(display[key]),
+            "source": "ms",
         })
-    if selected_key and selected_key not in {label.lower() for label in featured}:
+        seen_keys.add(key)
+    # События из данных, которых нет в фиксированном allowlist (опечатки/синонимы).
+    for key, count in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0])):
+        if key in seen_keys:
+            continue
+        if not event_re.search(display.get(key, key)) and key != selected_key:
+            continue
+        items.append({
+            "name": display[key],
+            "count": int(count),
+            "hue": group_chip_hue(display[key]),
+            "source": "ms",
+        })
+        seen_keys.add(key)
+    if selected_key and selected_key not in seen_keys:
         items.append({
             "name": display[selected_key],
             "count": int(counter.get(selected_key, 0)),
             "hue": group_chip_hue(display[selected_key]),
+            "source": "ms",
         })
     return items
 

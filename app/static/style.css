@@ -1104,9 +1104,11 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   border-radius: var(--r-pill);
   font-size: 0.82em;
   line-height: 1.3;
-  border: 1px solid var(--hairline);
-  background: var(--surface-soft);
-  color: var(--body);
+  /* МойСклад — фиолетовый (Slack primary) */
+  border: 1px solid #611f69;
+  background: rgba(74, 21, 75, 0.10);
+  color: #4a154b;
+  font-weight: 600;
 }
 .ai-tag-chip {
   display: inline-block;
@@ -1118,7 +1120,7 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   border: 1px solid var(--border, var(--hairline));
   background: var(--surface-soft);
 }
-/* AI-теги: зелёная рамка — всегда видна, не теряется при running/unknown. */
+/* AI-группы/теги — зелёные, явно другой цвет от МС */
 .ai-tag-chip.ai-tag-ai {
   border: 2px solid #007a5a !important;
   background: #e6f6f0 !important;
@@ -1132,6 +1134,32 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   color: #065f46;
   font-weight: 600;
   font-size: 0.78em;
+}
+.groups-tags-legend {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.78em;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.groups-tags-legend .leg-ms::before,
+.groups-tags-legend .leg-ai::before {
+  content: "";
+  display: inline-block;
+  width: 0.65em;
+  height: 0.65em;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.groups-tags-legend .leg-ms::before {
+  background: #4a154b;
+  border: 1px solid #611f69;
+}
+.groups-tags-legend .leg-ai::before {
+  background: #007a5a;
+  border: 1px solid #007a5a;
 }
 .campaign-hero-title {
   margin: 0 0 0.25rem;

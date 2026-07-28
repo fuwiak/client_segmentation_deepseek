@@ -2,7 +2,11 @@
 <section class="group-filter-cloud" aria-label="Фильтр по группам">
   <div class="group-cloud-head">
     <span class="group-cloud-title">Группы (МойСклад)</span>
-    <span class="group-cloud-hint">сегменты из ТЗ · {{ group_options|length }}</span>
+    <span class="groups-tags-legend" aria-hidden="true">
+      <span class="leg-ms">МС</span>
+      <span class="leg-ai">AI в таблице</span>
+    </span>
+    <span class="group-cloud-hint">ТЗ + события по месяцам · {{ group_options|length }}</span>
     {% if group_filter %}
     <a href="/clients?{{ build_clients_query(sales_filter=sales_filter, tag=tag_filter, group='', channel=channel_filter|default(''), status=status_filter, q=q_filter|default(''), phone=phone_filter|default(''), sort=sort_col|default(''), order=sort_order|default('asc')) }}"
        class="group-cloud-clear">Сбросить</a>

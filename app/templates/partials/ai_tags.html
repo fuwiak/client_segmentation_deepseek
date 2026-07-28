@@ -1,5 +1,5 @@
 {% macro render(row) %}
-{# Группы МойСклад + AI-теги в одной ячейке. Зелёная рамка у AI-тегов всегда сохраняется. #}
+{# Два типа: группы МойСклад (фиолетовые) + теги/группы AI (зелёные). #}
 {% set groups_raw = row.get('Группы') or row.get('_moysklad_tags_display') or '' %}
 {% set tags_raw = (row.get('Теги') or '')|string|trim %}
 {% set tag_state = client_cell_state(row, 'Теги') %}
@@ -19,8 +19,8 @@
     {% set t = tag.strip() %}
     {% if t %}
     <span class="ai-tag-chip ai-tag-ai"
-          title="{{ reasons.get(t, 'Тег AI') }}"
-          aria-label="{{ t }}: {{ reasons.get(t, 'Тег AI') }}">{{ t }}</span>
+          title="{{ reasons.get(t, 'Группа / тег AI') }}"
+          aria-label="{{ t }}: {{ reasons.get(t, 'Группа / тег AI') }}">{{ t }}</span>
     {% endif %}
     {% endfor %}
   {% elif tag_state == 'running' %}

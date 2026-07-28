@@ -88,17 +88,36 @@ def test_collect_featured_group_counts_limits_to_tz_allowlist() -> None:
         {"Группы": "день мам"},
         {"Группы": "мусорный тег"},
         {"Группы": "лофт гарден"},
+        {"Группы": "событие января, событие марта"},
+        {"Группы": "событие июль"},
     ]
     direct = collect_featured_group_counts(rows, sales_filter="direct")
-    names = [item["name"] for item in direct]
-    assert names == ["8 марта", "день мам", "лофт гарден"]
-    assert all(item["count"] == 1 for item in direct)
-    assert len(direct) <= 7
+    names = {item["name"] for item in direct}
+    assert "8 марта" in names
+    assert "день мам" in names
+    assert "лофт гарден" in names
+    assert "событие января" in names
+    assert "событие марта" in names
+    assert "событие июль" in names
+    assert "мусорный тег" not in names
+    assert "случайный-тег-мс" not in names
 
     with_selected = collect_featured_group_counts(
         rows, sales_filter="direct", selected="мусорный тег"
     )
     assert any(item["name"] == "мусорный тег" for item in with_selected)
+
+
+def test_crm_featured_groups_includes_event_months() -> None:
+    from app.services.fields import EVENT_MONTH_GROUPS, crm_featured_groups
+
+    featured = crm_featured_groups("all")
+    assert "событие января" in featured
+    assert "событие январь" in featured
+    assert "событие декабря" in featured
+    assert "событие декабрь" in featured
+    assert len(EVENT_MONTH_GROUPS) == 24
+    assert all(name.startswith("событие ") for name in EVENT_MONTH_GROUPS)
 
 
 def test_collect_group_counts_only_moysklad_groups() -> None:
