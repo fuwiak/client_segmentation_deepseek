@@ -1,22 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="_Слой_1" data-name="Слой 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1920 1080">
+<svg id="_Слой_1" data-name="Слой 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="500 40 1080 920">
   <defs>
     <style>
       .cls-1 {
-        fill: #8752c1;
-        font-family: Noteworthy-Light, Noteworthy;
+        fill: #4a154b;
+        font-family: Lato, Helvetica Neue, Arial, sans-serif;
         font-size: 155.01px;
-        font-weight: 300;
-        stroke-width: .25px;
+        font-weight: 700;
+        stroke: none;
       }
 
-      .cls-1, .cls-2, .cls-3, .cls-4, .cls-5 {
+      .cls-2, .cls-3, .cls-4, .cls-5 {
         stroke: #fff;
         stroke-miterlimit: 10;
       }
 
-      .cls-6, .cls-4 {
-        fill: #206b22;
+      .cls-6 {
+        fill: #0f7a24;
+      }
+
+      .cls-4 {
+        fill: #12a032;
       }
 
       .cls-2 {
@@ -34,13 +38,13 @@
       }
     </style>
     <radialGradient id="_Безымянный_градиент_8144" data-name="Безымянный градиент 8144" cx="-217.69" cy="703.35" fx="-181.13" fy="743.72" r="54.47" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#4d137f"/>
-      <stop offset=".14" stop-color="#521782"/>
-      <stop offset=".3" stop-color="#61258c"/>
-      <stop offset=".49" stop-color="#7a3d9d"/>
-      <stop offset=".68" stop-color="#9d5db5"/>
-      <stop offset=".89" stop-color="#ca87d3"/>
-      <stop offset=".93" stop-color="#d490da"/>
+      <stop offset="0" stop-color="#3a0a6e"/>
+      <stop offset=".14" stop-color="#5217a0"/>
+      <stop offset=".3" stop-color="#7a2bc4"/>
+      <stop offset=".49" stop-color="#9b3de0"/>
+      <stop offset=".68" stop-color="#c44fff"/>
+      <stop offset=".89" stop-color="#e070ff"/>
+      <stop offset=".93" stop-color="#f08cff"/>
     </radialGradient>
     <filter id="drop-shadow-19" x="489.48" y="314.76" width="322.56" height="374.4" filterUnits="userSpaceOnUse">
       <feOffset dx="10" dy="10"/>
@@ -50,13 +54,13 @@
       <feComposite in="SourceGraphic"/>
     </filter>
     <radialGradient id="_Безымянный_градиент_8150" data-name="Безымянный градиент 8150" cx="-171.6" cy="644.12" fx="-236.58" fy="644.12" r="65.02" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#4d137f"/>
-      <stop offset=".14" stop-color="#521882"/>
-      <stop offset=".33" stop-color="#62278d"/>
-      <stop offset=".53" stop-color="#7d3f9f"/>
-      <stop offset=".75" stop-color="#a262b8"/>
-      <stop offset=".99" stop-color="#d18dd8"/>
-      <stop offset="1" stop-color="#d490da"/>
+      <stop offset="0" stop-color="#3a0a6e"/>
+      <stop offset=".14" stop-color="#5217a0"/>
+      <stop offset=".33" stop-color="#7a2bc4"/>
+      <stop offset=".53" stop-color="#9b3de0"/>
+      <stop offset=".75" stop-color="#c44fff"/>
+      <stop offset=".99" stop-color="#e070ff"/>
+      <stop offset="1" stop-color="#f08cff"/>
     </radialGradient>
     <filter id="drop-shadow-20" x="637.8" y="53.64" width="320.16" height="454.56" filterUnits="userSpaceOnUse">
       <feOffset dx="10" dy="10"/>

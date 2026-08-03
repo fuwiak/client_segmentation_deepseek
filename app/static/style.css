@@ -1182,9 +1182,9 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
   border-radius: 8px;
 }
 .brand-logo-wide {
-  height: 40px;
+  height: 52px;
   width: auto;
-  max-width: min(220px, 42vw);
+  max-width: min(280px, 55vw);
   object-fit: contain;
   border-radius: 0;
   background: transparent;
@@ -1231,9 +1231,9 @@ td.ai-added { background: rgba(93, 184, 114, 0.06); }
 }
 .login-logo {
   display: block;
-  height: 56px;
+  height: 72px;
   width: auto;
-  max-width: min(260px, 70vw);
+  max-width: min(320px, 80vw);
   object-fit: contain;
 }
 .login-tagline {
